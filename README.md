@@ -1,0 +1,117 @@
+# Chess.com Repertoire Deviation Checker
+
+Markiert auf chess.com Analyse-Seiten, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft. Repertoire kann lokal als `.pgn`-Ordner liegen, gepasted werden — oder live aus einer eigenen [RookHub](https://github.com/kahalm/rookhub)-Instanz gezogen werden.
+
+Zwei Distributions-Pfade:
+
+| Variante | Datei / Verzeichnis | Installation |
+|----------|---------------------|--------------|
+| **Tampermonkey-Userscript** | `chesscom_repertoire.user.js` | Tampermonkey → New Script → Datei einfügen, oder direkt von GitHub-Raw-URL importieren |
+| **Browser-Extension (MV3)** | `extension/` | Lokal: Chrome `chrome://extensions/` → „Entpackt laden" · Firefox `about:debugging` → „Temporäres Add-on" · Submission: Chrome Web Store / Firefox AMO (siehe unten) |
+
+Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layout (`RepertoireCheckerDB`) — User können wechseln, ohne URL/Token erneut zu hinterlegen.
+
+## Features
+
+- **Deviation-Erkennung** auf `chess.com/analysis/game/*` und `chess.com/game/review/*`
+- **Repertoire-Quellen**:
+  - Lokaler Ordner (File System Access API in Chrome/Edge, File-Input-Fallback in Firefox)
+  - PGN paste
+  - RookHub-Server (Eröffnungs-Repertoires gefiltert, mit Auth-Token)
+- **Settings-Panel** im Repertoire-Banner (⚙-Icon) für URL/Token/Refresh
+- **Cache** in IndexedDB — Re-Open der chess.com-Seite zeigt sofort den letzten Stand, Refresh läuft im Hintergrund
+- **Soft-Limit-Warnung** bei > 5 MB Gesamtgröße der Repertoires
+
+## Setup für die Browser-Extension
+
+### Voraussetzung: RookHub-Token erstellen
+
+1. In RookHub einloggen → **Profil → „Extension-Tokens"** → „Token erstellen" (Scope `extension`).
+2. Den Raw-Token (`rkh_…`) **einmalig** beim Anlegen kopieren.
+
+### Lokale Entwicklung / temporäres Testen
+
+**Chrome / Edge / Brave**:
+1. `chrome://extensions/` aufrufen → „Entwicklermodus" aktivieren
+2. „Entpackte Erweiterung laden" → `extension/`-Ordner wählen
+3. Auf chess.com gehen, im Repertoire-Banner das ⚙-Icon klicken, RookHub-URL + Token eintragen, „Verbinden"
+
+**Firefox**:
+1. `about:debugging#/runtime/this-firefox` → „Temporäres Add-on laden" → `extension/manifest.json` wählen
+2. **Achtung**: temporäre Installation wird beim Browser-Neustart entfernt
+3. Persistentes Testen: `web-ext run` (siehe unten)
+
+### Mit `web-ext` (empfohlen für Entwicklung)
+
+```bash
+npm install -g web-ext
+cd extension
+web-ext run                       # Firefox mit Auto-Reload
+web-ext run --target=chromium     # Chrome mit Auto-Reload
+web-ext lint                      # Prüfen für AMO/Store
+web-ext build                     # ZIP in extension/web-ext-artifacts/
+```
+
+### Icons regenerieren
+
+Die mitgelieferten Placeholder-Icons (weißer „R" auf grünem Quadrat) werden von `generate-icons.py` erzeugt. Python + Pillow nötig:
+
+```bash
+pip install pillow
+cd extension
+python generate-icons.py
+```
+
+Für richtige Icons das Script anpassen oder die PNGs durch eigene 16×16 / 48×48 / 128×128-Dateien ersetzen.
+
+## Submission
+
+### Chrome Web Store
+
+1. [Developer-Account](https://chrome.google.com/webstore/devconsole) anlegen — einmalige 5 USD Gebühr
+2. `web-ext build` → `extension/web-ext-artifacts/chesscom_repertoire-1.3.0.zip`
+3. Upload, Beschreibung, Screenshots (1280×800), Privacy-Policy-URL → `PRIVACY.md` auf GitHub Pages oder ähnlich hosten
+4. Submit → Review 1–3 Tage
+
+### Firefox Add-ons (AMO)
+
+1. [Developer Hub](https://addons.mozilla.org/developers/) — kostenlos
+2. `web-ext build` oder direkt `web-ext sign --api-key=… --api-secret=…`
+3. Upload bei AMO, Privacy Policy URL, Quellcode-Link
+4. Review meist <24h
+
+### Edge Add-ons
+
+Chrome-Store-Extensions sind in Edge automatisch installierbar. Eigene Edge-Submission optional.
+
+## Verzeichnis-Struktur
+
+```
+chesscom_extension/
+├── chesscom_repertoire.user.js   # Tampermonkey-Userscript (eigenständig)
+├── extension/                    # Browser-Extension (MV3)
+│   ├── manifest.json
+│   ├── content.js                # Logik wie Userscript, RookHub-Fetches über Background
+│   ├── background.js             # Service-Worker (CORS-freie Fetches)
+│   ├── popup.html                # Toolbar-Button-Popup (Status)
+│   ├── popup.js
+│   ├── icons/                    # 16/48/128 PNG
+│   ├── generate-icons.py         # Placeholder-Icon-Generator (Pillow)
+│   └── web-ext-config.cjs        # web-ext-CLI-Konfig
+├── PRIVACY.md                    # Datenschutzerklärung (für Store-Submission)
+├── CLAUDE.md                     # Projekt-Regeln + RookHub-Integration
+└── README.md
+```
+
+## RookHub-Endpoints, die genutzt werden
+
+| Methode | Endpoint | Auth | Zweck |
+|---------|----------|------|-------|
+| GET | `/api/extension/repertoires?kind=opening` | Bearer `rkh_…` (Scope `extension`) | Liste der Eröffnungs-Repertoires {id, name, fileCount, kind, totalSizeBytes} |
+| GET | `/api/extension/repertoires/{id}/pgn` | Bearer `rkh_…` (Scope `extension`) | Kombinierter PGN-Text |
+
+Server-Seite: [RookHub v0.79.1+](https://github.com/kahalm/rookhub) — `ExtensionController` mit Scope-Guard.
+
+## Lizenz
+
+(Keine explizite Lizenz hinterlegt — bitte ergänzen, falls Veröffentlichung erfolgen soll.)
