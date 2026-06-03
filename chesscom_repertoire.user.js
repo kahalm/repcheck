@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/chesscom-repertoire
-// @version      1.0.1
+// @version      1.2.1
 // @description  Shows where your game deviates from your opening repertoire (PGN files)
 // @author       You
 // @match        https://www.chess.com/*
 // @grant        none
-// @require      https://cdn.jsdelivr.net/npm/@mliebelt/pgn-parser@1.4.12/lib/pgn-parser.umd.js
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -17,16 +16,132 @@
   const IDB_NAME = 'RepertoireCheckerDB';
   const IDB_STORE = 'handles';
   const IDB_KEY = 'repertoireDir';
-  const LS_PREFIX = 'repcheck_';
   const DEVIATION_CLASS = 'repcheck-deviation';
   const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
 
   // ─── State ───────────────────────────────────────────────────────────
-  let repertoireTrie = null; // root node of the move trie
-  let dirHandle = null;      // FileSystemDirectoryHandle
-  let lastUrl = '';          // for SPA navigation detection
-  let currentDeviationIndex = -1; // -1 = no deviation found yet
+  let repertoireTrie = null;
+  let dirHandle = null;
+  let lastUrl = '';
+  let currentDeviationIndex = -1;
+
+  // ─── Lightweight PGN Parser ─────────────────────────────────────────
+  // Parses PGN move text into a flat list with variation support.
+  // Returns array of games, each game = array of moves.
+  // Each move = { san: string, variations: [ [move, ...], ... ] }
+
+  function tokenizePgn(movetext) {
+    // Remove comments { ... } and ; line comments
+    movetext = movetext.replace(/\{[^}]*\}/g, ' ');
+    movetext = movetext.replace(/;[^\n]*/g, ' ');
+    // Remove NAGs like $1, $2
+    movetext = movetext.replace(/\$\d+/g, ' ');
+    // Normalize whitespace
+    movetext = movetext.replace(/\s+/g, ' ').trim();
+
+    const tokens = [];
+    let i = 0;
+    while (i < movetext.length) {
+      const ch = movetext[i];
+      if (ch === '(') { tokens.push('('); i++; }
+      else if (ch === ')') { tokens.push(')'); i++; }
+      else if (ch === ' ') { i++; }
+      else {
+        let j = i;
+        while (j < movetext.length && movetext[j] !== ' ' && movetext[j] !== '(' && movetext[j] !== ')') j++;
+        tokens.push(movetext.substring(i, j));
+        i = j;
+      }
+    }
+    return tokens;
+  }
+
+  function isMoveToken(token) {
+    if (!token || token === '(' || token === ')') return false;
+    // Skip move numbers: "1.", "1...", "12."
+    if (/^\d+\.+$/.test(token)) return false;
+    // Skip results
+    if (['1-0', '0-1', '1/2-1/2', '*'].includes(token)) return false;
+    // A move token starts with a letter (a-h for pawns, KQRBN for pieces) or O for castling
+    return /^[a-hKQRBNO]/.test(token);
+  }
+
+  function parseMoveTokens(tokens, pos) {
+    // Returns { moves: [...], endPos }
+    // Each move: { san, variations: [] }
+    const moves = [];
+    while (pos < tokens.length) {
+      const token = tokens[pos];
+      if (token === ')') {
+        // End of variation
+        return { moves, endPos: pos };
+      }
+      if (token === '(') {
+        // Start of variation — applies to the LAST move's position
+        pos++; // skip '('
+        const result = parseMoveTokens(tokens, pos);
+        pos = result.endPos + 1; // skip ')'
+        // Attach variation to the last move before this variation
+        if (moves.length > 0) {
+          moves[moves.length - 1].variations.push(result.moves);
+        }
+        continue;
+      }
+      if (isMoveToken(token)) {
+        moves.push({ san: token, variations: [] });
+      }
+      pos++;
+    }
+    return { moves, endPos: pos };
+  }
+
+  function parsePgnText(text) {
+    // Split into games by header blocks
+    const games = [];
+    // Split on lines starting with [Event or just parse as one big block
+    const sections = text.split(/(?=\[Event\s)/);
+    for (const section of sections) {
+      // Extract movetext (everything after the last header line "]")
+      const lines = section.split('\n');
+      let movetextLines = [];
+      let pastHeaders = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          pastHeaders = false;
+          continue;
+        }
+        if (trimmed === '' && !pastHeaders) {
+          pastHeaders = true;
+          continue;
+        }
+        if (pastHeaders || !trimmed.startsWith('[')) {
+          movetextLines.push(trimmed);
+          pastHeaders = true;
+        }
+      }
+      const movetext = movetextLines.join(' ').trim();
+      if (!movetext) continue;
+
+      const tokens = tokenizePgn(movetext);
+      const { moves } = parseMoveTokens(tokens, 0);
+      if (moves.length > 0) {
+        games.push(moves);
+      }
+    }
+
+    // If no [Event headers found, try parsing the whole text as movetext
+    if (games.length === 0 && text.trim()) {
+      const tokens = tokenizePgn(text);
+      const { moves } = parseMoveTokens(tokens, 0);
+      if (moves.length > 0) {
+        games.push(moves);
+      }
+    }
+
+    return games;
+  }
 
   // ─── IndexedDB helpers ───────────────────────────────────────────────
   function openIDB() {
@@ -63,23 +178,10 @@
     return { children: {} };
   }
 
-  function insertLine(root, moves) {
+  function walkParsedMoves(root, moves) {
     let node = root;
     for (const move of moves) {
-      const san = move.notation ? move.notation.notation : move;
-      if (!san) continue;
-      if (!node.children[san]) {
-        node.children[san] = createTrieNode();
-      }
-      node = node.children[san];
-    }
-  }
-
-  function walkPgnMoves(root, moves) {
-    // Recursively walk parsed PGN moves (which include variations)
-    let node = root;
-    for (const move of moves) {
-      const san = move.notation ? move.notation.notation : null;
+      const san = move.san;
       if (!san) continue;
 
       if (!node.children[san]) {
@@ -90,9 +192,7 @@
       // Process variations (alternative moves at this point)
       if (move.variations && move.variations.length > 0) {
         for (const variation of move.variations) {
-          // Each variation is an array of moves starting from the SAME position
-          // (i.e., the parent node, not 'next')
-          walkPgnMoves(node, variation);
+          walkParsedMoves(node, variation);
         }
       }
 
@@ -104,11 +204,9 @@
     const root = createTrieNode();
     for (const text of pgnTexts) {
       try {
-        const games = PgnParser.parse(text, { startRule: 'games' });
-        for (const game of games) {
-          if (game.moves && game.moves.length > 0) {
-            walkPgnMoves(root, game.moves);
-          }
+        const games = parsePgnText(text);
+        for (const moves of games) {
+          walkParsedMoves(root, moves);
         }
       } catch (e) {
         console.warn('[RepertoireChecker] PGN parse error:', e);
@@ -117,23 +215,57 @@
     return root;
   }
 
-  // ─── File System Access ─────────────────────────────────────────────
+  // ─── File Loading ────────────────────────────────────────────────────
   async function pickDirectory() {
-    try {
-      dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-      await saveHandle(dirHandle);
-      await loadRepertoireFromDir();
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        console.error('[RepertoireChecker] Directory picker error:', e);
+    // Chrome/Edge: use File System Access API
+    if (typeof window.showDirectoryPicker === 'function') {
+      try {
+        dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+        await saveHandle(dirHandle);
+        await loadRepertoireFromDir();
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          console.error('[RepertoireChecker] Directory picker error:', e);
+        }
       }
+      return;
     }
+    // Firefox fallback: trigger hidden file input
+    pickDirectoryViaInput();
+  }
+
+  function pickDirectoryViaInput() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.setAttribute('webkitdirectory', '');
+    input.multiple = true;
+    input.accept = '.pgn';
+    input.style.display = 'none';
+    input.addEventListener('change', () => {
+      loadRepertoireFromFiles(input.files);
+      input.remove();
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  function loadRepertoireFromFiles(fileList) {
+    const pgnFiles = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pgn'));
+    if (pgnFiles.length === 0) {
+      updateStatusText('No .pgn files found in folder');
+      return;
+    }
+
+    Promise.all(pgnFiles.map(f => f.text())).then(pgnTexts => {
+      repertoireTrie = buildTrieFromPgns(pgnTexts);
+      updateStatusText(`Repertoire loaded: ${pgnTexts.length} file(s)`);
+      runCheck();
+    });
   }
 
   async function loadRepertoireFromDir() {
     if (!dirHandle) return false;
 
-    // Verify permission
     const perm = await dirHandle.queryPermission({ mode: 'read' });
     if (perm !== 'granted') {
       const req = await dirHandle.requestPermission({ mode: 'read' });
@@ -177,51 +309,23 @@
     return url.includes('/analysis/game/') || url.includes('/game/review/');
   }
 
-  function getPlayerColor() {
-    // Returns 'white' or 'black' or null
-    try {
-      const board = document.querySelector('wc-chess-board');
-      if (!board) return null;
-      // Try the game API
-      if (board.game && typeof board.game.getPlayingAs === 'function') {
-        const c = board.game.getPlayingAs();
-        if (c === 1) return 'white';
-        if (c === 2) return 'black';
-      }
-      // Fallback: check board orientation via flipped attribute
-      const isFlipped = board.hasAttribute('flipped') || board.classList.contains('flipped');
-      return isFlipped ? 'black' : 'white';
-    } catch {
-      return null;
-    }
-  }
-
   function getGameMoves() {
-    // Extract SAN moves from the move list
     const moves = [];
-    const moveList = document.querySelector('.move-list-component, vertical-move-list, wc-move-list');
+    const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
     if (!moveList) return moves;
 
     const nodes = moveList.querySelectorAll('.node');
     for (const node of nodes) {
-      // Get the text content, stripping move numbers and annotations
-      const figurine = node.querySelector('.figurine-notation, [data-figurine]');
+      const figurineEl = node.querySelector('[data-figurine]');
       let san;
-      if (figurine) {
-        // Figurine notation: piece icon + text
-        const piece = figurine.querySelector('[data-figurine]');
-        const pieceChar = piece ? piece.getAttribute('data-figurine') : '';
-        const rest = figurine.textContent.replace(piece ? piece.textContent : '', '').trim();
-        san = pieceChar + rest;
+      if (figurineEl) {
+        san = figurineEl.getAttribute('data-figurine') + node.textContent.trim();
       } else {
         san = node.textContent.trim();
       }
 
-      // Clean up: remove move numbers like "1." "2..." etc, annotations, result
       san = san.replace(/^\d+\.+\s*/, '').trim();
-      // Skip results
       if (['1-0', '0-1', '1/2-1/2', '*'].includes(san)) continue;
-      // Remove annotation symbols
       san = san.replace(/[?!]+$/, '').trim();
       if (san) moves.push(san);
     }
@@ -237,10 +341,10 @@
       if (node.children[san]) {
         node = node.children[san];
       } else {
-        return i; // first deviation
+        return i;
       }
     }
-    return -1; // all moves in repertoire
+    return -1;
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────
@@ -375,12 +479,11 @@
   function showBanner(message, type) {
     let banner = document.getElementById(BANNER_ID);
     if (!banner) {
-      // Find a good insertion point above the move list
       const moveListContainer =
+        document.querySelector('.move-list')?.parentElement ||
+        document.querySelector('.analysis-view-movelist')?.parentElement ||
         document.querySelector('.sidebar-container') ||
         document.querySelector('.sidebar-tabbed-content') ||
-        document.querySelector('.move-list-wrapper') ||
-        document.querySelector('.move-list-component')?.parentElement ||
         document.querySelector('vertical-move-list')?.parentElement;
 
       if (!moveListContainer) return;
@@ -418,18 +521,16 @@
   }
 
   function highlightDeviation(index) {
-    // Remove previous highlights
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
 
     if (index < 0) return;
 
-    const moveList = document.querySelector('.move-list-component, vertical-move-list, wc-move-list');
+    const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
     if (!moveList) return;
 
     const nodes = moveList.querySelectorAll('.node');
     if (index < nodes.length) {
       nodes[index].classList.add(DEVIATION_CLASS);
-      // Scroll into view
       nodes[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }
@@ -450,22 +551,14 @@
     const panel = document.createElement('div');
     panel.id = PANEL_ID;
 
-    const hasFileSystemAPI = typeof window.showDirectoryPicker === 'function';
-
     panel.innerHTML = `
       <h3>Repertoire Settings</h3>
-      ${hasFileSystemAPI ? `
-        <div style="margin-bottom: 12px;">
-          <strong>Load from folder:</strong><br>
-          <button id="repcheck-pick-dir">Select PGN Folder</button>
-          <span style="font-size:12px;color:#888;margin-left:6px;">${dirHandle ? '(folder selected)' : '(no folder selected)'}</span>
-        </div>
-        <hr style="border-color:#444;margin:12px 0;">
-      ` : `
-        <div style="margin-bottom:12px;font-size:12px;color:#f90;">
-          File System Access API not available. Use the textarea below.
-        </div>
-      `}
+      <div style="margin-bottom: 12px;">
+        <strong>Load from folder:</strong><br>
+        <button id="repcheck-pick-dir">Select PGN Folder</button>
+        <span id="repcheck-folder-info" style="font-size:12px;color:#888;margin-left:6px;">${repertoireTrie ? '(loaded)' : '(no folder selected)'}</span>
+      </div>
+      <hr style="border-color:#444;margin:12px 0;">
       <div>
         <strong>Or paste PGN:</strong><br>
         <textarea id="repcheck-pgn-input" placeholder="Paste your repertoire PGN here..."></textarea>
@@ -479,7 +572,6 @@
 
     document.body.appendChild(panel);
 
-    // Event listeners
     document.getElementById('repcheck-pick-dir')?.addEventListener('click', async () => {
       await pickDirectory();
     });
@@ -496,7 +588,7 @@
   function runCheck() {
     if (!isReviewPage()) return;
     if (!repertoireTrie) {
-      showBanner('No repertoire loaded — click \u2699 to set up', 'no-repertoire');
+      showBanner('No repertoire loaded \u2014 click \u2699 to set up', 'no-repertoire');
       return;
     }
 
@@ -526,19 +618,17 @@
     if (url === lastUrl) return;
     lastUrl = url;
 
-    // Clean up previous UI
     document.getElementById(BANNER_ID)?.remove();
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
 
     if (isReviewPage()) {
-      // Wait for move list to render, then run check
       waitForMoveList().then(() => runCheck());
     }
   }
 
   function waitForMoveList(timeout = 10000) {
     return new Promise((resolve) => {
-      const selector = '.move-list-component .node, vertical-move-list .node, wc-move-list .node';
+      const selector = '.move-list .node, vertical-move-list .node, wc-move-list .node';
       if (document.querySelector(selector)) {
         resolve();
         return;
@@ -555,22 +645,19 @@
 
       setTimeout(() => {
         observer.disconnect();
-        resolve(); // resolve anyway after timeout
+        resolve();
       }, timeout);
     });
   }
 
-  // Also re-check when moves change (user navigates through moves)
   function observeMoveListChanges() {
     const observer = new MutationObserver(() => {
       if (isReviewPage() && repertoireTrie) {
-        // Debounce
         clearTimeout(observeMoveListChanges._timer);
         observeMoveListChanges._timer = setTimeout(runCheck, 300);
       }
     });
 
-    // Observe the whole body for move list changes (SPA may rebuild DOM)
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -579,10 +666,11 @@
   }
 
   async function init() {
+    console.log('[RepertoireChecker] Initializing v1.2.0');
     injectStyles();
 
-    // Try to restore saved directory handle
-    try {13:51 20.04.2026      dirHandle = await loadHandle();
+    try {
+      dirHandle = await loadHandle();
       if (dirHandle) {
         await loadRepertoireFromDir();
       }
@@ -590,21 +678,17 @@
       console.log('[RepertoireChecker] No saved directory handle:', e);
     }
 
-    // Watch for SPA navigation
     const navObserver = new MutationObserver(() => onPageChange());
     navObserver.observe(document.body, { childList: true, subtree: true });
 
-    // Also watch popstate for back/forward navigation
     window.addEventListener('popstate', () => setTimeout(onPageChange, 100));
 
-    // Observe move list changes
     observeMoveListChanges();
 
-    // Initial check
     onPageChange();
+    console.log('[RepertoireChecker] Ready');
   }
 
-  // Start when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
