@@ -1,0 +1,40 @@
+name: Build extension
+
+# Auf jedem Push/PR die Extension lintens + bauen. Der ZIP wird als Workflow-
+# Artifact angehaengt (90 Tage Aufbewahrung), damit Reviewer/Tester direkt
+# einen frischen Build laden koennen ohne lokal zu bauen.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: web-ext lint
+        run: |
+          cd extension
+          npx --yes web-ext@latest lint --no-config-discovery --self-hosted
+
+      - name: web-ext build
+        run: |
+          cd extension
+          npx --yes web-ext@latest build --config=web-ext-config.cjs --overwrite-dest
+
+      - name: Upload extension ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: extension/web-ext-artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 90

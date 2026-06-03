@@ -114,4 +114,4 @@ Server-Seite: [RookHub v0.79.1+](https://github.com/kahalm/rookhub) — `Extensi
 
 ## Lizenz
 
-(Keine explizite Lizenz hinterlegt — bitte ergänzen, falls Veröffentlichung erfolgen soll.)
+[MIT](./LICENSE) — frei nutzbar, frei zu modifizieren, frei zu redistributieren, mit Attribution.
