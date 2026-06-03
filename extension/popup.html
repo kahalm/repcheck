@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Repertoire Deviation Checker</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; margin: 12px; min-width: 280px; color: #222; }
+  h1 { font-size: 14px; margin: 0 0 8px 0; }
+  .status { padding: 8px; border-radius: 4px; background: #f0f0f0; margin-bottom: 8px; }
+  .status.loaded { background: #e8f5e9; color: #1b5e20; }
+  .status.empty { background: #fff3e0; color: #e65100; }
+  .hint { color: #666; font-size: 11px; margin-top: 8px; }
+  a { color: #1976d2; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font-size: 12px; padding: 4px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>♟ Repertoire Deviation Checker</h1>
+<div id="status" class="status">Lade Status…</div>
+<div class="hint">
+  Einstellungen + RookHub-Token: in der chess.com-Analyse auf das <strong>⚙</strong>-Icon im Repertoire-Banner.
+</div>
+<div class="hint">
+  <a href="https://github.com/kahalm/chesscom_extension" target="_blank" rel="noopener">GitHub</a>
+  · <button id="open-chesscom">chess.com öffnen</button>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

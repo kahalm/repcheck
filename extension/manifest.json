@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Chess.com Repertoire Deviation Checker",
+  "version": "1.3.0",
+  "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com (lokale PGN-Dateien oder RookHub).",
+  "homepage_url": "https://github.com/kahalm/chesscom_extension",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.chess.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Repertoire Deviation Checker"
+  },
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "chesscom-repertoire-checker@kahalm.github.io",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

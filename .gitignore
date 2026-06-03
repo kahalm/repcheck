@@ -1,0 +1,6 @@
+extension/web-ext-artifacts/
+extension/__pycache__/
+*.zip
+*.xpi
+*.crx
+.DS_Store
