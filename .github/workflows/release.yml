@@ -1,0 +1,65 @@
+name: Release
+
+# Bei einem Git-Tag wie `v1.3.1` ein GitHub Release anlegen und die
+# Extension-ZIP anhaengen. Wenn die AMO-Repo-Secrets gesetzt sind
+# (`AMO_API_KEY` + `AMO_API_SECRET`), wird die Extension parallel bei
+# Mozilla AMO eingereicht (self-hosted Signatur → .xpi).
+#
+# Setup-Hinweis: Tag bauen mit
+#   git tag v1.3.1 && git push origin v1.3.1
+# AMO-Keys generierst du unter:
+#   https://addons.mozilla.org/developers/addon/api/key/
+# und legst sie unter "Settings → Secrets → Actions" als
+# AMO_API_KEY + AMO_API_SECRET an.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.3.1)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build (unsigned)
+        run: |
+          cd extension
+          npx --yes web-ext@latest build --config=web-ext-config.cjs --overwrite-dest
+
+      - name: Sign for Firefox AMO (if secrets configured)
+        env:
+          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
+          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        run: |
+          if [ -z "$AMO_API_KEY" ] || [ -z "$AMO_API_SECRET" ]; then
+            echo "AMO secrets not set — skipping signing"
+            exit 0
+          fi
+          cd extension
+          npx --yes web-ext@latest sign \
+            --config=web-ext-config.cjs \
+            --channel=unlisted \
+            --api-key="$AMO_API_KEY" \
+            --api-secret="$AMO_API_SECRET" || \
+            echo "::warning::AMO signing failed — continuing release with unsigned ZIP only"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            extension/web-ext-artifacts/*.zip
+            extension/web-ext-artifacts/*.xpi
+          generate_release_notes: true
+          fail_on_unmatched_files: false

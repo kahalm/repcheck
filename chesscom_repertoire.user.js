@@ -1,9 +1,14 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
-// @namespace    https://github.com/chesscom-repertoire
-// @version      1.3.0
+// @namespace    https://github.com/kahalm/chesscom_extension
+// @version      1.3.1
 // @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
-// @author       You
+// @author       kahalm
+// @homepageURL  https://github.com/kahalm/chesscom_extension
+// @supportURL   https://github.com/kahalm/chesscom_extension/issues
+// @updateURL    https://raw.githubusercontent.com/kahalm/chesscom_extension/master/chesscom_repertoire.user.js
+// @downloadURL  https://raw.githubusercontent.com/kahalm/chesscom_extension/master/chesscom_repertoire.user.js
+// @icon         https://raw.githubusercontent.com/kahalm/chesscom_extension/master/extension/icons/icon48.png
 // @match        https://www.chess.com/*
 // @grant        none
 // @connect      *
