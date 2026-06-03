@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/chesscom-repertoire
-// @version      1.2.1
-// @description  Shows where your game deviates from your opening repertoire (PGN files)
+// @version      1.3.0
+// @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
 // @author       You
 // @match        https://www.chess.com/*
 // @grant        none
+// @connect      *
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -16,9 +17,15 @@
   const IDB_NAME = 'RepertoireCheckerDB';
   const IDB_STORE = 'handles';
   const IDB_KEY = 'repertoireDir';
+  // RookHub-Integration: separater Store fuer Config (URL+Token) und Cache.
+  const IDB_ROOKHUB_STORE = 'rookhub';
+  const IDB_ROOKHUB_CONFIG_KEY = 'config';
+  const IDB_ROOKHUB_CACHE_KEY = 'cache';
   const DEVIATION_CLASS = 'repcheck-deviation';
   const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
+  // Soft-Limit: ueber dieser Summe (Bytes) zeigt das UI eine Warnung vor dem Laden.
+  const ROOKHUB_SOFT_LIMIT = 5 * 1024 * 1024;
 
   // ─── State ───────────────────────────────────────────────────────────
   let repertoireTrie = null;
@@ -146,8 +153,14 @@
   // ─── IndexedDB helpers ───────────────────────────────────────────────
   function openIDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+      // v2: zusaetzlicher Store fuer RookHub-Config + Cache. onupgradeneeded muss
+      // beide Stores anlegen, weil der Upgrade auch beim ersten Anlegen laeuft.
+      const req = indexedDB.open(IDB_NAME, 2);
+      req.onupgradeneeded = (event) => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+        if (!db.objectStoreNames.contains(IDB_ROOKHUB_STORE)) db.createObjectStore(IDB_ROOKHUB_STORE);
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -171,6 +184,105 @@
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
+  }
+
+  // ─── RookHub IDB Helpers ────────────────────────────────────────────
+  async function idbGet(store, key) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function idbPut(store, key, value) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  function loadRookhubConfig() {
+    return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY);
+  }
+
+  function saveRookhubConfig(cfg) {
+    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
+  }
+
+  function loadRookhubCache() {
+    return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CACHE_KEY);
+  }
+
+  function saveRookhubCache(cache) {
+    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CACHE_KEY, cache);
+  }
+
+  // ─── RookHub Fetch ──────────────────────────────────────────────────
+  // Holt zuerst die Repertoire-Liste (?kind=opening), dann die einzelnen
+  // PGN-Texte. Soft-Limit-Pruefung vor dem Pull der PGNs.
+
+  function rookhubHeaders(token) {
+    return { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' };
+  }
+
+  async function rookhubFetchOpeningList(baseUrl, token) {
+    const url = baseUrl.replace(/\/$/, '') + '/api/extension/repertoires?kind=opening';
+    const resp = await fetch(url, { headers: rookhubHeaders(token), mode: 'cors' });
+    if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
+    if (!resp.ok) throw new Error('RookHub HTTP ' + resp.status);
+    return await resp.json(); // Array von { id, name, fileCount, kind, totalSizeBytes }
+  }
+
+  async function rookhubFetchPgn(baseUrl, token, id) {
+    const url = baseUrl.replace(/\/$/, '') + '/api/extension/repertoires/' + id + '/pgn';
+    const resp = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'text/plain' },
+      mode: 'cors',
+    });
+    if (!resp.ok) throw new Error('RookHub HTTP ' + resp.status + ' fuer Puzzle ' + id);
+    return await resp.text();
+  }
+
+  async function loadRepertoireFromRookHub(cfg, options) {
+    if (!cfg || !cfg.url || !cfg.token) {
+      throw new Error('RookHub: URL oder Token fehlt.');
+    }
+    const list = await rookhubFetchOpeningList(cfg.url, cfg.token);
+    if (!list || list.length === 0) {
+      updateStatusText('Keine Eröffnungs-Repertoires in RookHub gefunden.');
+      return;
+    }
+    const totalBytes = list.reduce((s, r) => s + (r.totalSizeBytes || 0), 0);
+    if (totalBytes > ROOKHUB_SOFT_LIMIT && !(options && options.skipWarning)) {
+      const mb = (totalBytes / 1024 / 1024).toFixed(1);
+      if (!confirm('Es werden ' + list.length + ' Repertoires geladen — zusammen ' + mb + ' MB. Fortfahren?')) {
+        updateStatusText('Laden abgebrochen.');
+        return;
+      }
+    }
+    const pgnTexts = [];
+    for (const repo of list) {
+      try {
+        const txt = await rookhubFetchPgn(cfg.url, cfg.token, repo.id);
+        if (txt) pgnTexts.push(txt);
+      } catch (e) {
+        console.warn('[RepertoireChecker] RookHub PGN-Fetch fehlgeschlagen:', e);
+      }
+    }
+    if (pgnTexts.length === 0) {
+      updateStatusText('RookHub: keine PGNs geladen.');
+      return;
+    }
+    repertoireTrie = buildTrieFromPgns(pgnTexts);
+    await saveRookhubCache({ pgnTexts, savedAt: Date.now(), count: pgnTexts.length });
+    updateStatusText('RookHub: ' + pgnTexts.length + ' Eröffnungen geladen');
+    runCheck();
   }
 
   // ─── Repertoire Trie ────────────────────────────────────────────────
@@ -551,8 +663,27 @@
     const panel = document.createElement('div');
     panel.id = PANEL_ID;
 
+    // RookHub-Config zum Vorbefuellen der Felder laden (async, dann DOM updaten).
+    loadRookhubConfig().then(cfg => {
+      const urlInput = document.getElementById('repcheck-rookhub-url');
+      const tokenInput = document.getElementById('repcheck-rookhub-token');
+      if (cfg && urlInput) urlInput.value = cfg.url || '';
+      if (cfg && tokenInput) tokenInput.value = cfg.token || '';
+    }).catch(() => {});
+
     panel.innerHTML = `
       <h3>Repertoire Settings</h3>
+      <div style="margin-bottom: 12px;">
+        <strong>RookHub:</strong><br>
+        <input id="repcheck-rookhub-url" placeholder="https://rookhub.example.com" />
+        <input id="repcheck-rookhub-token" placeholder="rkh_…" type="password" />
+        <div style="margin-top:6px;">
+          <button id="repcheck-rookhub-connect">Verbinden</button>
+          <button id="repcheck-rookhub-refresh" class="secondary">Aktualisieren</button>
+        </div>
+        <span style="font-size:11px;color:#888;">Token im RookHub-Profil → „Extension-Tokens".</span>
+      </div>
+      <hr style="border-color:#444;margin:12px 0;">
       <div style="margin-bottom: 12px;">
         <strong>Load from folder:</strong><br>
         <button id="repcheck-pick-dir">Select PGN Folder</button>
@@ -582,6 +713,30 @@
     });
 
     document.getElementById('repcheck-close').addEventListener('click', togglePanel);
+
+    document.getElementById('repcheck-rookhub-connect')?.addEventListener('click', async () => {
+      const url = (document.getElementById('repcheck-rookhub-url').value || '').trim();
+      const token = (document.getElementById('repcheck-rookhub-token').value || '').trim();
+      if (!url || !token) { updateStatusText('RookHub: URL und Token erforderlich.'); return; }
+      try {
+        await saveRookhubConfig({ url, token });
+        updateStatusText('RookHub: lade…');
+        await loadRepertoireFromRookHub({ url, token });
+      } catch (e) {
+        updateStatusText('RookHub: ' + e.message);
+      }
+    });
+
+    document.getElementById('repcheck-rookhub-refresh')?.addEventListener('click', async () => {
+      const cfg = await loadRookhubConfig();
+      if (!cfg) { updateStatusText('RookHub: noch nicht konfiguriert.'); return; }
+      try {
+        updateStatusText('RookHub: aktualisiere…');
+        await loadRepertoireFromRookHub(cfg);
+      } catch (e) {
+        updateStatusText('RookHub: ' + e.message);
+      }
+    });
   }
 
   // ─── Main Check Logic ───────────────────────────────────────────────
@@ -666,16 +821,45 @@
   }
 
   async function init() {
-    console.log('[RepertoireChecker] Initializing v1.2.0');
+    console.log('[RepertoireChecker] Initializing v1.3.0');
     injectStyles();
 
+    // 1) RookHub-Cache laden, wenn vorhanden — gibt sofortige Verfuegbarkeit, auch
+    //    wenn die API offline ist. Server-Refresh laeuft anschliessend im Hintergrund.
+    let cacheLoaded = false;
     try {
-      dirHandle = await loadHandle();
-      if (dirHandle) {
-        await loadRepertoireFromDir();
+      const cache = await loadRookhubCache();
+      if (cache && Array.isArray(cache.pgnTexts) && cache.pgnTexts.length > 0) {
+        repertoireTrie = buildTrieFromPgns(cache.pgnTexts);
+        updateStatusText('RookHub (Cache): ' + cache.pgnTexts.length + ' Eröffnungen');
+        cacheLoaded = true;
       }
     } catch (e) {
-      console.log('[RepertoireChecker] No saved directory handle:', e);
+      console.log('[RepertoireChecker] RookHub-Cache nicht lesbar:', e);
+    }
+
+    // 2) RookHub-Refresh im Hintergrund, wenn konfiguriert. Fehler nur loggen.
+    try {
+      const cfg = await loadRookhubConfig();
+      if (cfg && cfg.url && cfg.token) {
+        loadRepertoireFromRookHub(cfg, { skipWarning: true }).catch(e => {
+          console.warn('[RepertoireChecker] RookHub Hintergrund-Refresh:', e.message);
+        });
+      }
+    } catch (e) {
+      console.log('[RepertoireChecker] RookHub-Config nicht lesbar:', e);
+    }
+
+    // 3) Fallback: lokaler Folder-Handle, wenn (noch) kein Trie vorhanden.
+    if (!cacheLoaded) {
+      try {
+        dirHandle = await loadHandle();
+        if (dirHandle) {
+          await loadRepertoireFromDir();
+        }
+      } catch (e) {
+        console.log('[RepertoireChecker] No saved directory handle:', e);
+      }
     }
 
     const navObserver = new MutationObserver(() => onPageChange());
