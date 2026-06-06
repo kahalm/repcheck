@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/chesscom_extension
-// @version      1.3.1
+// @version      1.4.0
+// @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
 // @author       kahalm
 // @homepageURL  https://github.com/kahalm/chesscom_extension
@@ -33,7 +34,7 @@
   const ROOKHUB_SOFT_LIMIT = 5 * 1024 * 1024;
 
   // ─── State ───────────────────────────────────────────────────────────
-  let repertoireTrie = null;
+  let repertoirePositions = null; // Set<string> of normalized FENs (transposition-aware)
   let dirHandle = null;
   let lastUrl = '';
   let currentDeviationIndex = -1;
@@ -284,52 +285,49 @@
       updateStatusText('RookHub: keine PGNs geladen.');
       return;
     }
-    repertoireTrie = buildTrieFromPgns(pgnTexts);
+    repertoirePositions = buildPositionSetFromPgns(pgnTexts);
     await saveRookhubCache({ pgnTexts, savedAt: Date.now(), count: pgnTexts.length });
     updateStatusText('RookHub: ' + pgnTexts.length + ' Eröffnungen geladen');
     runCheck();
   }
 
-  // ─── Repertoire Trie ────────────────────────────────────────────────
-  function createTrieNode() {
-    return { children: {} };
+  // ─── Repertoire Position Set ─────────────────────────────────────────
+  // Transpositions: statt Zug-Sequenzen speichern wir alle erreichbaren
+  // Stellungen als normalisierte FEN-Strings in einem Set. Zwei Partien,
+  // die dieselbe Stellung ueber verschiedene Zugfolgen erreichen, treffen
+  // auf denselben FEN-Eintrag.
+
+  function normalizedFen(fen) {
+    return fen.split(' ').slice(0, 4).join(' ');
   }
 
-  function walkParsedMoves(root, moves) {
-    let node = root;
+  function walkMovesForPositions(chess, moves, positions) {
     for (const move of moves) {
-      const san = move.san;
-      if (!san) continue;
-
-      if (!node.children[san]) {
-        node.children[san] = createTrieNode();
-      }
-      const next = node.children[san];
-
-      // Process variations (alternative moves at this point)
       if (move.variations && move.variations.length > 0) {
         for (const variation of move.variations) {
-          walkParsedMoves(node, variation);
+          walkMovesForPositions(new Chess(chess.fen()), variation, positions);
         }
       }
-
-      node = next;
+      const result = chess.move(move.san);
+      if (!result) break;
+      positions.add(normalizedFen(chess.fen()));
     }
   }
 
-  function buildTrieFromPgns(pgnTexts) {
-    const root = createTrieNode();
+  function buildPositionSetFromPgns(pgnTexts) {
+    const positions = new Set();
+    positions.add(normalizedFen(new Chess().fen()));
     for (const text of pgnTexts) {
       try {
         const games = parsePgnText(text);
         for (const moves of games) {
-          walkParsedMoves(root, moves);
+          walkMovesForPositions(new Chess(), moves, positions);
         }
       } catch (e) {
         console.warn('[RepertoireChecker] PGN parse error:', e);
       }
     }
-    return root;
+    return positions;
   }
 
   // ─── File Loading ────────────────────────────────────────────────────
@@ -374,7 +372,7 @@
     }
 
     Promise.all(pgnFiles.map(f => f.text())).then(pgnTexts => {
-      repertoireTrie = buildTrieFromPgns(pgnTexts);
+      repertoirePositions = buildPositionSetFromPgns(pgnTexts);
       updateStatusText(`Repertoire loaded: ${pgnTexts.length} file(s)`);
       runCheck();
     });
@@ -403,7 +401,7 @@
     }
 
     if (pgnTexts.length > 0) {
-      repertoireTrie = buildTrieFromPgns(pgnTexts);
+      repertoirePositions = buildPositionSetFromPgns(pgnTexts);
       updateStatusText(`Repertoire loaded: ${pgnTexts.length} file(s)`);
       runCheck();
       return true;
@@ -415,7 +413,7 @@
 
   function loadRepertoireFromText(pgnText) {
     if (!pgnText.trim()) return;
-    repertoireTrie = buildTrieFromPgns([pgnText]);
+    repertoirePositions = buildPositionSetFromPgns([pgnText]);
     updateStatusText('Repertoire loaded from text');
     runCheck();
   }
@@ -450,16 +448,13 @@
   }
 
   function findDeviation(gameMoves) {
-    if (!repertoireTrie) return -1;
+    if (!repertoirePositions) return -1;
 
-    let node = repertoireTrie;
+    const chess = new Chess();
     for (let i = 0; i < gameMoves.length; i++) {
-      const san = gameMoves[i];
-      if (node.children[san]) {
-        node = node.children[san];
-      } else {
-        return i;
-      }
+      const result = chess.move(gameMoves[i]);
+      if (!result) return i;
+      if (!repertoirePositions.has(normalizedFen(chess.fen()))) return i;
     }
     return -1;
   }
@@ -692,7 +687,7 @@
       <div style="margin-bottom: 12px;">
         <strong>Load from folder:</strong><br>
         <button id="repcheck-pick-dir">Select PGN Folder</button>
-        <span id="repcheck-folder-info" style="font-size:12px;color:#888;margin-left:6px;">${repertoireTrie ? '(loaded)' : '(no folder selected)'}</span>
+        <span id="repcheck-folder-info" style="font-size:12px;color:#888;margin-left:6px;">${repertoirePositions ? '(loaded)' : '(no folder selected)'}</span>
       </div>
       <hr style="border-color:#444;margin:12px 0;">
       <div>
@@ -702,7 +697,7 @@
         <button id="repcheck-close" class="secondary">Close</button>
       </div>
       <div class="status" id="repcheck-status">
-        ${repertoireTrie ? 'Repertoire loaded' : 'No repertoire loaded'}
+        ${repertoirePositions ? 'Repertoire loaded' : 'No repertoire loaded'}
       </div>
     `;
 
@@ -747,7 +742,7 @@
   // ─── Main Check Logic ───────────────────────────────────────────────
   function runCheck() {
     if (!isReviewPage()) return;
-    if (!repertoireTrie) {
+    if (!repertoirePositions) {
       showBanner('No repertoire loaded \u2014 click \u2699 to set up', 'no-repertoire');
       return;
     }
@@ -812,7 +807,7 @@
 
   function observeMoveListChanges() {
     const observer = new MutationObserver(() => {
-      if (isReviewPage() && repertoireTrie) {
+      if (isReviewPage() && repertoirePositions) {
         clearTimeout(observeMoveListChanges._timer);
         observeMoveListChanges._timer = setTimeout(runCheck, 300);
       }
@@ -835,7 +830,7 @@
     try {
       const cache = await loadRookhubCache();
       if (cache && Array.isArray(cache.pgnTexts) && cache.pgnTexts.length > 0) {
-        repertoireTrie = buildTrieFromPgns(cache.pgnTexts);
+        repertoirePositions = buildPositionSetFromPgns(cache.pgnTexts);
         updateStatusText('RookHub (Cache): ' + cache.pgnTexts.length + ' Eröffnungen');
         cacheLoaded = true;
       }
