@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/chesscom_extension
-// @version      1.4.3
+// @version      1.4.4
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
 // @author       kahalm
@@ -40,6 +40,7 @@
   let dirHandle = null;
   let lastUrl = '';
   let currentDeviationIndex = -1;
+  let lastGameMovesKey = '';
 
   // ─── Lightweight PGN Parser ─────────────────────────────────────────
   // Parses PGN move text into a flat list with variation support.
@@ -794,6 +795,10 @@
       return;
     }
 
+    const key = gameMoves.join('\x00');
+    if (key === lastGameMovesKey) return;
+    lastGameMovesKey = key;
+
     const { deviation: deviationIdx, gaps, inRepertoire } = analyzeGame(gameMoves);
     currentDeviationIndex = deviationIdx;
 
@@ -817,6 +822,7 @@
     const url = location.href;
     if (url === lastUrl) return;
     lastUrl = url;
+    lastGameMovesKey = '';
 
     document.getElementById(BANNER_ID)?.remove();
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
@@ -856,14 +862,13 @@
     const observer = new MutationObserver(() => {
       if (isReviewPage() && repertoirePositions) {
         clearTimeout(observeMoveListChanges._timer);
-        observeMoveListChanges._timer = setTimeout(runCheck, 300);
+        observeMoveListChanges._timer = setTimeout(runCheck, 500);
       }
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
   }
 

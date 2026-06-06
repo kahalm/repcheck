@@ -32,6 +32,7 @@
   let dirHandle = null;
   let lastUrl = '';
   let currentDeviationIndex = -1;
+  let lastGameMovesKey = '';   // Cache: skip analyzeGame wenn Zuege unveraendert
 
   // ─── Lightweight PGN Parser ─────────────────────────────────────────
   // Parses PGN move text into a flat list with variation support.
@@ -818,6 +819,10 @@
       return;
     }
 
+    const key = gameMoves.join('\x00');
+    if (key === lastGameMovesKey) return; // Zuege unveraendert — kein Re-Render noetig
+    lastGameMovesKey = key;
+
     const { deviation: deviationIdx, gaps, inRepertoire } = analyzeGame(gameMoves);
     currentDeviationIndex = deviationIdx;
 
@@ -842,6 +847,7 @@
     if (url === lastUrl) return;
     lastUrl = url;
 
+    lastGameMovesKey = '';
     document.getElementById(BANNER_ID)?.remove();
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
     document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
@@ -880,19 +886,20 @@
     const observer = new MutationObserver(() => {
       if (isReviewPage() && repertoirePositions) {
         clearTimeout(observeMoveListChanges._timer);
-        observeMoveListChanges._timer = setTimeout(runCheck, 300);
+        observeMoveListChanges._timer = setTimeout(runCheck, 500);
       }
     });
 
+    // characterData weglassen: Uhren-Ticks und Text-Updates wuerden sonst
+    // jeden halben Sekunde einen Re-Check ausloesen.
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
   }
 
   async function init() {
-    console.log('[RepertoireChecker] Extension v1.4.3 initializing');
+    console.log('[RepertoireChecker] Extension v1.4.4 initializing');
     injectStyles();
 
     // 1) RookHub-Cache laden, wenn vorhanden — gibt sofortige Verfuegbarkeit, auch

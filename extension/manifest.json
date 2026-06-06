@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chess.com Repertoire Deviation Checker",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com (lokale PGN-Dateien oder RookHub).",
   "homepage_url": "https://github.com/kahalm/chesscom_extension",
   "icons": {
