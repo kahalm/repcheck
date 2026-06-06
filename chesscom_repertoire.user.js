@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/chesscom_extension
-// @version      1.4.2
+// @version      1.4.3
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
 // @author       kahalm
@@ -29,6 +29,7 @@
   const IDB_ROOKHUB_CACHE_KEY = 'cache';
   const DEVIATION_CLASS = 'repcheck-deviation';
   const GAP_CLASS = 'repcheck-gap';
+  const IN_REP_CLASS = 'repcheck-in-rep';
   const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
   // Soft-Limit: ueber dieser Summe (Bytes) zeigt das UI eine Warnung vor dem Laden.
@@ -465,17 +466,18 @@
     }
 
     const gaps = [];
+    const inRepertoire = [];
     let deviation = -1;
     for (let i = 0; i < inRep.length; i++) {
-      if (!inRep[i]) {
-        if (i <= lastIn) {
-          gaps.push(i);
-        } else if (deviation === -1) {
-          deviation = i;
-        }
+      if (inRep[i]) {
+        inRepertoire.push(i);
+      } else if (i <= lastIn) {
+        gaps.push(i);
+      } else if (deviation === -1) {
+        deviation = i;
       }
     }
-    return { deviation, gaps };
+    return { deviation, gaps, inRepertoire };
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────
@@ -493,6 +495,11 @@
         background-color: rgba(255, 210, 50, 0.35) !important;
         border-radius: 3px;
         outline: 2px solid rgba(200, 160, 0, 0.6);
+      }
+      .${IN_REP_CLASS} {
+        background-color: rgba(46, 204, 113, 0.25) !important;
+        border-radius: 3px;
+        outline: 2px solid rgba(39, 174, 96, 0.5);
       }
       #${BANNER_ID} {
         position: relative;
@@ -656,20 +663,25 @@
     banner.className = type;
   }
 
-  function highlightDeviation(index, gaps) {
+  function highlightDeviation(index, gaps, inRepertoire) {
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
     document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
+    document.querySelectorAll(`.${IN_REP_CLASS}`).forEach(el => el.classList.remove(IN_REP_CLASS));
 
     const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
     if (!moveList) return;
     const nodes = moveList.querySelectorAll('.node');
 
+    if (inRepertoire) {
+      for (const ri of inRepertoire) {
+        if (ri < nodes.length) nodes[ri].classList.add(IN_REP_CLASS);
+      }
+    }
     if (gaps) {
       for (const gi of gaps) {
         if (gi < nodes.length) nodes[gi].classList.add(GAP_CLASS);
       }
     }
-
     if (index >= 0 && index < nodes.length) {
       nodes[index].classList.add(DEVIATION_CLASS);
       nodes[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -782,7 +794,7 @@
       return;
     }
 
-    const { deviation: deviationIdx, gaps } = analyzeGame(gameMoves);
+    const { deviation: deviationIdx, gaps, inRepertoire } = analyzeGame(gameMoves);
     currentDeviationIndex = deviationIdx;
 
     if (deviationIdx >= 0) {
@@ -790,13 +802,13 @@
       const color = deviationIdx % 2 === 0 ? 'White' : 'Black';
       const gapInfo = gaps.length > 0 ? ` (${gaps.length} Zugumstellung${gaps.length > 1 ? 'en' : ''})` : '';
       showBanner(`Out of repertoire at move ${moveNum} (${color}: ${gameMoves[deviationIdx]})${gapInfo}`, 'deviation');
-      highlightDeviation(deviationIdx, gaps);
+      highlightDeviation(deviationIdx, gaps, inRepertoire);
     } else if (gaps.length > 0) {
       showBanner(`Im Repertoire \u2713 (${gaps.length} Zugumstellung${gaps.length > 1 ? 'en' : ''})`, 'in-repertoire');
-      highlightDeviation(-1, gaps);
+      highlightDeviation(-1, gaps, inRepertoire);
     } else {
       showBanner('Game fully within repertoire \u2713', 'in-repertoire');
-      highlightDeviation(-1, []);
+      highlightDeviation(-1, [], inRepertoire);
     }
   }
 
@@ -809,6 +821,7 @@
     document.getElementById(BANNER_ID)?.remove();
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
     document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
+    document.querySelectorAll(`.${IN_REP_CLASS}`).forEach(el => el.classList.remove(IN_REP_CLASS));
 
     if (isReviewPage()) {
       waitForMoveList().then(() => runCheck());
