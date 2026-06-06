@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chess.com Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/chesscom_extension
-// @version      1.4.0
+// @version      1.4.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (PGN files or RookHub)
 // @author       kahalm
@@ -451,10 +451,20 @@
     if (!repertoirePositions) return -1;
 
     const chess = new Chess();
+    const inRep = [];
     for (let i = 0; i < gameMoves.length; i++) {
       const result = chess.move(gameMoves[i]);
-      if (!result) return i;
-      if (!repertoirePositions.has(normalizedFen(chess.fen()))) return i;
+      if (!result) { inRep.push(false); break; }
+      inRep.push(repertoirePositions.has(normalizedFen(chess.fen())));
+    }
+
+    let lastIn = -1;
+    for (let i = inRep.length - 1; i >= 0; i--) {
+      if (inRep[i]) { lastIn = i; break; }
+    }
+
+    for (let i = lastIn + 1; i < inRep.length; i++) {
+      if (!inRep[i]) return i;
     }
     return -1;
   }

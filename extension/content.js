@@ -471,11 +471,25 @@
   function findDeviation(gameMoves) {
     if (!repertoirePositions) return -1;
 
+    // Jede Stellung auswerten ob sie im Repertoire ist.
     const chess = new Chess();
+    const inRep = [];
     for (let i = 0; i < gameMoves.length; i++) {
       const result = chess.move(gameMoves[i]);
-      if (!result) return i; // illegaler Zug
-      if (!repertoirePositions.has(normalizedFen(chess.fen()))) return i;
+      if (!result) { inRep.push(false); break; }
+      inRep.push(repertoirePositions.has(normalizedFen(chess.fen())));
+    }
+
+    // Letzten In-Repertoire-Zug finden. Temporaere Ausreisser (Zugumstellungen)
+    // werden ignoriert, wenn die Partie danach wieder ins Repertoire zurueckkehrt.
+    let lastIn = -1;
+    for (let i = inRep.length - 1; i >= 0; i--) {
+      if (inRep[i]) { lastIn = i; break; }
+    }
+
+    // Erste Abweichung nach dem letzten In-Repertoire-Zug.
+    for (let i = lastIn + 1; i < inRep.length; i++) {
+      if (!inRep[i]) return i;
     }
     return -1;
   }
@@ -842,7 +856,7 @@
   }
 
   async function init() {
-    console.log('[RepertoireChecker] Extension v1.4.0 initializing');
+    console.log('[RepertoireChecker] Extension v1.4.1 initializing');
     injectStyles();
 
     // 1) RookHub-Cache laden, wenn vorhanden — gibt sofortige Verfuegbarkeit, auch
