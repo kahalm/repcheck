@@ -20,6 +20,7 @@
   const IDB_ROOKHUB_CONFIG_KEY = 'config';
   const IDB_ROOKHUB_CACHE_KEY = 'cache';
   const DEVIATION_CLASS = 'repcheck-deviation';
+  const GAP_CLASS = 'repcheck-gap';
   const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
   // Soft-Limit: ueber dieser Summe (Bytes) zeigt das UI eine Warnung vor dem Laden.
@@ -468,10 +469,12 @@
     return moves;
   }
 
-  function findDeviation(gameMoves) {
-    if (!repertoirePositions) return -1;
+  function analyzeGame(gameMoves) {
+    // Returns { deviation: int, gaps: int[] }
+    // deviation: Index des ersten dauerhaften Ausreissers (-1 = kein)
+    // gaps: Indizes temporaerer Ausreisser (Zugumstellungen, Partie kehrt spaeter zurueck)
+    if (!repertoirePositions) return { deviation: -1, gaps: [] };
 
-    // Jede Stellung auswerten ob sie im Repertoire ist.
     const chess = new Chess();
     const inRep = [];
     for (let i = 0; i < gameMoves.length; i++) {
@@ -480,18 +483,23 @@
       inRep.push(repertoirePositions.has(normalizedFen(chess.fen())));
     }
 
-    // Letzten In-Repertoire-Zug finden. Temporaere Ausreisser (Zugumstellungen)
-    // werden ignoriert, wenn die Partie danach wieder ins Repertoire zurueckkehrt.
     let lastIn = -1;
     for (let i = inRep.length - 1; i >= 0; i--) {
       if (inRep[i]) { lastIn = i; break; }
     }
 
-    // Erste Abweichung nach dem letzten In-Repertoire-Zug.
-    for (let i = lastIn + 1; i < inRep.length; i++) {
-      if (!inRep[i]) return i;
+    const gaps = [];
+    let deviation = -1;
+    for (let i = 0; i < inRep.length; i++) {
+      if (!inRep[i]) {
+        if (i <= lastIn) {
+          gaps.push(i);
+        } else if (deviation === -1) {
+          deviation = i;
+        }
+      }
     }
-    return -1;
+    return { deviation, gaps };
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────
@@ -504,6 +512,11 @@
         background-color: rgba(255, 120, 50, 0.45) !important;
         border-radius: 3px;
         outline: 2px solid rgba(255, 80, 20, 0.7);
+      }
+      .${GAP_CLASS} {
+        background-color: rgba(255, 210, 50, 0.35) !important;
+        border-radius: 3px;
+        outline: 2px solid rgba(200, 160, 0, 0.6);
       }
       #${BANNER_ID} {
         position: relative;
@@ -667,16 +680,21 @@
     banner.className = type;
   }
 
-  function highlightDeviation(index) {
+  function highlightDeviation(index, gaps) {
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
-
-    if (index < 0) return;
+    document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
 
     const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
     if (!moveList) return;
-
     const nodes = moveList.querySelectorAll('.node');
-    if (index < nodes.length) {
+
+    if (gaps) {
+      for (const gi of gaps) {
+        if (gi < nodes.length) nodes[gi].classList.add(GAP_CLASS);
+      }
+    }
+
+    if (index >= 0 && index < nodes.length) {
       nodes[index].classList.add(DEVIATION_CLASS);
       nodes[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -788,17 +806,21 @@
       return;
     }
 
-    const deviationIdx = findDeviation(gameMoves);
+    const { deviation: deviationIdx, gaps } = analyzeGame(gameMoves);
     currentDeviationIndex = deviationIdx;
 
     if (deviationIdx >= 0) {
       const moveNum = Math.floor(deviationIdx / 2) + 1;
       const color = deviationIdx % 2 === 0 ? 'White' : 'Black';
-      showBanner(`Out of repertoire at move ${moveNum} (${color}: ${gameMoves[deviationIdx]})`, 'deviation');
-      highlightDeviation(deviationIdx);
+      const gapInfo = gaps.length > 0 ? ` (${gaps.length} Zugumstellung${gaps.length > 1 ? 'en' : ''})` : '';
+      showBanner(`Out of repertoire at move ${moveNum} (${color}: ${gameMoves[deviationIdx]})${gapInfo}`, 'deviation');
+      highlightDeviation(deviationIdx, gaps);
+    } else if (gaps.length > 0) {
+      showBanner(`Im Repertoire \u2713 (${gaps.length} Zugumstellung${gaps.length > 1 ? 'en' : ''})`, 'in-repertoire');
+      highlightDeviation(-1, gaps);
     } else {
       showBanner('Game fully within repertoire \u2713', 'in-repertoire');
-      highlightDeviation(-1);
+      highlightDeviation(-1, []);
     }
   }
 
@@ -810,6 +832,7 @@
 
     document.getElementById(BANNER_ID)?.remove();
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
+    document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
 
     if (isReviewPage()) {
       waitForMoveList().then(() => runCheck());
@@ -856,7 +879,7 @@
   }
 
   async function init() {
-    console.log('[RepertoireChecker] Extension v1.4.1 initializing');
+    console.log('[RepertoireChecker] Extension v1.4.2 initializing');
     injectStyles();
 
     // 1) RookHub-Cache laden, wenn vorhanden — gibt sofortige Verfuegbarkeit, auch
