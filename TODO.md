@@ -6,7 +6,7 @@ Was noch manuell erledigt werden muss, bevor die Extension öffentlich veröffen
 
 - [ ] **GitHub Pages aktivieren**
   Repo → Settings → Pages → Source: **Deploy from a branch** → Branch: **master** → Folder: **/docs** → Save.
-  Nach 1–2 Minuten live unter `https://kahalm.github.io/chesscom_extension/`. Diese URL muss in der Chrome-/AMO-Submission als Privacy-Policy-Link angegeben werden (`/privacy.html`).
+  Nach 1–2 Minuten live unter `https://kahalm.github.io/repcheck/`. Diese URL muss in der Chrome-/AMO-Submission als Privacy-Policy-Link angegeben werden (`/privacy.html`).
 
 - [ ] **Erstes Release-Tag setzen** (testet den Workflow)
   ```bash
@@ -48,12 +48,12 @@ Was noch manuell erledigt werden muss, bevor die Extension öffentlich veröffen
   AMO-Devhub → „Submit New Add-on" → ZIP/XPI hochladen → Beschreibung, Screenshots, Kategorien, Sprachen → Submit. Review meist <24h.
   
   Listing-Felder vorbereiten:
-  - **Name**: Chess.com Repertoire Deviation Checker
+  - **Name**: RepCheck — Opening Repertoire Deviation Checker
   - **Summary**: max 250 Zeichen, z.B. „Markiert auf chess.com Analyse-Seiten, ab welchem Zug deine Partie aus dem Eröffnungsrepertoire heraus läuft. Lokal oder mit RookHub-Server."
   - **Description**: längere Variante mit Setup-Anleitung (kopierbar aus README)
-  - **Privacy Policy URL**: `https://kahalm.github.io/chesscom_extension/privacy.html`
-  - **Homepage URL**: `https://github.com/kahalm/chesscom_extension`
-  - **Support URL**: `https://github.com/kahalm/chesscom_extension/issues`
+  - **Privacy Policy URL**: `https://kahalm.github.io/repcheck/privacy.html`
+  - **Homepage URL**: `https://github.com/kahalm/repcheck`
+  - **Support URL**: `https://github.com/kahalm/repcheck/issues`
   - **License**: MIT (gleich auswählen)
 
 ## Mit Chrome-Developer-Account (5 USD einmalig)
@@ -65,7 +65,7 @@ Was noch manuell erledigt werden muss, bevor die Extension öffentlich veröffen
   - ZIP aus dem letzten Release herunterladen (oder lokal mit `cd extension && web-ext build`)
   - „New Item" → ZIP hochladen
   - Beschreibung, Kategorie „Productivity" oder „Fun", Screenshots
-  - Privacy-Policy-URL: `https://kahalm.github.io/chesscom_extension/privacy.html`
+  - Privacy-Policy-URL: `https://kahalm.github.io/repcheck/privacy.html`
   - Permissions begründen: `host_permissions: https://*/*` → „User trägt seine eigene RookHub-Instanz ein, Extension muss dorthin Auth-Requests senden."
   - Submit → Review 1–3 Tage.
 
@@ -76,7 +76,7 @@ Was noch manuell erledigt werden muss, bevor die Extension öffentlich veröffen
 
 - [ ] **Userscript-Distribution** (alternative für User ohne Store-Extension)
   Tampermonkey-User können direkt von GitHub-Raw installieren:
-  `https://raw.githubusercontent.com/kahalm/chesscom_extension/master/chesscom_repertoire.user.js`
+  `https://raw.githubusercontent.com/kahalm/repcheck/master/repcheck.user.js`
   
   Auto-Update läuft bereits über die `@updateURL`/`@downloadURL` im Header.
   Eventuell: in Greasy Fork oder OpenUserJS listen für Discoverability.
@@ -84,7 +84,7 @@ Was noch manuell erledigt werden muss, bevor die Extension öffentlich veröffen
 - [ ] **Echte Icons** (statt der jetzt-rein-geometrischen Turm-Silhouette)
   Wenn jemand mit Grafik-Sense Lust hat: ein 128×128-PNG mit ordentlicher Schach-Turm-Illustration ersetzen. `extension/generate-icons.py` kann auch entfernt werden, wenn die PNGs handgemacht sind.
 
-- [ ] **Code-Sync-Script** zwischen `chesscom_repertoire.user.js` (Userscript) und `extension/content.js` (Extension)
+- [ ] **Code-Sync-Script** zwischen `repcheck.user.js` (Userscript) und `extension/content.js` (Extension)
   Aktuell pflegen wir beide getrennt. Klein und überschaubar, aber bei der nächsten größeren Feature-Änderung leicht zu vergessen. Ein Build-Script, das nur die `rookhub*Fetch*`-Funktionen austauscht, würde Konsistenz garantieren.
 
 - [ ] **i18n** für die Extension-Settings-UI

@@ -1,19 +1,19 @@
-# Chess.com Repertoire Deviation Checker
+# RepCheck — Opening Repertoire Deviation Checker
 
-Markiert auf chess.com Analyse-Seiten, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft. Repertoire kann lokal als `.pgn`-Ordner liegen, gepasted werden — oder live aus einer eigenen [RookHub](https://github.com/kahalm/rookhub)-Instanz gezogen werden.
+Markiert auf chess.com- und lichess.org-Analyse-Seiten, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft. Repertoire kann lokal als `.pgn`-Ordner liegen, gepasted werden — oder live aus einer eigenen [RookHub](https://github.com/kahalm/rookhub)-Instanz gezogen werden.
 
 Zwei Distributions-Pfade:
 
 | Variante | Datei / Verzeichnis | Installation |
 |----------|---------------------|--------------|
-| **Tampermonkey-Userscript** | `chesscom_repertoire.user.js` | Tampermonkey → New Script → Datei einfügen, oder direkt von GitHub-Raw-URL importieren |
+| **Tampermonkey-Userscript** | `repcheck.user.js` | Tampermonkey → New Script → Datei einfügen, oder direkt von GitHub-Raw-URL importieren |
 | **Browser-Extension (MV3)** | `extension/` | Lokal: Chrome `chrome://extensions/` → „Entpackt laden" · Firefox `about:debugging` → „Temporäres Add-on" · Submission: Chrome Web Store / Firefox AMO (siehe unten) |
 
 Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layout (`RepertoireCheckerDB`) — User können wechseln, ohne URL/Token erneut zu hinterlegen.
 
 ## Features
 
-- **Deviation-Erkennung** auf `chess.com/analysis/game/*` und `chess.com/game/review/*`
+- **Deviation-Erkennung** auf `chess.com/analysis/game/*`, `chess.com/game/review/*` sowie `lichess.org/analysis` und `lichess.org/<gameId>[/white|/black]`
 - **Repertoire-Quellen**:
   - Lokaler Ordner (File System Access API in Chrome/Edge, File-Input-Fallback in Firefox)
   - PGN paste
@@ -34,7 +34,7 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 **Chrome / Edge / Brave**:
 1. `chrome://extensions/` aufrufen → „Entwicklermodus" aktivieren
 2. „Entpackte Erweiterung laden" → `extension/`-Ordner wählen
-3. Auf chess.com gehen, im Repertoire-Banner das ⚙-Icon klicken, RookHub-URL + Token eintragen, „Verbinden"
+3. Auf chess.com oder lichess.org gehen, im Repertoire-Banner das ⚙-Icon klicken, RookHub-URL + Token eintragen, „Verbinden"
 
 **Firefox**:
 1. `about:debugging#/runtime/this-firefox` → „Temporäres Add-on laden" → `extension/manifest.json` wählen
@@ -87,8 +87,8 @@ Chrome-Store-Extensions sind in Edge automatisch installierbar. Eigene Edge-Subm
 ## Verzeichnis-Struktur
 
 ```
-chesscom_extension/
-├── chesscom_repertoire.user.js   # Tampermonkey-Userscript (eigenständig)
+repcheck/
+├── repcheck.user.js   # Tampermonkey-Userscript (eigenständig)
 ├── extension/                    # Browser-Extension (MV3)
 │   ├── manifest.json
 │   ├── content.js                # Logik wie Userscript, RookHub-Fetches über Background

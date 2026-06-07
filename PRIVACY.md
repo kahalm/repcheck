@@ -1,4 +1,4 @@
-# Privacy Policy — Chess.com Repertoire Deviation Checker
+# Privacy Policy — RepCheck — Opening Repertoire Deviation Checker
 
 **Stand**: 2026-06-03 · **Version der Erweiterung**: 1.3.0
 
@@ -51,8 +51,8 @@ Der Autor der Erweiterung sieht **nichts**.
 
 ## Open Source
 
-Vollständiger Quellcode: https://github.com/kahalm/chesscom_extension. Jeder kann das Verhalten der Erweiterung im Code nachprüfen.
+Vollständiger Quellcode: https://github.com/kahalm/repcheck. Jeder kann das Verhalten der Erweiterung im Code nachprüfen.
 
 ## Kontakt
 
-GitHub-Issues: https://github.com/kahalm/chesscom_extension/issues
+GitHub-Issues: https://github.com/kahalm/repcheck/issues

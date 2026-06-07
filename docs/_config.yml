@@ -1,7 +1,7 @@
 # Minimale Jekyll-Konfig fuer GitHub Pages (Source: /docs).
 # Theme: das Default `cayman` von GitHub — sauberes Bookmark-faehiges Layout.
-title: Chess.com Repertoire Deviation Checker
+title: RepCheck — Opening Repertoire Deviation Checker
 description: Eröffnungsrepertoire-Abweichungs-Anzeige für chess.com. Open-Source, lokal, ohne Telemetrie.
 theme: jekyll-theme-cayman
 url: https://kahalm.github.io
-baseurl: /chesscom_extension
+baseurl: /repcheck
