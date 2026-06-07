@@ -613,11 +613,13 @@
         border-radius: 2px;
       }
       #${BANNER_ID} {
-        padding: 5px 10px;
-        font-size: 11px;
-        font-weight: 600;
-        text-align: center;
-        border-radius: 5px;
+        width: 36px; height: 36px;
+        padding: 0;
+        border: 1px solid rgba(255,255,255,0.10);
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px;
+        border-radius: 6px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.30);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: rgba(28,28,28,0.92);
@@ -701,26 +703,6 @@
         background: rgba(0,0,0,0.5);
         z-index: 9999;
       }
-      #repcheck-gear {
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 4px;
-        font-size: 16px;
-        margin-left: 8px;
-        vertical-align: middle;
-        background: transparent;
-        border: none;
-        color: #aaa;
-        padding: 0;
-      }
-      #repcheck-gear:hover {
-        background: rgba(255,255,255,0.1);
-        color: #fff;
-      }
       #repcheck-floating-wrap {
         position: fixed;
         bottom: 60px;
@@ -730,16 +712,15 @@
         flex-direction: column;
         gap: 6px;
         align-items: flex-end;
-        max-width: 280px;
       }
-      #${BANNER_ID} { max-width: 100%; }
       #repcheck-floating, #repcheck-chessable {
+        width: 36px; height: 36px;
+        padding: 0;
         cursor: pointer;
         border: 1px solid rgba(255,255,255,0.10);
-        border-radius: 5px;
-        padding: 5px 10px;
-        font-size: 11px;
-        font-weight: 600;
+        border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         box-shadow: 0 2px 6px rgba(0,0,0,0.30);
         color: #d8d8d8;
@@ -772,13 +753,11 @@
       #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable:hover {
         background: rgba(238,238,238,0.98);
       }
-      /* chess.com behaelt die kraeftigen, groesseren Aktion-Buttons (gefiel
-         dem Nutzer in v1.6.0) — Lichess kriegt die dezente Grau-Pille. */
+      /* chess.com: kraeftige Farben (Aktion-Buttons + Status-Indikator),
+         gleiche Quadrat-Groesse wie Lichess. Lichess bleibt rundum dezent. */
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating,
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable {
-        padding: 8px 14px;
-        font-size: 13px;
-        border-radius: 6px;
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable,
+      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID} {
         border: none;
         color: #fff;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
@@ -789,6 +768,16 @@
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable { background: #d04a3e; }
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:hover { background: #e85a4e; }
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:active { background: #b03a2f; }
+      /* Status-Indikator: gleiche Farbcodierung wie die Move-Highlights. */
+      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.deviation {
+        background: #e67e22; color: #fff;
+      }
+      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.in-repertoire {
+        background: #2a8c4a; color: #fff;
+      }
+      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.no-repertoire {
+        background: #555; color: #ddd;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -837,7 +826,7 @@
     const btn = document.createElement('button');
     btn.id = 'repcheck-floating';
     btn.type = 'button';
-    btn.textContent = '♟ Prüfen';
+    btn.textContent = '♟';
     btn.title = 'Aktuelle Partie gegen Repertoire pruefen';
     btn.addEventListener('click', () => {
       lastGameMovesKey = '';
@@ -860,7 +849,7 @@
       btn = document.createElement('button');
       btn.id = 'repcheck-chessable';
       btn.type = 'button';
-      btn.textContent = '🔎 Chessable';
+      btn.textContent = '🔎';
       btn.title = 'FEN vor Abweichung in Chessable suchen';
       btn.addEventListener('click', () => {
         if (!lastDeviationFen) return;
@@ -898,46 +887,29 @@
   }
 
   function showBanner(message, type) {
-    // Banner sitzt seit v1.6.1 im Floating-Wrap rechts unten ueber den Buttons,
-    // nicht mehr im Site-Sidebar. Vorteil: keine SPA-Renderverluste der Sidebar,
-    // konsistente Optik mit den Aktionen, kein Adapter-spezifisches Targeting.
+    // Seit v1.6.4: Banner ist ein Icon-Only-Quadrat (\u2699) im Floating-Wrap;
+    // Statusfarbe codiert deviation/in-rep/no-rep, der Tooltip (title) zeigt
+    // den vollen Text. Klick oeffnet das Settings-Panel.
     const wrap = ensureFloatingWrap();
     if (!wrap) return;
     let banner = document.getElementById(BANNER_ID);
     if (!banner) {
-      banner = document.createElement('div');
+      banner = document.createElement('button');
       banner.id = BANNER_ID;
-
-      const gear = document.createElement('button');
-      gear.id = 'repcheck-gear';
-      gear.textContent = '\u2699';
-      gear.title = 'Repertoire Settings';
-      gear.addEventListener('click', (e) => {
+      banner.type = 'button';
+      banner.textContent = '\u2699';
+      banner.addEventListener('click', (e) => {
         e.stopPropagation();
         togglePanel();
       });
-
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'flex';
-      wrapper.style.alignItems = 'center';
-      wrapper.style.justifyContent = 'center';
-
-      const span = document.createElement('span');
-      span.id = 'repcheck-banner-text';
-
-      wrapper.appendChild(span);
-      wrapper.appendChild(gear);
-      banner.appendChild(wrapper);
     }
     // Banner immer oben im Wrap (vor Chessable-/Pruefen-Button).
     if (banner.parentElement !== wrap || wrap.firstChild !== banner) {
       wrap.insertBefore(banner, wrap.firstChild);
     }
-
     wrap.dataset.theme = detectSiteTheme();
     wrap.dataset.site = detectSiteKey();
-    const textEl = banner.querySelector('#repcheck-banner-text') || banner;
-    textEl.textContent = message;
+    banner.title = message;
     banner.className = type;
   }
 
