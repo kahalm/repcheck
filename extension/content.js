@@ -1,7 +1,7 @@
-// Chess.com Repertoire Deviation Checker — Content script.
+// RepCheck — Opening Repertoire Deviation Checker — Content script.
 //
 // Gleiche Logik wie das Tampermonkey-Userscript im Root des Repos
-// (`chesscom_repertoire.user.js`), aber fuer den Browser-Extension-Kontext
+// (`repcheck.user.js`), aber fuer den Browser-Extension-Kontext
 // angepasst: RookHub-Fetches laufen ueber den Background-Service-Worker
 // (`background.js`), damit CORS unabhaengig von der RookHub-Server-Policy
 // klappt. IndexedDB-Layout (DB `RepertoireCheckerDB`) ist identisch — User
@@ -11,6 +11,14 @@
 (function () {
   'use strict';
 
+  // Seit v1.4.8: Content-Script wird NICHT mehr automatisch geladen. Das
+  // Popup injiziert chess.min.js + content.js erst auf Klick via
+  // chrome.scripting.executeScript. Der Guard hier verhindert doppelte
+  // Initialisierung bei wiederholtem Klick im selben Tab.
+  if (window.__rdc_loaded) {
+    return; // Funktionen liegen schon auf window.__rdc; Popup ruft sie direkt.
+  }
+
   // ─── Constants ───────────────────────────────────────────────────────
   const IDB_NAME = 'RepertoireCheckerDB';
   const IDB_STORE = 'handles';
@@ -19,13 +27,15 @@
   const IDB_ROOKHUB_STORE = 'rookhub';
   const IDB_ROOKHUB_CONFIG_KEY = 'config';
   const IDB_ROOKHUB_CACHE_KEY = 'cache';
+  const IDB_ROOKHUB_POSITIONS_KEY = 'positionSet';
   const DEVIATION_CLASS = 'repcheck-deviation';
   const GAP_CLASS = 'repcheck-gap';
   const IN_REP_CLASS = 'repcheck-in-rep';
   const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
-  // Soft-Limit: ueber dieser Summe (Bytes) zeigt das UI eine Warnung vor dem Laden.
-  const ROOKHUB_SOFT_LIMIT = 5 * 1024 * 1024;
+  // Oeffentliche Default-Instanz fuer Erst-Nutzer (Vorbefuellung im Panel +
+  // Registrierungs-Link).
+  const ROOKHUB_DEFAULT_URL = 'https://rookhub.oberschmid.homes';
 
   // ─── State ───────────────────────────────────────────────────────────
   let repertoirePositions = null; // Set<string> of normalized FENs (transposition-aware)
@@ -33,6 +43,7 @@
   let lastUrl = '';
   let currentDeviationIndex = -1;
   let lastGameMovesKey = '';   // Cache: skip analyzeGame wenn Zuege unveraendert
+  let lastDeviationFen = null; // FEN vor dem Out-of-Rep-Zug fuer Chessable-Suche
 
   // ─── Lightweight PGN Parser ─────────────────────────────────────────
   // Parses PGN move text into a flat list with variation support.
@@ -216,27 +227,43 @@
     return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
   }
 
+  // pgnTexts-Cache (vor 1.6.0): nur noch lesend fuer einmalige Migration zum Position-Set.
   function loadRookhubCache() {
     return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CACHE_KEY);
   }
 
-  function saveRookhubCache(cache) {
-    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CACHE_KEY, cache);
+  function loadPositionSetCache() {
+    return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_POSITIONS_KEY);
+  }
+
+  function savePositionSetCache(data) {
+    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_POSITIONS_KEY, data);
+  }
+
+  // Baut das Positions-Set aus PGN-Texten und persistiert es. Wird NUR auf
+  // explizite Nutzeraktion aufgerufen (Aktualisieren-Button, neuer Ordner,
+  // PGN-Text). Auf Page-Loads lesen wir das fertige Set direkt aus IDB.
+  async function buildAndSavePositionSet(pgnTexts) {
+    const set = buildPositionSetFromPgns(pgnTexts);
+    try {
+      await savePositionSetCache({ fens: Array.from(set), savedAt: Date.now() });
+    } catch (e) {
+      console.warn('[RepertoireChecker] Position-Cache nicht schreibbar:', e);
+    }
+    return set;
   }
 
   // ─── RookHub Fetch ──────────────────────────────────────────────────
-  // Holt zuerst die Repertoire-Liste (?kind=opening), dann die einzelnen
-  // PGN-Texte. Soft-Limit-Pruefung vor dem Pull der PGNs.
-
+  // Server-seitige Partie-Analyse: kein Vorab-Pull des Repertoires noetig.
   // Fetch laeuft ueber den Background-Service-Worker — der hat `host_permissions`
   // und ist nicht an die Page-CORS-Policy gebunden. Das macht die Extension
   // robust gegenueber RookHub-Instanzen, deren CORS-Policy chess.com nicht
   // explizit erlaubt.
-  function rookhubProxy(url, headers, expect) {
+  function rookhubProxy(req) {
     return new Promise((resolve, reject) => {
       try {
         chrome.runtime.sendMessage(
-          { type: 'rookhub-fetch', url, headers, expect },
+          Object.assign({ type: 'rookhub-fetch' }, req),
           (response) => {
             if (chrome.runtime.lastError) {
               reject(new Error(chrome.runtime.lastError.message || 'runtime error'));
@@ -255,60 +282,43 @@
     });
   }
 
-  async function rookhubFetchOpeningList(baseUrl, token) {
-    const url = baseUrl.replace(/\/$/, '') + '/api/extension/repertoires?kind=opening';
-    const resp = await rookhubProxy(url, {
-      'Authorization': 'Bearer ' + token,
-      'Accept': 'application/json',
-    }, 'json');
+  // POST /api/extension/analyze-game. Antwort:
+  // { deviation, gaps, inRepertoire, fenBeforeDeviation, repertoireFileCount, illegalMoveAt }.
+  async function rookhubAnalyzeGame(cfg, moves, options) {
+    if (!cfg || !cfg.url || !cfg.token) throw new Error('RookHub: URL oder Token fehlt.');
+    const url = cfg.url.replace(/\/$/, '') + '/api/extension/analyze-game';
+    const resp = await rookhubProxy({
+      url,
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        moves: moves || [],
+        kind: 'Opening',
+        refresh: !!(options && options.refresh),
+      }),
+      expect: 'json',
+    });
     if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
     if (!resp.ok) throw new Error(resp.error || ('RookHub HTTP ' + resp.status));
-    return resp.body; // Array von { id, name, fileCount, kind, totalSizeBytes }
-  }
-
-  async function rookhubFetchPgn(baseUrl, token, id) {
-    const url = baseUrl.replace(/\/$/, '') + '/api/extension/repertoires/' + id + '/pgn';
-    const resp = await rookhubProxy(url, {
-      'Authorization': 'Bearer ' + token,
-      'Accept': 'text/plain',
-    }, 'text');
-    if (!resp.ok) throw new Error(resp.error || ('RookHub HTTP ' + resp.status + ' fuer Puzzle ' + id));
     return resp.body;
   }
 
-  async function loadRepertoireFromRookHub(cfg, options) {
-    if (!cfg || !cfg.url || !cfg.token) {
-      throw new Error('RookHub: URL oder Token fehlt.');
+  // Seit v1.6.0: RookHub-Modus zieht das Repertoire NICHT mehr vorab. Stattdessen
+  // wird pro Review-Page ein POST /analyze-game gesendet (Game → Annotations). Hier
+  // verifizieren wir nur Auth + zaehlen die Dateien, damit das Panel ein Feedback gibt.
+  async function connectRookHub(cfg, options) {
+    const refresh = !!(options && options.refresh);
+    const result = await rookhubAnalyzeGame(cfg, [], { refresh });
+    const fc = result && typeof result.repertoireFileCount === 'number' ? result.repertoireFileCount : 0;
+    if (fc === 0) {
+      updateStatusText('RookHub: verbunden, aber keine Opening-Repertoires gefunden.');
+    } else {
+      updateStatusText('RookHub: verbunden (' + fc + ' Datei' + (fc === 1 ? '' : 'en') + ').');
     }
-    const list = await rookhubFetchOpeningList(cfg.url, cfg.token);
-    if (!list || list.length === 0) {
-      updateStatusText('Keine Eröffnungs-Repertoires in RookHub gefunden.');
-      return;
-    }
-    const totalBytes = list.reduce((s, r) => s + (r.totalSizeBytes || 0), 0);
-    if (totalBytes > ROOKHUB_SOFT_LIMIT && !(options && options.skipWarning)) {
-      const mb = (totalBytes / 1024 / 1024).toFixed(1);
-      if (!confirm('Es werden ' + list.length + ' Repertoires geladen — zusammen ' + mb + ' MB. Fortfahren?')) {
-        updateStatusText('Laden abgebrochen.');
-        return;
-      }
-    }
-    const pgnTexts = [];
-    for (const repo of list) {
-      try {
-        const txt = await rookhubFetchPgn(cfg.url, cfg.token, repo.id);
-        if (txt) pgnTexts.push(txt);
-      } catch (e) {
-        console.warn('[RepertoireChecker] RookHub PGN-Fetch fehlgeschlagen:', e);
-      }
-    }
-    if (pgnTexts.length === 0) {
-      updateStatusText('RookHub: keine PGNs geladen.');
-      return;
-    }
-    repertoirePositions = buildPositionSetFromPgns(pgnTexts);
-    await saveRookhubCache({ pgnTexts, savedAt: Date.now(), count: pgnTexts.length });
-    updateStatusText('RookHub: ' + pgnTexts.length + ' Eröffnungen geladen');
     runCheck();
   }
 
@@ -325,17 +335,23 @@
   }
 
   function walkMovesForPositions(chess, moves, positions) {
+    // Wir nutzen denselben Chess-Instanz fuer alle Varianten und stellen den
+    // Stand am Ende per undo() wieder her. Ersetzt das alte `new Chess(fen())`
+    // pro Variante (FEN-Serialize+Parse-Roundtrip war der Haupt-CPU-Fresser).
+    let movesMade = 0;
     for (const move of moves) {
       // Varianten zweigen VOR diesem Zug ab
       if (move.variations && move.variations.length > 0) {
         for (const variation of move.variations) {
-          walkMovesForPositions(new Chess(chess.fen()), variation, positions);
+          walkMovesForPositions(chess, variation, positions);
         }
       }
       const result = chess.move(move.san);
       if (!result) break; // illegaler Zug im PGN
+      movesMade++;
       positions.add(normalizedFen(chess.fen()));
     }
+    for (let i = 0; i < movesMade; i++) chess.undo();
   }
 
   function buildPositionSetFromPgns(pgnTexts) {
@@ -395,8 +411,8 @@
       return;
     }
 
-    Promise.all(pgnFiles.map(f => f.text())).then(pgnTexts => {
-      repertoirePositions = buildPositionSetFromPgns(pgnTexts);
+    Promise.all(pgnFiles.map(f => f.text())).then(async pgnTexts => {
+      repertoirePositions = await buildAndSavePositionSet(pgnTexts);
       updateStatusText(`Repertoire loaded: ${pgnTexts.length} file(s)`);
       runCheck();
     });
@@ -425,7 +441,7 @@
     }
 
     if (pgnTexts.length > 0) {
-      repertoirePositions = buildPositionSetFromPgns(pgnTexts);
+      repertoirePositions = await buildAndSavePositionSet(pgnTexts);
       updateStatusText(`Repertoire loaded: ${pgnTexts.length} file(s)`);
       runCheck();
       return true;
@@ -435,37 +451,102 @@
     }
   }
 
-  function loadRepertoireFromText(pgnText) {
+  async function loadRepertoireFromText(pgnText) {
     if (!pgnText.trim()) return;
-    repertoirePositions = buildPositionSetFromPgns([pgnText]);
+    repertoirePositions = await buildAndSavePositionSet([pgnText]);
     updateStatusText('Repertoire loaded from text');
     runCheck();
   }
 
-  // ─── Chess.com Integration ──────────────────────────────────────────
+  // ─── Site Adapter (chess.com + lichess) ─────────────────────────────
+  // Jede Site exportiert dieselbe Schnittstelle: erkennt die Review-Seite,
+  // liefert die Zug-Knoten der Hauptlinie und sagt, wohin das Banner soll.
+  const LICHESS_FIGURINES = {
+    '♔':'K','♕':'Q','♖':'R','♗':'B','♘':'N',
+    '♚':'K','♛':'Q','♜':'R','♝':'B','♞':'N',
+  };
+
+  const ADAPTERS = {
+    chesscom: {
+      test: (host) => host === 'www.chess.com' || host.endsWith('.chess.com') || host === 'chess.com',
+      isReviewPage: () => {
+        const url = location.pathname;
+        return url.includes('/analysis/game/') || url.includes('/game/review/');
+      },
+      getMoveListEl: () => document.querySelector('.move-list, vertical-move-list, wc-move-list'),
+      getMoveNodes: (root) => root.querySelectorAll('.node'),
+      extractSan: (node) => {
+        // node.textContent enthaelt auch Text aus dem inline <style>-Block der
+        // SVG-Figurinen, was sonst in den SAN gemischt wird. SVGs entfernen.
+        const clone = node.cloneNode(true);
+        clone.querySelectorAll('svg, style, script, defs, title').forEach(el => el.remove());
+        const visibleText = clone.textContent.trim();
+        const figurineEl = node.querySelector('[data-figurine]');
+        const figurine = figurineEl ? figurineEl.getAttribute('data-figurine') : '';
+        let san = (figurine + visibleText).trim();
+        san = san.replace(/^\d+\.+\s*/, '').trim();
+        if (['1-0','0-1','1/2-1/2','*'].includes(san)) return '';
+        san = san.replace(/[?!]+$/, '').trim();
+        return san;
+      },
+      findBannerContainer: () =>
+        document.querySelector('.move-list')?.parentElement ||
+        document.querySelector('.analysis-view-movelist')?.parentElement ||
+        document.querySelector('.sidebar-container') ||
+        document.querySelector('.sidebar-tabbed-content') ||
+        document.querySelector('vertical-move-list')?.parentElement,
+    },
+    lichess: {
+      test: (host) => host === 'lichess.org' || host.endsWith('.lichess.org'),
+      isReviewPage: () => {
+        if (location.pathname.startsWith('/analysis')) return true;
+        if (/^\/[A-Za-z0-9]{8,12}(\/(white|black))?\/?$/.test(location.pathname)) return true;
+        return !!document.querySelector('.tview2, .analyse__moves');
+      },
+      getMoveListEl: () => document.querySelector('.tview2'),
+      getMoveNodes: (root) => root.querySelectorAll(':scope > move'),
+      extractSan: (node) => {
+        // Lichess kann Figurinen-Notation (Unicode-Symbole statt KQRBN) anzeigen.
+        // Mapping zurueck auf SAN-Buchstaben, sonst kann chess.js den Zug nicht
+        // parsen. Eval/Glyphen/Kommentare gehoeren nicht in den SAN.
+        const clone = node.cloneNode(true);
+        clone.querySelectorAll('eval, glyph, comment, interrupt, lines, line').forEach(el => el.remove());
+        const raw = clone.textContent.trim();
+        let san = '';
+        for (const ch of raw) san += LICHESS_FIGURINES[ch] || ch;
+        san = san.replace(/^\d+\.+\s*/, '').trim();
+        if (['1-0','0-1','1/2-1/2','*'].includes(san)) return '';
+        san = san.replace(/[?!]+$/, '').trim();
+        return san;
+      },
+      findBannerContainer: () =>
+        document.querySelector('.analyse__moves') ||
+        document.querySelector('.tview2')?.parentElement ||
+        document.querySelector('.analyse__tools'),
+    },
+  };
+
+  function getAdapter() {
+    const host = location.hostname;
+    for (const key of Object.keys(ADAPTERS)) {
+      if (ADAPTERS[key].test(host)) return ADAPTERS[key];
+    }
+    return null;
+  }
+
   function isReviewPage() {
-    const url = location.pathname;
-    return url.includes('/analysis/game/') || url.includes('/game/review/');
+    const a = getAdapter();
+    return a ? a.isReviewPage() : false;
   }
 
   function getGameMoves() {
+    const a = getAdapter();
+    if (!a) return [];
+    const root = a.getMoveListEl();
+    if (!root) return [];
     const moves = [];
-    const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
-    if (!moveList) return moves;
-
-    const nodes = moveList.querySelectorAll('.node');
-    for (const node of nodes) {
-      const figurineEl = node.querySelector('[data-figurine]');
-      let san;
-      if (figurineEl) {
-        san = figurineEl.getAttribute('data-figurine') + node.textContent.trim();
-      } else {
-        san = node.textContent.trim();
-      }
-
-      san = san.replace(/^\d+\.+\s*/, '').trim();
-      if (['1-0', '0-1', '1/2-1/2', '*'].includes(san)) continue;
-      san = san.replace(/[?!]+$/, '').trim();
+    for (const node of a.getMoveNodes(root)) {
+      const san = a.extractSan(node);
       if (san) moves.push(san);
     }
     return moves;
@@ -503,6 +584,24 @@
       }
     }
     return { deviation, gaps, inRepertoire };
+  }
+
+  // FEN nach den ersten `idx` Zuegen (also VOR Anwendung von gameMoves[idx]).
+  // Wird fuer die Chessable-Suche genutzt: zeigt die Position, aus der heraus
+  // der erste Out-of-Rep-Zug gespielt wurde.
+  function fenBeforeMove(gameMoves, idx) {
+    const chess = new Chess();
+    for (let i = 0; i < idx && i < gameMoves.length; i++) {
+      if (!chess.move(gameMoves[i])) break;
+    }
+    return chess.fen();
+  }
+
+  function chessableSearchUrl(fen) {
+    // Globale Chessable-FEN-Suche: "/" wird zu "U", " " zu "%20" (chessable-
+    // spezifische Kodierung, KEIN encodeURIComponent).
+    const encoded = fen.replace(/\//g, 'U').replace(/ /g, '%20');
+    return 'https://www.chessable.com/courses/fen/' + encoded + '/';
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────
@@ -635,8 +734,109 @@
         background: rgba(255,255,255,0.1);
         color: #fff;
       }
+      #repcheck-floating-wrap {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9998;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+      #repcheck-floating, #repcheck-chessable {
+        cursor: pointer;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        color: #fff;
+      }
+      #repcheck-floating { background: #2a8c4a; }
+      #repcheck-floating:hover { background: #36a85a; }
+      #repcheck-floating:active { background: #1f7a3d; }
+      #repcheck-chessable { background: #d04a3e; }
+      #repcheck-chessable:hover { background: #e85a4e; }
+      #repcheck-chessable:active { background: #b03a2f; }
     `;
     document.head.appendChild(style);
+  }
+
+  function ensureFloatingWrap() {
+    if (!document.body) return null;
+    let wrap = document.getElementById('repcheck-floating-wrap');
+    if (!wrap) {
+      injectStyles();
+      wrap = document.createElement('div');
+      wrap.id = 'repcheck-floating-wrap';
+      document.body.appendChild(wrap);
+    }
+    return wrap;
+  }
+
+  function injectFloatingButton() {
+    const wrap = ensureFloatingWrap();
+    if (!wrap) return;
+    if (document.getElementById('repcheck-floating')) return;
+    const btn = document.createElement('button');
+    btn.id = 'repcheck-floating';
+    btn.type = 'button';
+    btn.textContent = '♟ Prüfen';
+    btn.title = 'Aktuelle Partie gegen Repertoire pruefen';
+    btn.addEventListener('click', () => {
+      lastGameMovesKey = '';
+      rdcRunCheck();
+    });
+    wrap.appendChild(btn);
+  }
+
+  // Chessable-Button: nur sichtbar wenn eine Abweichung erkannt wurde.
+  // Klick oeffnet Chessable mit der FEN VOR dem Out-of-Rep-Zug.
+  function syncChessableButton() {
+    const wrap = document.getElementById('repcheck-floating-wrap');
+    let btn = document.getElementById('repcheck-chessable');
+    if (!lastDeviationFen) {
+      btn?.remove();
+      return;
+    }
+    if (!wrap) return; // ohne Container nichts zu tun (kein Review-Modus)
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'repcheck-chessable';
+      btn.type = 'button';
+      btn.textContent = '🔎 Chessable';
+      btn.title = 'FEN vor Abweichung in Chessable suchen';
+      btn.addEventListener('click', () => {
+        if (!lastDeviationFen) return;
+        window.open(chessableSearchUrl(lastDeviationFen), '_blank', 'noopener,noreferrer');
+      });
+      // Oben (vor dem Pruefen-Button) einfuegen.
+      wrap.insertBefore(btn, wrap.firstChild);
+    }
+  }
+
+  function removeFloatingControls() {
+    document.getElementById('repcheck-floating-wrap')?.remove();
+  }
+
+  function refreshFloatingButton() {
+    // Bei echter Navigation den Deviation-Cache zuruecksetzen, damit der
+    // Chessable-Button nicht mit einem stale-FEN aus einem anderen Spiel
+    // verlinkt.
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      lastDeviationFen = null;
+      lastGameMovesKey = '';
+    }
+    if (isReviewPage()) {
+      injectFloatingButton();
+      syncChessableButton();
+    } else {
+      removeFloatingControls();
+    }
   }
 
   function updateStatusText(text) {
@@ -647,12 +847,8 @@
   function showBanner(message, type) {
     let banner = document.getElementById(BANNER_ID);
     if (!banner) {
-      const moveListContainer =
-        document.querySelector('.move-list')?.parentElement ||
-        document.querySelector('.analysis-view-movelist')?.parentElement ||
-        document.querySelector('.sidebar-container') ||
-        document.querySelector('.sidebar-tabbed-content') ||
-        document.querySelector('vertical-move-list')?.parentElement;
+      const a = getAdapter();
+      const moveListContainer = a ? a.findBannerContainer() : null;
 
       if (!moveListContainer) return;
 
@@ -693,9 +889,11 @@
     document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
     document.querySelectorAll(`.${IN_REP_CLASS}`).forEach(el => el.classList.remove(IN_REP_CLASS));
 
-    const moveList = document.querySelector('.move-list, vertical-move-list, wc-move-list');
+    const a = getAdapter();
+    if (!a) return;
+    const moveList = a.getMoveListEl();
     if (!moveList) return;
-    const nodes = moveList.querySelectorAll('.node');
+    const nodes = a.getMoveNodes(moveList);
 
     if (inRepertoire) {
       for (const ri of inRepertoire) {
@@ -730,12 +928,17 @@
     panel.id = PANEL_ID;
 
     // RookHub-Config zum Vorbefuellen der Felder laden (async, dann DOM updaten).
+    // Wenn noch keine Config vorhanden, mit der oeffentlichen Default-Instanz
+    // vorbelegen, damit Neu-User nicht erst eine URL suchen muessen.
     loadRookhubConfig().then(cfg => {
       const urlInput = document.getElementById('repcheck-rookhub-url');
       const tokenInput = document.getElementById('repcheck-rookhub-token');
-      if (cfg && urlInput) urlInput.value = cfg.url || '';
+      if (urlInput) urlInput.value = (cfg && cfg.url) || ROOKHUB_DEFAULT_URL;
       if (cfg && tokenInput) tokenInput.value = cfg.token || '';
-    }).catch(() => {});
+    }).catch(() => {
+      const urlInput = document.getElementById('repcheck-rookhub-url');
+      if (urlInput && !urlInput.value) urlInput.value = ROOKHUB_DEFAULT_URL;
+    });
 
     panel.innerHTML = `
       <h3>Repertoire Settings</h3>
@@ -747,7 +950,9 @@
           <button id="repcheck-rookhub-connect">Verbinden</button>
           <button id="repcheck-rookhub-refresh" class="secondary">Aktualisieren</button>
         </div>
-        <span style="font-size:11px;color:#888;">Token im RookHub-Profil → „Extension-Tokens".</span>
+        <span style="font-size:11px;color:#888;">
+          Noch kein Konto? <a href="${ROOKHUB_DEFAULT_URL}/register" target="_blank" rel="noopener" style="color:#4a9eff;">Auf ${ROOKHUB_DEFAULT_URL.replace(/^https?:\/\//,'')} registrieren</a> · Token dann unter Profil → „Extension-Tokens" erstellen.
+        </span>
       </div>
       <hr style="border-color:#444;margin:12px 0;">
       <div style="margin-bottom: 12px;">
@@ -786,8 +991,8 @@
       if (!url || !token) { updateStatusText('RookHub: URL und Token erforderlich.'); return; }
       try {
         await saveRookhubConfig({ url, token });
-        updateStatusText('RookHub: lade…');
-        await loadRepertoireFromRookHub({ url, token });
+        updateStatusText('RookHub: verbinde…');
+        await connectRookHub({ url, token });
       } catch (e) {
         updateStatusText('RookHub: ' + e.message);
       }
@@ -798,7 +1003,8 @@
       if (!cfg) { updateStatusText('RookHub: noch nicht konfiguriert.'); return; }
       try {
         updateStatusText('RookHub: aktualisiere…');
-        await loadRepertoireFromRookHub(cfg);
+        await connectRookHub(cfg, { refresh: true });
+        lastGameMovesKey = '';
       } catch (e) {
         updateStatusText('RookHub: ' + e.message);
       }
@@ -806,25 +1012,16 @@
   }
 
   // ─── Main Check Logic ───────────────────────────────────────────────
-  function runCheck() {
-    if (!isReviewPage()) return;
-    if (!repertoirePositions) {
-      showBanner('No repertoire loaded \u2014 click \u2699 to set up', 'no-repertoire');
-      return;
-    }
-
-    const gameMoves = getGameMoves();
-    if (gameMoves.length === 0) {
-      showBanner('No moves found', 'no-repertoire');
-      return;
-    }
-
-    const key = gameMoves.join('\x00');
-    if (key === lastGameMovesKey) return; // Zuege unveraendert — kein Re-Render noetig
-    lastGameMovesKey = key;
-
-    const { deviation: deviationIdx, gaps, inRepertoire } = analyzeGame(gameMoves);
+  // Source-Priority: RookHub-Config vorhanden \u2192 Server-seitige Analyse (POST analyze-game).
+  // Sonst lokales Position-Set (Folder/PGN-Paste). Bei RookHub-Fehler fallback aufs
+  // lokale Set, falls vorhanden (Offline-Modus).
+  function renderAnalysis(gameMoves, analysis) {
+    const deviationIdx = analysis.deviation;
+    const gaps = analysis.gaps || [];
+    const inRepertoire = analysis.inRepertoire || [];
     currentDeviationIndex = deviationIdx;
+    lastDeviationFen = analysis.fenBeforeDeviation
+      || (deviationIdx >= 0 ? fenBeforeMove(gameMoves, deviationIdx) : null);
 
     if (deviationIdx >= 0) {
       const moveNum = Math.floor(deviationIdx / 2) + 1;
@@ -839,121 +1036,119 @@
       showBanner('Game fully within repertoire \u2713', 'in-repertoire');
       highlightDeviation(-1, [], inRepertoire);
     }
+    syncChessableButton();
   }
 
-  // ─── SPA Navigation & Initialization ────────────────────────────────
-  function onPageChange() {
-    const url = location.href;
-    if (url === lastUrl) return;
-    lastUrl = url;
-
-    lastGameMovesKey = '';
-    document.getElementById(BANNER_ID)?.remove();
-    document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
-    document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
-    document.querySelectorAll(`.${IN_REP_CLASS}`).forEach(el => el.classList.remove(IN_REP_CLASS));
-
-    if (isReviewPage()) {
-      waitForMoveList().then(() => runCheck());
+  async function runCheck() {
+    if (!isReviewPage()) return;
+    const gameMoves = getGameMoves();
+    if (gameMoves.length === 0) {
+      showBanner('No moves found', 'no-repertoire');
+      return;
     }
+    const key = gameMoves.join('\x00');
+    if (key === lastGameMovesKey) return;
+    lastGameMovesKey = key;
+
+    const cfg = await loadRookhubConfig().catch(() => null);
+    if (cfg && cfg.url && cfg.token) {
+      try {
+        const analysis = await rookhubAnalyzeGame(cfg, gameMoves);
+        renderAnalysis(gameMoves, analysis);
+        return;
+      } catch (e) {
+        console.warn('[RepertoireChecker] RookHub analyze failed:', e);
+        if (!repertoirePositions) {
+          showBanner('RookHub: ' + e.message, 'no-repertoire');
+          return;
+        }
+        // Fallback aufs lokale Set (Offline / Cache aus frueherer Session).
+      }
+    }
+
+    if (!repertoirePositions) {
+      showBanner('No repertoire loaded \u2014 click \u2699 to set up', 'no-repertoire');
+      return;
+    }
+    renderAnalysis(gameMoves, analyzeGame(gameMoves));
   }
 
-  function waitForMoveList(timeout = 10000) {
-    return new Promise((resolve) => {
-      const selector = '.move-list .node, vertical-move-list .node, wc-move-list .node';
-      if (document.querySelector(selector)) {
-        resolve();
+  // ─── Lazy bootstrap (nur bei Klick, nicht beim Page-Load) ───────────
+  // Stellt sicher, dass repertoirePositions geladen ist. Bei kaltem Tab
+  // liest das Set einmalig aus IndexedDB. Migration vom alten pgnTexts-
+  // Cache findet hier auch statt, falls noetig.
+  async function ensurePositionSet() {
+    if (repertoirePositions) return true;
+    try {
+      const cached = await loadPositionSetCache();
+      if (cached && Array.isArray(cached.fens) && cached.fens.length > 0) {
+        repertoirePositions = new Set(cached.fens);
+        return true;
+      }
+    } catch (e) {
+      console.log('[RepertoireChecker] Position-Cache nicht lesbar:', e);
+    }
+    // Migration: aus altem pgnTexts-Cache neu bauen, falls vorhanden.
+    try {
+      const rh = await loadRookhubCache();
+      if (rh && Array.isArray(rh.pgnTexts) && rh.pgnTexts.length > 0) {
+        repertoirePositions = await buildAndSavePositionSet(rh.pgnTexts);
+        return true;
+      }
+    } catch (e) {
+      console.log('[RepertoireChecker] RookHub-PGN-Cache nicht lesbar:', e);
+    }
+    return false;
+  }
+
+  // Wird vom Popup via chrome.scripting.executeScript aufgerufen.
+  // Laedt (falls noetig) das Position-Set und fuehrt einen Check aus.
+  async function rdcRunCheck() {
+    injectStyles();
+    await ensurePositionSet();
+    // Re-load dirHandle on demand (falls Nutzer per Folder konfiguriert ist).
+    if (!repertoirePositions && !dirHandle) {
+      try { dirHandle = await loadHandle(); } catch (e) {}
+      if (dirHandle) {
+        await loadRepertoireFromDir();
+      }
+    }
+    lastGameMovesKey = ''; // immer frisch pruefen
+    runCheck();
+  }
+
+  // Wird vom Popup aufgerufen, um das Settings-Panel zu oeffnen.
+  function rdcOpenSettings() {
+    injectStyles();
+    if (!document.getElementById(PANEL_ID)) togglePanel();
+  }
+
+  window.__rdc_loaded = {
+    runCheck: rdcRunCheck,
+    openSettings: rdcOpenSettings,
+    refreshButton: refreshFloatingButton,
+    version: '1.5.1',
+  };
+
+  // ─── Lightweight SPA-Navigation Watch ───────────────────────────────
+  // Beobachtet NUR den <title>-Knoten und popstate-Events. Kein subtree-
+  // Observer auf document.body, also praktisch kostenlos im Idle.
+  // Bei jeder Navigation: pruefen, ob Review-Seite, und Button ein/ausblenden.
+  function watchNavigation() {
+    const observe = () => {
+      const titleEl = document.querySelector('title');
+      if (!titleEl) {
+        setTimeout(observe, 250);
         return;
       }
-
-      const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-          observer.disconnect();
-          resolve();
-        }
-      });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      setTimeout(() => {
-        observer.disconnect();
-        resolve();
-      }, timeout);
-    });
+      new MutationObserver(refreshFloatingButton).observe(titleEl, { childList: true });
+    };
+    observe();
+    window.addEventListener('popstate', refreshFloatingButton);
   }
 
-  function observeMoveListChanges() {
-    const observer = new MutationObserver(() => {
-      if (isReviewPage() && repertoirePositions) {
-        clearTimeout(observeMoveListChanges._timer);
-        observeMoveListChanges._timer = setTimeout(runCheck, 500);
-      }
-    });
+  watchNavigation();
+  refreshFloatingButton();
 
-    // characterData weglassen: Uhren-Ticks und Text-Updates wuerden sonst
-    // jeden halben Sekunde einen Re-Check ausloesen.
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-  }
-
-  async function init() {
-    console.log('[RepertoireChecker] Extension v1.4.4 initializing');
-    injectStyles();
-
-    // 1) RookHub-Cache laden, wenn vorhanden — gibt sofortige Verfuegbarkeit, auch
-    //    wenn die API offline ist. Server-Refresh laeuft anschliessend im Hintergrund.
-    let cacheLoaded = false;
-    try {
-      const cache = await loadRookhubCache();
-      if (cache && Array.isArray(cache.pgnTexts) && cache.pgnTexts.length > 0) {
-        repertoirePositions = buildPositionSetFromPgns(cache.pgnTexts);
-        updateStatusText('RookHub (Cache): ' + cache.pgnTexts.length + ' Eröffnungen');
-        cacheLoaded = true;
-      }
-    } catch (e) {
-      console.log('[RepertoireChecker] RookHub-Cache nicht lesbar:', e);
-    }
-
-    // 2) RookHub-Refresh im Hintergrund, wenn konfiguriert. Fehler nur loggen.
-    try {
-      const cfg = await loadRookhubConfig();
-      if (cfg && cfg.url && cfg.token) {
-        loadRepertoireFromRookHub(cfg, { skipWarning: true }).catch(e => {
-          console.warn('[RepertoireChecker] RookHub Hintergrund-Refresh:', e.message);
-        });
-      }
-    } catch (e) {
-      console.log('[RepertoireChecker] RookHub-Config nicht lesbar:', e);
-    }
-
-    // 3) Fallback: lokaler Folder-Handle, wenn (noch) kein Trie vorhanden.
-    if (!cacheLoaded) {
-      try {
-        dirHandle = await loadHandle();
-        if (dirHandle) {
-          await loadRepertoireFromDir();
-        }
-      } catch (e) {
-        console.log('[RepertoireChecker] No saved directory handle:', e);
-      }
-    }
-
-    const navObserver = new MutationObserver(() => onPageChange());
-    navObserver.observe(document.body, { childList: true, subtree: true });
-
-    window.addEventListener('popstate', () => setTimeout(onPageChange, 100));
-
-    observeMoveListChanges();
-
-    onPageChange();
-    console.log('[RepertoireChecker] Ready');
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  console.log('[RepertoireChecker] Extension v1.5.1 loaded');
 })();

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Chess.com Repertoire Deviation Checker",
-  "version": "1.4.4",
-  "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com (lokale PGN-Dateien oder RookHub).",
-  "homepage_url": "https://github.com/kahalm/chesscom_extension",
+  "name": "RepCheck — Opening Repertoire Deviation Checker",
+  "version": "1.6.0",
+  "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com und lichess.org (lokale PGN-Dateien oder RookHub).",
+  "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -11,7 +11,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.chess.com/*"],
+      "matches": ["https://www.chess.com/*", "https://lichess.org/*"],
       "js": ["chess.min.js", "content.js"],
       "run_at": "document_idle"
     }
@@ -20,6 +20,7 @@
     "service_worker": "background.js",
     "scripts": ["background.js"]
   },
+  "permissions": ["scripting", "activeTab"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -27,7 +28,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "Repertoire Deviation Checker"
+    "default_title": "RepCheck"
   },
   "host_permissions": [
     "https://*/*",

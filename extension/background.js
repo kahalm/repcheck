@@ -8,7 +8,7 @@
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== 'rookhub-fetch') return false;
 
-  const { url, headers, expect } = msg;
+  const { url, headers, expect, method, body } = msg;
   if (typeof url !== 'string' || !url) {
     sendResponse({ ok: false, error: 'invalid url' });
     return false;
@@ -21,18 +21,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 
-  fetch(url, { method: 'GET', headers: headers || {}, credentials: 'omit' })
+  const init = {
+    method: typeof method === 'string' && method ? method : 'GET',
+    headers: headers || {},
+    credentials: 'omit',
+  };
+  if (body != null && init.method !== 'GET' && init.method !== 'HEAD') {
+    init.body = body;
+  }
+
+  fetch(url, init)
     .then(async (resp) => {
       const text = await resp.text();
-      let body = text;
+      let parsed = text;
       if (expect === 'json') {
-        try { body = JSON.parse(text); }
+        try { parsed = text.length > 0 ? JSON.parse(text) : null; }
         catch (e) {
           sendResponse({ ok: false, status: resp.status, error: 'invalid json' });
           return;
         }
       }
-      sendResponse({ ok: resp.ok, status: resp.status, body });
+      sendResponse({ ok: resp.ok, status: resp.status, body: parsed });
     })
     .catch((err) => {
       sendResponse({ ok: false, error: String(err && err.message || err) });
