@@ -20,6 +20,14 @@ function readRookhubStore() {
   return new Promise((resolve) => {
     const req = indexedDB.open('RepertoireCheckerDB', 2);
     req.onerror = () => resolve({ config: null, cache: null });
+    // Muss dem Schema in content.js openIDB() entsprechen — sonst legt das Popup
+    // die DB ohne den rookhub-Store an und content.js bekommt keinen Upgrade-
+    // Trigger mehr, weil die Version schon stimmt.
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+      if (!db.objectStoreNames.contains('rookhub')) db.createObjectStore('rookhub');
+    };
     req.onsuccess = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('rookhub')) {
