@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Checker",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com und lichess.org (lokale PGN-Dateien oder RookHub).",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
@@ -37,7 +37,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "chesscom-repertoire-checker@kahalm.github.io",
-      "strict_min_version": "109.0",
+      "strict_min_version": "142.0",
       "data_collection_permissions": {
         "required": ["none"]
       }

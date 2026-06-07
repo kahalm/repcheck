@@ -2,28 +2,42 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Repertoire Deviation Checker</title>
+<title>RepCheck — Opening Repertoire Deviation Checker</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; margin: 12px; min-width: 280px; color: #222; }
   h1 { font-size: 14px; margin: 0 0 8px 0; }
-  .status { padding: 8px; border-radius: 4px; background: #f0f0f0; margin-bottom: 8px; }
+  .status { padding: 8px; border-radius: 4px; background: #f0f0f0; margin-bottom: 10px; }
   .status.loaded { background: #e8f5e9; color: #1b5e20; }
   .status.empty { background: #fff3e0; color: #e65100; }
+  .status.error { background: #ffebee; color: #b71c1c; }
+  .repertoires { margin: -4px 0 10px 0; padding: 6px 10px; border-radius: 4px; background: #f7f9fc; border: 1px solid #e3e8ef; max-height: 180px; overflow-y: auto; }
+  .repertoires ul { list-style: none; margin: 0; padding: 0; }
+  .repertoires li { padding: 3px 0; font-size: 12px; color: #2c3e50; display: flex; justify-content: space-between; gap: 8px; }
+  .repertoires li .count { color: #7a8a9a; font-size: 11px; }
+  .repertoires .heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #7a8a9a; margin-bottom: 4px; }
   .hint { color: #666; font-size: 11px; margin-top: 8px; }
   a { color: #1976d2; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  button { font-size: 12px; padding: 4px 10px; cursor: pointer; }
+  .row { display: flex; gap: 6px; margin-bottom: 6px; }
+  button { font-size: 13px; padding: 6px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff; }
+  button.primary { background: #2a8c4a; color: #fff; border-color: #2a8c4a; font-weight: 500; flex: 1; }
+  button.primary:hover { background: #36a85a; }
+  button.secondary { flex: 1; }
 </style>
 </head>
 <body>
-<h1>♟ Repertoire Deviation Checker</h1>
+<h1>♟ RepCheck</h1>
 <div id="status" class="status">Lade Status…</div>
-<div class="hint">
-  Einstellungen + RookHub-Token: in der chess.com-Analyse auf das <strong>⚙</strong>-Icon im Repertoire-Banner.
+<div id="repertoires" class="repertoires" style="display:none;"></div>
+<div class="row">
+  <button id="run-check" class="primary">Prüfen</button>
+  <button id="open-settings" class="secondary">Einstellungen</button>
 </div>
+<div class="hint" id="error-hint" style="display:none;color:#b71c1c;"></div>
 <div class="hint">
-  <a href="https://github.com/kahalm/chesscom_extension" target="_blank" rel="noopener">GitHub</a>
-  · <button id="open-chesscom">chess.com öffnen</button>
+  <a href="https://github.com/kahalm/repcheck" target="_blank" rel="noopener">GitHub</a>
+  · <button id="open-chesscom" style="padding:2px 6px;font-size:11px;">chess.com</button>
+  · <button id="open-lichess" style="padding:2px 6px;font-size:11px;">lichess.org</button>
 </div>
 <script src="popup.js"></script>
 </body>
