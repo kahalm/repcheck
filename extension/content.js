@@ -489,12 +489,6 @@
         san = san.replace(/[?!]+$/, '').trim();
         return san;
       },
-      findBannerContainer: () =>
-        document.querySelector('.move-list')?.parentElement ||
-        document.querySelector('.analysis-view-movelist')?.parentElement ||
-        document.querySelector('.sidebar-container') ||
-        document.querySelector('.sidebar-tabbed-content') ||
-        document.querySelector('vertical-move-list')?.parentElement,
     },
     lichess: {
       test: (host) => host === 'lichess.org' || host.endsWith('.lichess.org'),
@@ -519,10 +513,6 @@
         san = san.replace(/[?!]+$/, '').trim();
         return san;
       },
-      findBannerContainer: () =>
-        document.querySelector('.analyse__moves') ||
-        document.querySelector('.tview2')?.parentElement ||
-        document.querySelector('.analyse__tools'),
     },
   };
 
@@ -626,27 +616,30 @@
         outline: 2px solid rgba(39, 174, 96, 0.5);
       }
       #${BANNER_ID} {
-        position: relative;
-        z-index: 100;
-        padding: 8px 12px;
-        font-size: 13px;
+        padding: 7px 12px;
+        font-size: 12px;
         font-weight: 600;
         text-align: center;
-        border-radius: 4px;
-        margin: 6px 8px;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #2c2c2c;
+        color: #e0e0e0;
+        border: 1px solid rgba(255,255,255,0.08);
       }
       #${BANNER_ID}.deviation {
-        background: linear-gradient(135deg, #ff6b35, #e04800);
+        background: #b34a2a;
         color: #fff;
+        border-color: rgba(255,255,255,0.12);
       }
       #${BANNER_ID}.in-repertoire {
-        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        background: #2e7d4f;
         color: #fff;
+        border-color: rgba(255,255,255,0.12);
       }
       #${BANNER_ID}.no-repertoire {
-        background: #3a3a3a;
-        color: #aaa;
+        background: #2c2c2c;
+        color: #b8b6b1;
       }
       #${PANEL_ID} {
         position: fixed;
@@ -736,31 +729,33 @@
       }
       #repcheck-floating-wrap {
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        bottom: 60px;
+        right: 16px;
         z-index: 9998;
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        align-items: stretch;
+        gap: 6px;
+        align-items: flex-end;
+        max-width: 280px;
       }
+      #${BANNER_ID} { max-width: 100%; }
       #repcheck-floating, #repcheck-chessable {
         cursor: pointer;
-        border: none;
+        border: 1px solid rgba(255,255,255,0.12);
         border-radius: 6px;
-        padding: 8px 14px;
-        font-size: 13px;
+        padding: 7px 12px;
+        font-size: 12px;
         font-weight: 600;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
         color: #fff;
       }
-      #repcheck-floating { background: #2a8c4a; }
-      #repcheck-floating:hover { background: #36a85a; }
-      #repcheck-floating:active { background: #1f7a3d; }
-      #repcheck-chessable { background: #d04a3e; }
-      #repcheck-chessable:hover { background: #e85a4e; }
-      #repcheck-chessable:active { background: #b03a2f; }
+      #repcheck-floating { background: #2e7d4f; }
+      #repcheck-floating:hover { background: #379660; }
+      #repcheck-floating:active { background: #246340; }
+      #repcheck-chessable { background: #b34a2a; }
+      #repcheck-chessable:hover { background: #c75834; }
+      #repcheck-chessable:active { background: #903a20; }
     `;
     document.head.appendChild(style);
   }
@@ -845,13 +840,13 @@
   }
 
   function showBanner(message, type) {
+    // Banner sitzt seit v1.6.1 im Floating-Wrap rechts unten ueber den Buttons,
+    // nicht mehr im Site-Sidebar. Vorteil: keine SPA-Renderverluste der Sidebar,
+    // konsistente Optik mit den Aktionen, kein Adapter-spezifisches Targeting.
+    const wrap = ensureFloatingWrap();
+    if (!wrap) return;
     let banner = document.getElementById(BANNER_ID);
     if (!banner) {
-      const a = getAdapter();
-      const moveListContainer = a ? a.findBannerContainer() : null;
-
-      if (!moveListContainer) return;
-
       banner = document.createElement('div');
       banner.id = BANNER_ID;
 
@@ -875,8 +870,10 @@
       wrapper.appendChild(span);
       wrapper.appendChild(gear);
       banner.appendChild(wrapper);
-
-      moveListContainer.insertBefore(banner, moveListContainer.firstChild);
+    }
+    // Banner immer oben im Wrap (vor Chessable-/Pruefen-Button).
+    if (banner.parentElement !== wrap || wrap.firstChild !== banner) {
+      wrap.insertBefore(banner, wrap.firstChild);
     }
 
     const textEl = banner.querySelector('#repcheck-banner-text') || banner;
