@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.6.2
+// @version      1.6.3
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub)
 // @author       kahalm
@@ -744,6 +744,23 @@
       #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable:hover {
         background: rgba(238,238,238,0.98);
       }
+      /* chess.com behaelt die kraeftigen, groesseren Aktion-Buttons (gefiel
+         dem Nutzer in v1.6.0) — Lichess kriegt die dezente Grau-Pille. */
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating,
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable {
+        padding: 8px 14px;
+        font-size: 13px;
+        border-radius: 6px;
+        border: none;
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating { background: #2a8c4a; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:hover { background: #36a85a; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:active { background: #1f7a3d; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable { background: #d04a3e; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:hover { background: #e85a4e; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:active { background: #b03a2f; }
     `;
     document.head.appendChild(style);
   }
@@ -761,6 +778,14 @@
     } catch (e) { return 'dark'; }
   }
 
+  function detectSiteKey() {
+    const host = location.hostname;
+    for (const key of Object.keys(ADAPTERS)) {
+      if (ADAPTERS[key].test(host)) return key;
+    }
+    return '';
+  }
+
   function ensureFloatingWrap() {
     if (!document.body) return null;
     let wrap = document.getElementById('repcheck-floating-wrap');
@@ -770,9 +795,10 @@
       wrap.id = 'repcheck-floating-wrap';
       document.body.appendChild(wrap);
     }
-    // Theme-Klasse bei jedem Ensure neu setzen — User kann mittendrin
-    // Theme wechseln (Lichess + chess.com erlauben das beide).
+    // Theme- und Site-Attribute bei jedem Ensure neu setzen — User kann
+    // mittendrin Theme wechseln (Lichess + chess.com erlauben das beide).
     wrap.dataset.theme = detectSiteTheme();
+    wrap.dataset.site = detectSiteKey();
     return wrap;
   }
 
@@ -876,6 +902,7 @@
     }
 
     wrap.dataset.theme = detectSiteTheme();
+    wrap.dataset.site = detectSiteKey();
     const textEl = banner.querySelector('#repcheck-banner-text') || banner;
     textEl.textContent = message;
     banner.className = type;
@@ -1150,5 +1177,5 @@
   watchNavigation();
   refreshFloatingButton();
 
-  console.log('[RepertoireChecker] Userscript v1.6.2 loaded');
+  console.log('[RepertoireChecker] Userscript v1.6.3 loaded');
 })();
