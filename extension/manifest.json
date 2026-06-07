@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Deviation Checker",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com und lichess.org (lokale PGN-Dateien oder RookHub).",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {

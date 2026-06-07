@@ -601,45 +601,39 @@
     style.id = 'repcheck-styles';
     style.textContent = `
       .${DEVIATION_CLASS} {
-        background-color: rgba(255, 120, 50, 0.45) !important;
-        border-radius: 3px;
-        outline: 2px solid rgba(255, 80, 20, 0.7);
+        background-color: rgba(255, 120, 50, 0.20) !important;
+        border-radius: 2px;
       }
       .${GAP_CLASS} {
-        background-color: rgba(255, 210, 50, 0.35) !important;
-        border-radius: 3px;
-        outline: 2px solid rgba(200, 160, 0, 0.6);
+        background-color: rgba(255, 210, 50, 0.14) !important;
+        border-radius: 2px;
       }
       .${IN_REP_CLASS} {
-        background-color: rgba(46, 204, 113, 0.25) !important;
-        border-radius: 3px;
-        outline: 2px solid rgba(39, 174, 96, 0.5);
+        background-color: rgba(46, 204, 113, 0.10) !important;
+        border-radius: 2px;
       }
       #${BANNER_ID} {
-        padding: 7px 12px;
-        font-size: 12px;
+        padding: 5px 10px;
+        font-size: 11px;
         font-weight: 600;
         text-align: center;
-        border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        border-radius: 5px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.30);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: #2c2c2c;
-        color: #e0e0e0;
-        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(28,28,28,0.92);
+        color: #d8d8d8;
       }
       #${BANNER_ID}.deviation {
-        background: #b34a2a;
-        color: #fff;
-        border-color: rgba(255,255,255,0.12);
+        background: rgba(120, 50, 28, 0.92);
+        color: #fbe2d4;
       }
       #${BANNER_ID}.in-repertoire {
-        background: #2e7d4f;
-        color: #fff;
-        border-color: rgba(255,255,255,0.12);
+        background: rgba(28, 70, 46, 0.92);
+        color: #cfe9d6;
       }
       #${BANNER_ID}.no-repertoire {
-        background: #2c2c2c;
-        color: #b8b6b1;
+        background: rgba(28,28,28,0.92);
+        color: #a8a8a8;
       }
       #${PANEL_ID} {
         position: fixed;
@@ -741,23 +735,58 @@
       #${BANNER_ID} { max-width: 100%; }
       #repcheck-floating, #repcheck-chessable {
         cursor: pointer;
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 6px;
-        padding: 7px 12px;
-        font-size: 12px;
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 5px;
+        padding: 5px 10px;
+        font-size: 11px;
         font-weight: 600;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-        color: #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.30);
+        color: #d8d8d8;
+        background: rgba(36,36,36,0.92);
       }
-      #repcheck-floating { background: #2e7d4f; }
-      #repcheck-floating:hover { background: #379660; }
-      #repcheck-floating:active { background: #246340; }
-      #repcheck-chessable { background: #b34a2a; }
-      #repcheck-chessable:hover { background: #c75834; }
-      #repcheck-chessable:active { background: #903a20; }
+      #repcheck-floating:hover, #repcheck-chessable:hover { background: rgba(56,56,56,0.95); }
+      #repcheck-floating:active, #repcheck-chessable:active { background: rgba(24,24,24,0.95); }
+      /* Light-Theme-Variante: helle Pille mit dunklem Text. Wird ueber
+         data-theme="light" am Floating-Wrap aktiviert (detectSiteTheme()). */
+      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID} {
+        background: rgba(255,255,255,0.96); color: #2a2a2a;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      }
+      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.deviation {
+        background: rgba(255, 235, 222, 0.96); color: #8a2e10;
+      }
+      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.in-repertoire {
+        background: rgba(220, 240, 226, 0.96); color: #1f5230;
+      }
+      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.no-repertoire {
+        background: rgba(248,248,248,0.96); color: #6a6a6a;
+      }
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-floating,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable {
+        background: rgba(255,255,255,0.96); color: #2a2a2a;
+        border-color: rgba(0,0,0,0.10);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      }
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-floating:hover,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable:hover {
+        background: rgba(238,238,238,0.98);
+      }
     `;
     document.head.appendChild(style);
+  }
+
+  // Light- vs Dark-Theme der jeweiligen Site grob erkennen, damit die Pille
+  // auf chess.com (oft Light) nicht als dunkler Block aufpoppt, sondern sich
+  // dem Theme anpasst. Heuristik: Luminanz des <body>-Backgrounds.
+  function detectSiteTheme() {
+    try {
+      const bg = getComputedStyle(document.body).backgroundColor;
+      const m = bg && bg.match(/\d+/g);
+      if (!m || m.length < 3) return 'dark';
+      const lum = (0.299 * +m[0] + 0.587 * +m[1] + 0.114 * +m[2]);
+      return lum > 150 ? 'light' : 'dark';
+    } catch (e) { return 'dark'; }
   }
 
   function ensureFloatingWrap() {
@@ -769,6 +798,9 @@
       wrap.id = 'repcheck-floating-wrap';
       document.body.appendChild(wrap);
     }
+    // Theme-Klasse bei jedem Ensure neu setzen — User kann mittendrin
+    // Theme wechseln (Lichess + chess.com erlauben das beide).
+    wrap.dataset.theme = detectSiteTheme();
     return wrap;
   }
 
@@ -876,6 +908,7 @@
       wrap.insertBefore(banner, wrap.firstChild);
     }
 
+    wrap.dataset.theme = detectSiteTheme();
     const textEl = banner.querySelector('#repcheck-banner-text') || banner;
     textEl.textContent = message;
     banner.className = type;
