@@ -135,3 +135,32 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 
 - **Chrome Web Store**: 5 USD Lifetime-Fee, `web-ext build` → ZIP upload, Privacy-Policy-URL (`PRIVACY.md` auf GitHub Pages hosten), Screenshots 1280×800. Review 1–3 Tage.
 - **Firefox AMO**: kostenlos, `web-ext sign` für AMO-Signatur + Listing. Review meist <24h.
+
+### Veroeffentlichungs-Workflow (Stand 2026-06-11)
+
+**Vor jeder neuen Version**: `version` in `manifest.json` UND `@version` im
+Userscript synchron erhoehen (siehe „Versioning" oben).
+
+**Firefox AMO — das Add-on ist LISTED (öffentliche addons.mozilla.org-Seite,
+NICHT self-hosted).** Konsequenz:
+- Die vorhandene CI (`.github/workflows/release.yml`, getriggert von Tag
+  `v*.*.*`) signiert mit `--channel=unlisted` → das erzeugt nur eine
+  selbst-gehostete `.xpi` am GitHub-Release und **aktualisiert das
+  Listing NICHT**. Der Tag-Weg allein bringt die neue Version also nicht in
+  den Store.
+- Fuer das Listing: im [AMO Developer Hub](https://addons.mozilla.org/developers/)
+  → Add-on → „Upload New Version" das gebaute ZIP hochladen
+  (`cd extension && npx web-ext build`, oder das Artifact aus dem
+  `build.yml`-Run ziehen). Geht durch Review (meist <24h).
+  Alternativ CLI: `web-ext sign --channel=listed`.
+- TODO/Option: release.yml auf `--channel=listed` umstellen, wenn der
+  Tag-Push das Listing direkt aktualisieren soll.
+
+**Chrome Web Store — nur EINE Version gleichzeitig im Review.** Solange ein
+Upload „Pending review" ist, kann NICHT parallel eine neue Version eingereicht
+werden. Entweder warten bis das Review durch ist und dann das neue ZIP
+hochladen, oder im Developer Dashboard die Pending-Submission canceln, Paket
+ersetzen und neu einreichen (setzt die Review-Uhr zurueck). Permission-/Host-
+Aenderungen (z. B. v1.8.0: `storage` + chessable.com) loesen ohnehin ein
+erneutes, ggf. gruendlicheres Review aus. CWS-Upload ist manuell (ZIP aus
+`web-ext build`) — dafuer gibt es keine Automation.
