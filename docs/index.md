@@ -21,10 +21,15 @@ Beim Öffnen einer chess.com-Analyse-Seite vergleicht die Erweiterung die gespie
 
 Der erste Zug, der nicht im Repertoire steht, wird im Move-List-Panel rot markiert.
 
+## Chessable-Token (ab v1.8.0)
+
+Auf `chessable.com` kann RepCheck den eigenen API-Token (JWT) aus dem `localStorage` auslesen und per Knopfdruck in die Zwischenablage kopieren — z. B. zur Nutzung in [piratechess](https://github.com/kahalm/piratechess). Der Token verlässt den Browser nicht und wird an keinen Server gesendet.
+
 ## Was die Erweiterung NICHT macht
 
 - Keine Telemetrie. Keine Tracker. Keine Werbung.
-- Keine Verbindung an irgendeinen Server außer chess.com (wo sie läuft) und der von dir aktiv eingetragenen RookHub-URL.
+- Keine Verbindung an irgendeinen Server außer chess.com / lichess.org (wo sie läuft) und der von dir aktiv eingetragenen RookHub-URL.
+- Der Chessable-Token wird nur lokal gelesen und **nirgendwohin gesendet**.
 - Kein Account, kein Login bei einem fremden Dienst.
 
 Details: [Privacy Policy](./privacy.html).
