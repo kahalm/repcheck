@@ -21,11 +21,11 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 - **Settings-Panel** im Repertoire-Banner (⚙-Icon) für URL/Token/Refresh
 - **Cache** in IndexedDB — Re-Open der chess.com-Seite zeigt sofort den letzten Stand, Refresh läuft im Hintergrund
 - **Soft-Limit-Warnung** bei > 5 MB Gesamtgröße der Repertoires
-- **Chessable-Token-Auslese** (ab v1.8.0): liest auf `chessable.com` den eigenen API-Token aus dem `localStorage` und bietet ihn lokal zum Kopieren an (z. B. für [piratechess](https://github.com/kahalm/piratechess)) — der Token verlässt den Browser nicht
+- **Chessable-Token-Auslese** (ab v1.8.0): liest auf `chessable.com` den eigenen API-Token aus dem `localStorage` und bietet ihn lokal zum Kopieren an — für die Nutzung in [piratechess](https://github.com/kahalm/piratechess) (Chessable-Kurs-Export). Der Token verlässt den Browser nicht
 
-## Chessable-Token auslesen
+## Chessable-Token auslesen (für piratechess)
 
-Damit Tools wie **piratechess** mit dem eigenen Chessable-Account arbeiten können, braucht man den Chessable-API-Token (ein JWT). RepCheck liest ihn rein lokal aus und gibt ihn nur auf Knopfdruck in die Zwischenablage:
+[piratechess](https://github.com/kahalm/piratechess) exportiert gekaufte Chessable-Kurse als PGN und braucht dafür den Chessable-API-Token (ein JWT). RepCheck liest genau diesen Token rein lokal aus und gibt ihn nur auf Knopfdruck in die Zwischenablage, damit man ihn dort einfügen kann:
 
 - **Extension**: Auf `chessable.com` eingeloggt sein → RepCheck-Icon in der Toolbar anklicken → unter „Chessable-Token" auf **„Token kopieren"**. Das Token wird aus `localStorage['chessable.web.production.JWT']` gelesen, in `chrome.storage.local` zwischengespeichert und beim Klick in die Zwischenablage kopiert. Es wird **nicht** angezeigt (zu lang) und **nirgendwohin gesendet**.
 - **Userscript**: Auf `chessable.com` das Tampermonkey-Menü öffnen → **„🔑 Chessable-Token kopieren"** (nutzt `GM_setClipboard`). Auf Chessable läuft sonst keine Repertoire-Logik.

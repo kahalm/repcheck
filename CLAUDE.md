@@ -75,9 +75,10 @@ Die Extension kann das Repertoire wahlweise aus einem **lokalen Ordner** (File S
 ## Chessable-Token-Auslese (v1.8.0+)
 
 Unabhaengig von der Repertoire-Pruefung kann die Extension auf **chessable.com**
-den eigenen API-Token auslesen, damit er extern (Repo **piratechess**) genutzt
-werden kann. Der Token wird **nicht** verschickt — er landet nur lokal und wird
-per Copy-Button im Popup in die Zwischenablage gegeben.
+den eigenen API-Token auslesen, damit ihn das externe Tool
+**[piratechess](https://github.com/kahalm/piratechess)** (Chessable-Kurs-Export
+nach PGN) nutzen kann. Der Token wird **nicht** verschickt — er landet nur lokal
+und wird per Copy-Button im Popup in die Zwischenablage gegeben.
 
 - **Quelle**: `localStorage['chessable.web.production.JWT']` im Page-Origin.
   Content-Scripts teilen sich die localStorage der Seite → direkter Lesezugriff,

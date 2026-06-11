@@ -14,7 +14,7 @@ Die Erweiterung sendet **keine Daten an den Autor** und kommuniziert nur mit den
 | **RookHub-Token (`rkh_…`)** | Lokale IndexedDB | Auth-Header für API-Aufrufe an genau die eingetragene RookHub-Instanz |
 | **Ordner-Handle** (Chrome File System Access API) | Lokale IndexedDB | Damit der zuletzt gewählte PGN-Ordner ohne erneutes Picken gelesen werden kann |
 | **chess.com-Partiezüge** | Nur im Arbeitsspeicher des aktiven Tabs | Vergleich mit dem Repertoire-Trie; werden nirgendwo gespeichert oder gesendet |
-| **Chessable-API-Token (JWT)** | `chrome.storage.local` im Browserprofil (Key `chessableToken`) | Wird auf chessable.com aus `localStorage['chessable.web.production.JWT']` gelesen, damit der Nutzer ihn per Knopfdruck in die Zwischenablage kopieren kann (z. B. für piratechess). Wird **nicht** versendet |
+| **Chessable-API-Token (JWT)** | `chrome.storage.local` im Browserprofil (Key `chessableToken`) | Wird auf chessable.com aus `localStorage['chessable.web.production.JWT']` gelesen, damit der Nutzer ihn per Knopfdruck in die Zwischenablage kopieren kann — zur Nutzung in piratechess (https://github.com/kahalm/piratechess), das Chessable-Kurse als PGN exportiert. Wird **nicht** versendet |
 
 ## Welche Netzwerk-Verbindungen baut die Erweiterung auf?
 

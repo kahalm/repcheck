@@ -23,7 +23,7 @@ Der erste Zug, der nicht im Repertoire steht, wird im Move-List-Panel rot markie
 
 ## Chessable-Token (ab v1.8.0)
 
-Auf `chessable.com` kann RepCheck den eigenen API-Token (JWT) aus dem `localStorage` auslesen und per Knopfdruck in die Zwischenablage kopieren — z. B. zur Nutzung in [piratechess](https://github.com/kahalm/piratechess). Der Token verlässt den Browser nicht und wird an keinen Server gesendet.
+Auf `chessable.com` kann RepCheck den eigenen API-Token (JWT) aus dem `localStorage` auslesen und per Knopfdruck in die Zwischenablage kopieren — zur Nutzung in [piratechess](https://github.com/kahalm/piratechess), das damit gekaufte Chessable-Kurse als PGN exportiert. Der Token verlässt den Browser nicht und wird an keinen Server gesendet.
 
 ## Was die Erweiterung NICHT macht
 
