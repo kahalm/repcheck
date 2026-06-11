@@ -72,14 +72,39 @@ Die Extension kann das Repertoire wahlweise aus einem **lokalen Ordner** (File S
   - Key `config` → `{ url: string, token: string }`
   - Key `cache` → `{ pgnTexts: string[], savedAt: number, count: number }`
 
+## Chessable-Token-Auslese (v1.8.0+)
+
+Unabhaengig von der Repertoire-Pruefung kann die Extension auf **chessable.com**
+den eigenen API-Token auslesen, damit er extern (Repo **piratechess**) genutzt
+werden kann. Der Token wird **nicht** verschickt — er landet nur lokal und wird
+per Copy-Button im Popup in die Zwischenablage gegeben.
+
+- **Quelle**: `localStorage['chessable.web.production.JWT']` im Page-Origin.
+  Content-Scripts teilen sich die localStorage der Seite → direkter Lesezugriff,
+  keine fetch/XHR-Interception noetig. `extractJwt` deckt Rohwert, JSON-String
+  und `{token|jwt|accessToken|access_token}`-Objekt ab.
+- **Extension**: `chessable-token.js` (isoliertes Content-Script, matcht
+  `*.chessable.com`) liest den Key bei Load, Tab-Fokus, `visibilitychange` und
+  `storage`-Events und schreibt `{ token, capturedAt, origin }` nach
+  `chrome.storage.local` Key `chessableToken`. Das Popup liest denselben Key
+  (origin-uebergreifend, daher NICHT IndexedDB) und aktiviert „Token kopieren".
+  Braucht die `storage`-Permission im Manifest.
+- **Userscript**: laeuft via `@match https://www.chessable.com/*` im
+  Page-Kontext; auf chessable wird **nur** ein TM-Menuekommando
+  „🔑 Chessable-Token kopieren" registriert (`GM_setClipboard`, `@grant`
+  ergaenzt) und sofort `return` — die Repertoire-Logik bleibt aus.
+- **Privacy**: rein lokal (localStorage → clipboard / chrome.storage.local),
+  kein Netzwerk-Egress, kein Logging des Tokens.
+
 ## Extension-Architektur (`extension/`)
 
 ```
 extension/
-├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org
+├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com; permissions: scripting/activeTab/storage
 ├── content.js          # Hauptlogik (port vom Userscript)
+├── chessable-token.js  # Content-Script auf chessable.com: liest localStorage-JWT → chrome.storage.local
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei)
-├── popup.html / .js    # Toolbar-Button: zeigt Cache-Status
+├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren"
 ├── icons/              # 16/48/128 PNG
 ├── generate-icons.py   # Placeholder-Generator (Pillow)
 └── web-ext-config.cjs  # web-ext-CLI-Konfig (Firefox/Chromium-Test)

@@ -143,6 +143,44 @@ async function refreshStatus() {
 
 refreshStatus();
 
+// ─── Chessable-Token ───────────────────────────────────────────────────
+// Der von chessable.com abgefangene Bearer-Token liegt in chrome.storage.local
+// (origin-uebergreifend lesbar). Das Popup zeigt ihn nicht an (zu lang), sondern
+// bietet nur einen Copy-Button fuer die Weitergabe an piratechess.
+const CHESSABLE_BOX = document.getElementById('chessable-box');
+const COPY_CHESSABLE = document.getElementById('copy-chessable');
+const CHESSABLE_STATE = document.getElementById('chessable-state');
+
+function refreshChessableToken() {
+  if (!chrome.storage || !chrome.storage.local) return;
+  chrome.storage.local.get('chessableToken', (res) => {
+    const entry = res && res.chessableToken;
+    if (!entry || !entry.token) {
+      CHESSABLE_BOX.style.display = 'none';
+      return;
+    }
+    CHESSABLE_BOX.style.display = 'block';
+    COPY_CHESSABLE.disabled = false;
+    const ago = Math.round((Date.now() - (entry.capturedAt || 0)) / 60000);
+    CHESSABLE_STATE.textContent = ago <= 0 ? 'gerade erfasst' : `vor ${ago} min erfasst`;
+  });
+}
+
+COPY_CHESSABLE.addEventListener('click', () => {
+  chrome.storage.local.get('chessableToken', async (res) => {
+    const entry = res && res.chessableToken;
+    if (!entry || !entry.token) return;
+    try {
+      await navigator.clipboard.writeText(entry.token);
+      CHESSABLE_STATE.textContent = 'kopiert ✓';
+    } catch (e) {
+      CHESSABLE_STATE.textContent = 'Kopieren fehlgeschlagen';
+    }
+  });
+});
+
+refreshChessableToken();
+
 function showError(msg) {
   ERROR_EL.textContent = msg;
   ERROR_EL.style.display = 'block';

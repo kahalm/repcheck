@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.7.1
+// @version      1.8.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
-// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub)
+// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). Reads the chessable.com API token for use elsewhere.
 // @author       kahalm
 // @homepageURL  https://github.com/kahalm/repcheck
 // @supportURL   https://github.com/kahalm/repcheck/issues
@@ -12,7 +12,9 @@
 // @icon         https://raw.githubusercontent.com/kahalm/repcheck/master/extension/icons/icon48.png
 // @match        https://www.chess.com/*
 // @match        https://lichess.org/*
+// @match        https://www.chessable.com/*
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -1119,6 +1121,49 @@
     if (!document.getElementById(PANEL_ID)) togglePanel();
   }
 
+  // ─── Chessable-Token-Modus ──────────────────────────────────────────
+  // Auf chessable.com laeuft NUR das Token-Auslesen — keine Repertoire-Logik.
+  // Der API-Token liegt im localStorage unter `chessable.web.production.JWT`
+  // und wird per TM-Menue in die Zwischenablage kopiert (Weitergabe an
+  // piratechess). Der Token verlaesst den Browser nicht.
+  if (/(^|\.)chessable\.com$/i.test(location.hostname)) {
+    const CHESSABLE_LS_KEY = 'chessable.web.production.JWT';
+    const extractChessableJwt = (raw) => {
+      if (typeof raw !== 'string') return null;
+      let v = raw.trim();
+      if (!v) return null;
+      if (v[0] === '"' || v[0] === '{') {
+        try {
+          const parsed = JSON.parse(v);
+          if (typeof parsed === 'string') v = parsed;
+          else if (parsed && typeof parsed === 'object') {
+            v = parsed.token || parsed.jwt || parsed.accessToken || parsed.access_token || '';
+          }
+        } catch (e) { /* kein JSON — Rohwert behalten */ }
+      }
+      v = String(v).trim();
+      return v || null;
+    };
+    if (typeof GM_registerMenuCommand !== 'undefined') {
+      GM_registerMenuCommand('🔑 Chessable-Token kopieren', () => {
+        let token = null;
+        try { token = extractChessableJwt(localStorage.getItem(CHESSABLE_LS_KEY)); } catch (e) {}
+        if (!token) {
+          alert('RepCheck: Kein Chessable-Token im localStorage gefunden — eingeloggt?');
+          return;
+        }
+        if (typeof GM_setClipboard !== 'undefined') {
+          GM_setClipboard(token, { type: 'text', mimetype: 'text/plain' });
+        } else if (navigator.clipboard) {
+          navigator.clipboard.writeText(token);
+        }
+        alert('RepCheck: Chessable-Token in die Zwischenablage kopiert.');
+      });
+    }
+    console.log('[RepertoireChecker] Chessable-Token-Modus aktiv');
+    return;
+  }
+
   // Tampermonkey/Greasemonkey-Menue: erscheint im Klick-Menue des
   // TM-Icons. Das ist der EINZIGE automatische Eingriff des Userscripts
   // beim Page-Load.
@@ -1147,5 +1192,5 @@
   watchNavigation();
   refreshFloatingButton();
 
-  console.log('[RepertoireChecker] Userscript v1.6.4 loaded');
+  console.log('[RepertoireChecker] Userscript v1.8.0 loaded');
 })();
