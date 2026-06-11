@@ -142,19 +142,20 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 Userscript synchron erhoehen (siehe „Versioning" oben).
 
 **Firefox AMO — das Add-on ist LISTED (öffentliche addons.mozilla.org-Seite,
-NICHT self-hosted).** Konsequenz:
-- Die vorhandene CI (`.github/workflows/release.yml`, getriggert von Tag
-  `v*.*.*`) signiert mit `--channel=unlisted` → das erzeugt nur eine
-  selbst-gehostete `.xpi` am GitHub-Release und **aktualisiert das
-  Listing NICHT**. Der Tag-Weg allein bringt die neue Version also nicht in
-  den Store.
-- Fuer das Listing: im [AMO Developer Hub](https://addons.mozilla.org/developers/)
-  → Add-on → „Upload New Version" das gebaute ZIP hochladen
-  (`cd extension && npx web-ext build`, oder das Artifact aus dem
-  `build.yml`-Run ziehen). Geht durch Review (meist <24h).
-  Alternativ CLI: `web-ext sign --channel=listed`.
-- TODO/Option: release.yml auf `--channel=listed` umstellen, wenn der
-  Tag-Push das Listing direkt aktualisieren soll.
+NICHT self-hosted).**
+- Die CI (`.github/workflows/release.yml`, getriggert von Tag `v*.*.*`) reicht
+  die neue Version seit 2026-06-11 mit `--channel=listed --approval-timeout=0`
+  direkt beim Listing ein (Review). **Ein `git tag v1.8.0 && git push origin
+  v1.8.0` genuegt also** — Voraussetzung: Secrets `AMO_API_KEY` +
+  `AMO_API_SECRET` sind gesetzt, sonst ueberspringt die CI die Einreichung.
+- `listed` automatisiert nur den Upload; das Review (meist <24h) bleibt. Es
+  entsteht KEINE herunterladbare `.xpi` am GitHub-Release (Distribution laeuft
+  ueber addons.mozilla.org). Das Listing selbst muss einmalig im Dev Hub
+  existieren (Metadaten/Screenshots). Minifizierter Code (`chess.min.js`) kann
+  eine Source-Upload-Nachfrage ausloesen.
+- Manueller Fallback, falls die CI-Einreichung scheitert: im
+  [AMO Developer Hub](https://addons.mozilla.org/developers/) → Add-on →
+  „Upload New Version" das ZIP (`cd extension && npx web-ext build`) hochladen.
 
 **Chrome Web Store — nur EINE Version gleichzeitig im Review.** Solange ein
 Upload „Pending review" ist, kann NICHT parallel eine neue Version eingereicht

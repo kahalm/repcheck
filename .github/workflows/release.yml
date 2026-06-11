@@ -2,8 +2,17 @@ name: Release
 
 # Bei einem Git-Tag wie `v1.3.1` ein GitHub Release anlegen und die
 # Extension-ZIP anhaengen. Wenn die AMO-Repo-Secrets gesetzt sind
-# (`AMO_API_KEY` + `AMO_API_SECRET`), wird die Extension parallel bei
-# Mozilla AMO eingereicht (self-hosted Signatur → .xpi).
+# (`AMO_API_KEY` + `AMO_API_SECRET`), wird die neue Version parallel beim
+# OEFFENTLICHEN Mozilla-AMO-Listing eingereicht (--channel=listed → Review).
+#
+# Hinweise zum listed-Channel:
+# - Das AMO-Listing muss bereits existieren (einmalig im Dev Hub angelegt,
+#   inkl. Beschreibung/Screenshots/Kategorien); die API laedt nur neue
+#   Versionen eines bestehenden Listings hoch.
+# - listed erzeugt KEINE herunterladbare .xpi fuers GitHub-Release — die
+#   Distribution laeuft ueber addons.mozilla.org nach Freigabe.
+# - --approval-timeout=0: nach dem Upload sofort weiter, nicht auf das
+#   (asynchrone) Review-Ergebnis warten.
 #
 # Setup-Hinweis: Tag bauen mit
 #   git tag v1.3.1 && git push origin v1.3.1
@@ -38,22 +47,23 @@ jobs:
           cd extension
           npx --yes web-ext@latest build --config=web-ext-config.cjs --overwrite-dest
 
-      - name: Sign for Firefox AMO (if secrets configured)
+      - name: Submit to Firefox AMO listing (if secrets configured)
         env:
           AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
           AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
         run: |
           if [ -z "$AMO_API_KEY" ] || [ -z "$AMO_API_SECRET" ]; then
-            echo "AMO secrets not set — skipping signing"
+            echo "AMO secrets not set — skipping AMO submission"
             exit 0
           fi
           cd extension
           npx --yes web-ext@latest sign \
             --config=web-ext-config.cjs \
-            --channel=unlisted \
+            --channel=listed \
+            --approval-timeout=0 \
             --api-key="$AMO_API_KEY" \
             --api-secret="$AMO_API_SECRET" || \
-            echo "::warning::AMO signing failed — continuing release with unsigned ZIP only"
+            echo "::warning::AMO submission failed — continuing release with unsigned ZIP only"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
