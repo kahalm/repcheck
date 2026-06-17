@@ -131,5 +131,37 @@
   });
   window.addEventListener('pagehide', () => flush(true));
 
+  // ---- „Remember line"-Bridge (MAIN-World chessable-fen.js → hier → RookHub) ----
+  // chessable-fen.js (Page-Kontext) postet die FEN; hier (isoliert) haengen
+  // RookHub-Config + Background-Egress, damit der Token nie in den Page-Kontext geraet.
+  window.addEventListener('message', async (e) => {
+    if (e.source !== window || !e.data || e.data.__repcheck !== 'remember-line') return;
+    const { fen, courseId, sourceUrl } = e.data;
+    const reply = (ok, error) =>
+      window.postMessage({ __repcheck: 'remember-line-result', ok: !!ok, error: error || null }, location.origin);
+
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) { reply(false, 'Not connected'); return; }
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    try {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/remember-line',
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + cfg.token,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ fen, courseId, sourceUrl }),
+        expect: 'json',
+      }, (resp) => {
+        reply(!chrome.runtime.lastError && resp && resp.ok);
+      });
+    } catch (err) {
+      reply(false, 'Send failed');
+    }
+  });
+
   console.log('[RepCheck Chessable] Activity-Tracking aktiv');
 })();

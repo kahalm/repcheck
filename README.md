@@ -31,6 +31,8 @@ Auf einer Chessable-Trainer-/Lern-Seite mit Brett erscheinen unten rechts:
 
 - **Copy FEN** (grün) — kopiert die aktuelle Stellung als FEN in die Zwischenablage (z.B. zum Einfügen in lichess.org/analysis oder chess.com/analysis).
 - **Search FEN** (blau) — öffnet die Chessable-FEN-Suche für die Stellung in einem neuen Tab (innerhalb des aktuellen Kurses, sonst global).
+- **Refresh** (grau) — lädt die Seite neu.
+- **Remember line** (lila) — schickt die aktuelle Stellung (FEN) an die konfigurierte RookHub-Instanz und merkt sie dort für später (nur mit hinterlegtem RookHub-URL+Token).
 - **XP-Badge** (gelb) — zeigt die zuletzt erspielten Punkte (ignoriert Overstudy/Incorrect/Alternative).
 
 Die FEN wird bevorzugt aus dem internen React-State von Chessable gelesen (korrektes Zugrecht/Rochade/Zugzähler), mit DOM-Fallback. Alles läuft rein lokal; „Search FEN" navigiert nur zu chessable.com.

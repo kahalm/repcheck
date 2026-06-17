@@ -402,6 +402,20 @@
       if (!win) flash(searchBtn, 'Popup blocked', '#c62828');
     });
 
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.textContent = 'Refresh';
+    styleButton(refreshBtn, '#616161');
+    refreshBtn.title = 'Seite neu laden';
+    refreshBtn.addEventListener('click', () => { location.reload(); });
+
+    const rememberBtn = document.createElement('button');
+    rememberBtn.type = 'button';
+    rememberBtn.textContent = REMEMBER_LABEL;
+    styleButton(rememberBtn, '#6a1b9a');
+    rememberBtn.title = 'Stellung in RookHub merken';
+    rememberBtn.addEventListener('click', () => rememberLine(rememberBtn));
+
     const xpBadge = document.createElement('span');
     xpBadge.id = 'repcheck-chessable-last-xp';
     Object.assign(xpBadge.style, {
@@ -420,8 +434,39 @@
     wrap.appendChild(xpBadge);
     wrap.appendChild(copyBtn);
     wrap.appendChild(searchBtn);
+    wrap.appendChild(refreshBtn);
+    wrap.appendChild(rememberBtn);
     document.body.appendChild(wrap);
   }
+
+  // „Remember line": FEN + Kontext per window.postMessage an die isolierte Welt
+  // (chessable-activity.js), die den Egress mit RookHub-Config + Background-Worker
+  // erledigt — so bleibt der Token aus dem Page-Kontext. postMessage ist der
+  // robuste MAIN↔isoliert-Kanal (CustomEvent-detail ist in Firefox heikel).
+  const REMEMBER_LABEL = 'Remember line';
+  let pendingRememberBtn = null;
+
+  function rememberLine(btn) {
+    const fen = buildFEN();
+    if (!fen) { flash(btn, 'No board found', '#c62828'); debugDump(); return; }
+    pendingRememberBtn = btn;
+    btn.textContent = 'Saving…';
+    btn.disabled = true;
+    window.postMessage({
+      __repcheck: 'remember-line',
+      fen, courseId: currentCourseId(), sourceUrl: location.href,
+    }, location.origin);
+  }
+
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data || e.data.__repcheck !== 'remember-line-result') return;
+    const btn = pendingRememberBtn;
+    pendingRememberBtn = null;
+    if (!btn) return;
+    btn.disabled = false;
+    btn.textContent = REMEMBER_LABEL;
+    flash(btn, e.data.ok ? 'Remembered!' : (e.data.error || 'Failed'), e.data.ok ? '#2e7d32' : '#c62828');
+  });
 
   function flash(btn, text, color) {
     const oldText = btn.textContent;

@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.10.0
+// @version      1.11.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
-// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, show earned XP, report active training time to RookHub, read the API token.
+// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
 // @homepageURL  https://github.com/kahalm/repcheck
 // @supportURL   https://github.com/kahalm/repcheck/issues
@@ -1598,6 +1598,20 @@
         if (!win) flash(searchBtn, 'Popup blocked', '#c62828');
       });
 
+      const refreshBtn = document.createElement('button');
+      refreshBtn.type = 'button';
+      refreshBtn.textContent = 'Refresh';
+      refreshBtn.title = 'Seite neu laden';
+      styleButton(refreshBtn, '#616161');
+      refreshBtn.addEventListener('click', () => { location.reload(); });
+
+      const rememberBtn = document.createElement('button');
+      rememberBtn.type = 'button';
+      rememberBtn.textContent = 'Remember line';
+      rememberBtn.title = 'Stellung in RookHub merken';
+      styleButton(rememberBtn, '#6a1b9a');
+      rememberBtn.addEventListener('click', () => rememberLine(rememberBtn));
+
       const xpBadge = document.createElement('span');
       xpBadge.id = 'repcheck-chessable-last-xp';
       Object.assign(xpBadge.style, {
@@ -1609,7 +1623,34 @@
       wrap.appendChild(xpBadge);
       wrap.appendChild(copyBtn);
       wrap.appendChild(searchBtn);
+      wrap.appendChild(refreshBtn);
+      wrap.appendChild(rememberBtn);
       document.body.appendChild(wrap);
+    }
+
+    // „Remember line": aktuelle FEN + Kontext an RookHub schicken (zum spaeteren
+    // Gebrauch dort gespeichert). Config aus GM-Storage (origin-uebergreifend),
+    // Egress per fetch (RookHub-CORS erlaubt chessable.com + POST).
+    function rememberLine(btn) {
+      const fen = buildFEN();
+      if (!fen) { flash(btn, 'No board found', '#c62828'); debugDump(); return; }
+      let cfg = null;
+      try { if (typeof GM_getValue !== 'undefined') cfg = GM_getValue('rookhubConfig', null); } catch (e) {}
+      if (!cfg || !cfg.url || !cfg.token) { flash(btn, 'Not connected', '#c62828'); return; }
+      const base = String(cfg.url).replace(/\/$/, '');
+      const oldText = btn.textContent;
+      btn.textContent = 'Saving…'; btn.disabled = true;
+      fetch(base + '/api/extension/remember-line', {
+        method: 'POST', mode: 'cors',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fen, courseId: currentCourseId(), sourceUrl: location.href }),
+      }).then((resp) => {
+        btn.disabled = false; btn.textContent = oldText;
+        flash(btn, resp.ok ? 'Remembered!' : 'Failed', resp.ok ? '#2e7d32' : '#c62828');
+      }).catch(() => {
+        btn.disabled = false; btn.textContent = oldText;
+        flash(btn, 'Failed', '#c62828');
+      });
     }
 
     let nextVarListenerAttached = false;
@@ -1671,5 +1712,5 @@
   watchNavigation();
   refreshFloatingButton();
 
-  console.log('[RepertoireChecker] Userscript v1.10.0 loaded');
+  console.log('[RepertoireChecker] Userscript v1.11.0 loaded');
 })();

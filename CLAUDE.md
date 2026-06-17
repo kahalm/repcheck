@@ -99,11 +99,21 @@ und wird per Copy-Button im Popup in die Zwischenablage gegeben.
 
 ## Chessable-FEN-Tools (v1.9.0+)
 
-Auf chessable.com blendet RepCheck unten rechts zwei Knoepfe ein — **Copy FEN**
-(aktuelle Brettstellung in die Zwischenablage) und **Search FEN** (oeffnet die
-Chessable-FEN-Suche, kursintern `/course/<id>/fen/…` mit Fallback global) — plus
-eine **XP-Anzeige** der zuletzt erspielten Punkte. Portiert aus
-[chessable-extension](https://github.com/kahalm/chessable-extension) (v0.9.4).
+Auf chessable.com blendet RepCheck unten rechts Knoepfe ein — **Copy FEN**
+(aktuelle Brettstellung in die Zwischenablage), **Search FEN** (oeffnet die
+Chessable-FEN-Suche, kursintern `/course/<id>/fen/…` mit Fallback global),
+**Refresh** (`location.reload()`) und **Remember line** (FEN an RookHub merken,
+s. u.) — plus eine **XP-Anzeige** der zuletzt erspielten Punkte. Ursprung:
+[chessable-extension](https://github.com/kahalm/chessable-extension) (v0.9.4),
+erweitert.
+
+**Remember line (v1.11.0+):** schickt die aktuelle FEN + Kontext (Kurs-ID,
+Seiten-URL) an `POST /api/extension/remember-line` der RookHub-Instanz → dort in
+`RememberedPositions` gespeichert (Verwendungszweck offen). Egress wie beim
+Activity-Tracking: **Extension** = chessable-fen.js (MAIN-World) postet per
+`window.postMessage` zur isolierten chessable-activity.js, die mit RookHub-Config
++ Background-Worker sendet (Token bleibt aus dem Page-Kontext);
+**Userscript** = `rememberLine()` liest GM-Config und `fetch`t direkt.
 
 - **FEN-Quelle**: bevorzugt die an den Brett-DOM-Knoten haengenden **React-Fiber-
   Props** (`fen`/`interactiveFen`) — nur so kommen Zugrecht/Rochade/Halbzug/
