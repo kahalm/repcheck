@@ -22,6 +22,7 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 - **Cache** in IndexedDB — Re-Open der chess.com-Seite zeigt sofort den letzten Stand, Refresh läuft im Hintergrund
 - **Soft-Limit-Warnung** bei > 5 MB Gesamtgröße der Repertoires
 - **Chessable-FEN-Tools** (ab v1.9.0): auf `chessable.com` zwei Knöpfe unten rechts — **Copy FEN** (aktuelle Brettstellung in die Zwischenablage) und **Search FEN** (öffnet die Chessable-FEN-Suche der Stellung) — plus Anzeige der zuletzt erspielten **XP**
+- **Chessable-Trainingszeit → RookHub** (ab v1.10.0): misst auf `chessable.com` die aktive Trainingszeit (Brett da, Tab aktiv, kürzliche Zug-/Klick-Aktivität) und meldet sie an die konfigurierte RookHub-Instanz — dort zählt sie auf das Tagesziel der Kategorie „Chessable" im Trainingsziele-Tracker. Nur aktiv, wenn RookHub-URL+Token hinterlegt sind
 - **Chessable-Token-Auslese** (ab v1.8.0): liest auf `chessable.com` den eigenen API-Token aus dem `localStorage` und bietet ihn lokal zum Kopieren an — für die Nutzung in [piratechess](https://github.com/kahalm/piratechess) (Chessable-Kurs-Export). Der Token verlässt den Browser nicht
 
 ## Chessable-FEN-Tools
@@ -112,6 +113,7 @@ repcheck/
 │   ├── manifest.json
 │   ├── content.js                # Logik wie Userscript, RookHub-Fetches über Background
 │   ├── chessable-token.js        # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
+│   ├── chessable-activity.js     # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → RookHub
 │   ├── chessable-fen.js          # Content-Script (world: MAIN) auf chessable.com: FEN-Copy/Search + XP-Anzeige
 │   ├── background.js             # Service-Worker (CORS-freie Fetches)
 │   ├── popup.html                # Toolbar-Button-Popup (Status + „Chessable-Token kopieren")

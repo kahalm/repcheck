@@ -128,14 +128,42 @@ eine **XP-Anzeige** der zuletzt erspielten Punkte. Portiert aus
   Zwischenablage. „Search FEN" oeffnet einen chessable.com-Tab (reine Navigation,
   keine Datenweitergabe an Dritte). Kein zusaetzlicher Netzwerk-Egress.
 
+## Chessable-Trainingszeit → RookHub (v1.10.0+)
+
+RepCheck misst auf chessable.com die **aktive** Trainingszeit und meldet sie an die
+RookHub-Instanz des Users (`POST /api/extension/training-activity`), wo sie in die
+eigene Kategorie **„Chessable"** des Trainingsziele-Trackers fließt.
+
+- **„Aktiv"** = ALLE: Brett vorhanden (cm-chessboard `[data-square]`) + Tab sichtbar
+  & fokussiert + hartes Signal in den letzten 60 s (Brett-Mutation = Zug, Klick/Taste
+  aufs Brett, oder gewertete `moveNotification`). Reines Offenlassen zählt NICHT.
+  Sliding-Idle-Timer (5-s-Takt), Flush alle 60 s (ab ≥10 s) + bei
+  `visibilitychange→hidden`/`pagehide`. Häppchen serverseitig auf 3600 s gedeckelt.
+- **RookHub-Config-Sharing** ⚠️: URL+Token liegen in IndexedDB auf chess.com/lichess-
+  Origin — auf chessable.com NICHT lesbar (origin-scoped). Daher spiegelt
+  `saveRookhubConfig` die Config zusätzlich in **`chrome.storage.local`** (Extension)
+  bzw. **`GM_setValue`** (Userscript, origin-übergreifend). Das Activity-Script liest
+  sie von dort; ohne Config wird nichts gemessen/gesendet.
+- **Extension**: `chessable-activity.js` läuft in der **isolierten** Welt (braucht
+  `chrome.storage` + `chrome.runtime`); Egress CORS-frei über den Background-Worker
+  (`rookhub-fetch`, POST). NICHT MAIN-World (anders als chessable-fen.js).
+- **Userscript**: gekapselt in `initChessableActivityTracking()` im Chessable-Branch;
+  Config via `GM_getValue('rookhubConfig')`, Egress per `fetch` (RookHub-`ExtensionPolicy`
+  erlaubt chessable.com + POST). Braucht `@grant GM_setValue`/`GM_getValue`.
+- **Sync-Hinweis**: getrennte Codepfade Userscript (`initChessableActivityTracking`)
+  ↔ Extension (`chessable-activity.js`) — bei Änderungen beide angleichen.
+- **Privacy**: misst nur lokal aus Seiten-DOM; sendet ausschließlich an die vom User
+  konfigurierte RookHub-Instanz (Dauer in Sekunden + Zuganzahl, kein Seiteninhalt).
+
 ## Extension-Architektur (`extension/`)
 
 ```
 extension/
 ├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com (chessable hat ZWEI: token=isoliert, fen=world:MAIN); permissions: scripting/activeTab/storage
 ├── content.js          # Hauptlogik (port vom Userscript)
-├── chessable-token.js  # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
-├── chessable-fen.js    # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
+├── chessable-token.js    # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
+├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub
+├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei)
 ├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren"
 ├── icons/              # 16/48/128 PNG

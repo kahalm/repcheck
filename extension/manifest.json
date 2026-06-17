@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Checker",
-  "version": "1.9.0",
-  "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com und lichess.org (lokale PGN-Dateien oder RookHub). Auf chessable.com: FEN kopieren/suchen, erspielte XP anzeigen und API-Token auslesen.",
+  "version": "1.10.0",
+  "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com und lichess.org (lokale PGN-Dateien oder RookHub). Auf chessable.com: FEN kopieren/suchen, erspielte XP anzeigen, aktive Trainingszeit an RookHub melden und API-Token auslesen.",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
     "16": "icons/icon16.png",
@@ -17,7 +17,7 @@
     },
     {
       "matches": ["https://www.chessable.com/*", "https://chessable.com/*"],
-      "js": ["chessable-token.js"],
+      "js": ["chessable-token.js", "chessable-activity.js"],
       "run_at": "document_idle"
     },
     {

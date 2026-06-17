@@ -224,6 +224,15 @@
   }
 
   function saveRookhubConfig(cfg) {
+    // Zusaetzlich nach chrome.storage.local spiegeln: IndexedDB ist origin-scoped,
+    // also auf chess.com/lichess. Das Chessable-Activity-Script (chessable.com-Origin)
+    // kann diese IDB NICHT lesen — chrome.storage.local ist hingegen extension-weit
+    // (origin-uebergreifend) und liefert ihm so URL+Token.
+    try {
+      if (cfg && cfg.url && cfg.token) {
+        chrome.storage.local.set({ rookhubConfig: { url: cfg.url, token: cfg.token } });
+      }
+    } catch (e) { /* storage nicht verfuegbar — ignorieren */ }
     return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
   }
 

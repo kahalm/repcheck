@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.9.0
+// @version      1.10.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
-// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, show earned XP, read the API token.
+// @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
 // @homepageURL  https://github.com/kahalm/repcheck
 // @supportURL   https://github.com/kahalm/repcheck/issues
@@ -15,6 +15,8 @@
 // @match        https://www.chessable.com/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
+// @grant        GM_setValue
+// @grant        GM_getValue
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -227,6 +229,14 @@
   }
 
   function saveRookhubConfig(cfg) {
+    // Zusaetzlich in den (origin-uebergreifenden) GM-Storage spiegeln: die IndexedDB
+    // liegt auf chess.com/lichess-Origin und ist auf chessable.com NICHT lesbar. Das
+    // Chessable-Activity-Tracking liest URL+Token von dort (GM_getValue).
+    try {
+      if (typeof GM_setValue !== 'undefined' && cfg && cfg.url && cfg.token) {
+        GM_setValue('rookhubConfig', { url: cfg.url, token: cfg.token });
+      }
+    } catch (e) { /* GM-Storage nicht verfuegbar — ignorieren */ }
     return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
   }
 
@@ -1162,8 +1172,106 @@
       });
     }
     initChessableFenTools();
-    console.log('[RepertoireChecker] Chessable-Modus aktiv (FEN-Tools + Token)');
+    initChessableActivityTracking();
+    console.log('[RepertoireChecker] Chessable-Modus aktiv (FEN-Tools + Aktivitaet + Token)');
     return;
+  }
+
+  // Misst AKTIVE Chessable-Trainingszeit und meldet sie an RookHub (Kategorie
+  // „Chessable" im Trainingsziele-Tracker). „Aktiv" = Brett vorhanden + Tab
+  // sichtbar/fokussiert + kuerzliches hartes Signal (Brett-Mutation/Klick/Taste/
+  // gewerteter Zug). RookHub-Config kommt aus GM-Storage (origin-uebergreifend,
+  // gespiegelt von saveRookhubConfig); ohne Config wird nichts gesendet. Egress
+  // per fetch (CORS fuer chessable.com ist serverseitig erlaubt). Pendant zur
+  // Extension-Datei extension/chessable-activity.js.
+  function initChessableActivityTracking() {
+    if (window.__repcheckChessableActivity) return;
+    window.__repcheckChessableActivity = true;
+
+    const TICK_MS = 5000, IDLE_MS = 60000, FLUSH_MS = 60000, MIN_FLUSH_MS = 10000, MAX_FLUSH_S = 3600;
+    let activeMs = 0, movesTrained = 0, lastActivity = 0, lastFlush = Date.now();
+
+    const now = () => Date.now();
+    const bump = () => { lastActivity = now(); };
+    const boardPresent = () => !!document.querySelector('[data-square]');
+
+    document.addEventListener('pointerdown', () => { if (boardPresent()) bump(); }, true);
+    document.addEventListener('keydown', () => { if (boardPresent()) bump(); }, true);
+
+    let notifObserver = null, watchedNotif = null;
+    function watchMoveNotif() {
+      const n = document.querySelector('[data-testid="moveNotification"]');
+      if (!n || watchedNotif === n) return;
+      notifObserver?.disconnect();
+      watchedNotif = n;
+      notifObserver = new MutationObserver(() => {
+        const t = n.textContent.trim();
+        if (!t) return;
+        bump();
+        if (t === 'XP') movesTrained++;
+      });
+      notifObserver.observe(n, { childList: true, characterData: true, subtree: true });
+    }
+
+    let boardObserver = null, watchedBoard = null;
+    function watchBoard() {
+      const sq = document.querySelector('[data-square]');
+      const board = sq ? (sq.closest('#board, [class*="chessboard"], cg-container') || sq.parentElement) : null;
+      if (!board || watchedBoard === board) return;
+      boardObserver?.disconnect();
+      watchedBoard = board;
+      boardObserver = new MutationObserver(() => bump());
+      boardObserver.observe(board, { childList: true, subtree: true, attributes: true });
+    }
+
+    function readConfig() {
+      try {
+        if (typeof GM_getValue !== 'undefined') return GM_getValue('rookhubConfig', null);
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+
+    function flush(force) {
+      if (!force && activeMs < MIN_FLUSH_MS) return;
+      const secs = Math.min(MAX_FLUSH_S, Math.round(activeMs / 1000));
+      if (secs <= 0) return;
+
+      const cfg = readConfig();
+      lastFlush = now();
+      if (!cfg || !cfg.url || !cfg.token) { activeMs = 0; movesTrained = 0; return; }
+
+      const moves = movesTrained;
+      activeMs = 0; movesTrained = 0;
+      const url = String(cfg.url).replace(/\/$/, '') + '/api/extension/training-activity';
+      fetch(url, {
+        method: 'POST',
+        mode: 'cors',
+        keepalive: force,
+        headers: {
+          'Authorization': 'Bearer ' + cfg.token,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves }),
+      }).then((resp) => {
+        if (!resp.ok) { activeMs += secs * 1000; movesTrained += moves; }
+      }).catch(() => { activeMs += secs * 1000; movesTrained += moves; });
+    }
+
+    setInterval(() => {
+      watchMoveNotif();
+      watchBoard();
+      if (document.visibilityState === 'visible' && document.hasFocus()
+          && boardPresent() && (now() - lastActivity) <= IDLE_MS) {
+        activeMs += TICK_MS;
+      }
+      if (now() - lastFlush >= FLUSH_MS) flush(false);
+    }, TICK_MS);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush(true);
+    });
+    window.addEventListener('pagehide', () => flush(true));
   }
 
   // FEN-Tools fuer chessable.com: "Copy FEN"/"Search FEN"-Buttons unten rechts
@@ -1563,5 +1671,5 @@
   watchNavigation();
   refreshFloatingButton();
 
-  console.log('[RepertoireChecker] Userscript v1.9.0 loaded');
+  console.log('[RepertoireChecker] Userscript v1.10.0 loaded');
 })();

@@ -1,7 +1,18 @@
 # Plan: Chessable-Trainingszeit mitschneiden → RookHub
 
-Status: **Planung** (Trainingszeit-Messung noch kein Code). Erstellt 2026-06-17.
-Feature spannt zwei Repos: **repcheck** (Extension/Userscript) + **rookhub** (Backend/Tracker).
+Status: **UMGESETZT** (2026-06-17). Feature spannt zwei Repos: **repcheck**
+(Extension/Userscript v1.10.0) + **rookhub** (Backend/Tracker v0.153.0).
+
+> **Umgesetzt 2026-06-17:** Eigene Kategorie „Chessable" gewählt.
+> - rookhub v0.153.0: Entity `ChessableActivity` + Spalte `ChessableMinutes` in
+>   User-/Gruppen-Ziel (Migration `AddChessableActivityAndGoal`); Endpoint
+>   `POST /api/extension/training-activity`; Aggregation + DayStatus + Heute/Tracker
+>   um Chessable erweitert; CORS (chessable.com + POST); Frontend (Ziel-Feld, Heute-
+>   Karte, Tracker, History, Admin-Gruppenziel) + i18n en/de/hr; Tests grün.
+> - repcheck v1.10.0: `extension/chessable-activity.js` (isoliert, Egress über
+>   Background) + Userscript `initChessableActivityTracking()`; Config-Mirror nach
+>   chrome.storage.local / GM_setValue. Siehe „Chessable-Trainingszeit → RookHub"
+>   in repcheck/CLAUDE.md.
 
 > **Update 2026-06-17:** Als Fundament wurde die `chessable-extension`
 > (FEN-Copy/Search + XP-Tracker) in repcheck integriert (v1.9.0,
