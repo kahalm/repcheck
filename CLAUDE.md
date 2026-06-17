@@ -97,13 +97,45 @@ und wird per Copy-Button im Popup in die Zwischenablage gegeben.
 - **Privacy**: rein lokal (localStorage → clipboard / chrome.storage.local),
   kein Netzwerk-Egress, kein Logging des Tokens.
 
+## Chessable-FEN-Tools (v1.9.0+)
+
+Auf chessable.com blendet RepCheck unten rechts zwei Knoepfe ein — **Copy FEN**
+(aktuelle Brettstellung in die Zwischenablage) und **Search FEN** (oeffnet die
+Chessable-FEN-Suche, kursintern `/course/<id>/fen/…` mit Fallback global) — plus
+eine **XP-Anzeige** der zuletzt erspielten Punkte. Portiert aus
+[chessable-extension](https://github.com/kahalm/chessable-extension) (v0.9.4).
+
+- **FEN-Quelle**: bevorzugt die an den Brett-DOM-Knoten haengenden **React-Fiber-
+  Props** (`fen`/`interactiveFen`) — nur so kommen Zugrecht/Rochade/Halbzug/
+  Vollzug korrekt mit. Fallback: cm-chessboard-DOM (`[data-square]`/`[data-piece]`),
+  Legacy-Fallback chessground (`piece`-Transforms). Bei DOM-Fallback sind die
+  Metadatenfelder Best-Effort.
+- **XP-Tracker**: MutationObserver auf `[data-testid="moveNotification"]`; bei Text
+  „XP" wird `span.current-points` ausgelesen. Overstudied/Incorrect/Alternative
+  werden ignoriert; Reset bei „Next variation"-Klick.
+- **Extension**: `chessable-fen.js` laeuft als **`world: "MAIN"`**-Content-Script
+  (siehe manifest) — zwingend, weil React-Fiber-Expandos in der isolierten Welt
+  NICHT lesbar sind. Braucht KEINE chrome.*-APIs (Clipboard via
+  `navigator.clipboard`, execCommand-Fallback), laeuft daher neben dem isolierten
+  `chessable-token.js`.
+- **Userscript**: dieselbe Logik gekapselt in `initChessableFenTools()`, aufgerufen
+  im Chessable-Branch (vor dem fruehen `return`). In Tampermonkey ist der
+  React-Fiber direkt lesbar; Clipboard via `GM_setClipboard` (Fallback
+  navigator.clipboard). **Sync-Hinweis**: dies ist — wie chessable-token — ein
+  bewusst getrennter Codepfad zwischen Userscript (inline) und Extension
+  (`chessable-fen.js`, MAIN-World); bei Aenderungen beide angleichen.
+- **Privacy**: liest nur Seiten-DOM/React-State lokal; FEN geht in die
+  Zwischenablage. „Search FEN" oeffnet einen chessable.com-Tab (reine Navigation,
+  keine Datenweitergabe an Dritte). Kein zusaetzlicher Netzwerk-Egress.
+
 ## Extension-Architektur (`extension/`)
 
 ```
 extension/
-├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com; permissions: scripting/activeTab/storage
+├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com (chessable hat ZWEI: token=isoliert, fen=world:MAIN); permissions: scripting/activeTab/storage
 ├── content.js          # Hauptlogik (port vom Userscript)
-├── chessable-token.js  # Content-Script auf chessable.com: liest localStorage-JWT → chrome.storage.local
+├── chessable-token.js  # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
+├── chessable-fen.js    # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei)
 ├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren"
 ├── icons/              # 16/48/128 PNG

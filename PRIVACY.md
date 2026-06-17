@@ -3,7 +3,7 @@
 **Stand**: 2026-06-11 · **Version der Erweiterung**: 1.8.0
 
 ## Zusammenfassung in einem Satz
-Die Erweiterung sendet **keine Daten an den Autor** und kommuniziert nur mit den **Endpunkten, die der Nutzer aktiv konfiguriert**: chess.com / lichess.org (wo sie als Content-Script läuft) und — optional — die eigene RookHub-Instanz, deren URL und Token der Nutzer selbst einträgt. Auf chessable.com liest sie zusätzlich nur lokal den eigenen API-Token aus, ohne ihn zu versenden.
+Die Erweiterung sendet **keine Daten an den Autor** und kommuniziert nur mit den **Endpunkten, die der Nutzer aktiv konfiguriert**: chess.com / lichess.org (wo sie als Content-Script läuft) und — optional — die eigene RookHub-Instanz, deren URL und Token der Nutzer selbst einträgt. Auf chessable.com liest sie lokal den eigenen API-Token sowie die Brettstellung (für FEN-Kopieren/-Suchen) aus, ohne Daten zu versenden.
 
 ## Welche Daten verarbeitet die Erweiterung?
 
@@ -20,7 +20,7 @@ Die Erweiterung sendet **keine Daten an den Autor** und kommuniziert nur mit den
 
 1. **chess.com / lichess.org** — die Erweiterung läuft als Content-Script und liest die HTML-DOM der Analyse-Seite. Sie sendet **keine** Daten dorthin.
 2. **Vom Nutzer eingetragene RookHub-Instanz** — `GET /api/extension/repertoires?kind=opening` und `GET /api/extension/repertoires/{id}/pgn`. Auth via `Authorization: Bearer rkh_…`. Nur Lese-Zugriff (Token-Scope `extension` ist read-only).
-3. **chessable.com** — die Erweiterung läuft als Content-Script und liest **nur** den im `localStorage` der Seite abgelegten API-Token. Sie sendet **keine** Daten an chessable.com und baut von dort aus **keine** weiteren Netzwerk-Verbindungen auf.
+3. **chessable.com** — die Erweiterung läuft als Content-Script und (a) liest den im `localStorage` der Seite abgelegten API-Token, (b) liest für die FEN-Tools die Brettstellung aus DOM/React-State der Seite. Sie sendet **keine** Daten an chessable.com. „Search FEN" öffnet auf Knopfdruck eine chessable.com-Suchseite (reine Navigation im Browser); sonst baut sie von dort aus **keine** Netzwerk-Verbindungen auf.
 
 Die Extension kommuniziert mit **keinem** anderen Server. Insbesondere:
 - Keine Telemetrie, kein Analytics, kein Crash-Reporting

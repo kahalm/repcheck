@@ -21,7 +21,18 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 - **Settings-Panel** im Repertoire-Banner (⚙-Icon) für URL/Token/Refresh
 - **Cache** in IndexedDB — Re-Open der chess.com-Seite zeigt sofort den letzten Stand, Refresh läuft im Hintergrund
 - **Soft-Limit-Warnung** bei > 5 MB Gesamtgröße der Repertoires
+- **Chessable-FEN-Tools** (ab v1.9.0): auf `chessable.com` zwei Knöpfe unten rechts — **Copy FEN** (aktuelle Brettstellung in die Zwischenablage) und **Search FEN** (öffnet die Chessable-FEN-Suche der Stellung) — plus Anzeige der zuletzt erspielten **XP**
 - **Chessable-Token-Auslese** (ab v1.8.0): liest auf `chessable.com` den eigenen API-Token aus dem `localStorage` und bietet ihn lokal zum Kopieren an — für die Nutzung in [piratechess](https://github.com/kahalm/piratechess) (Chessable-Kurs-Export). Der Token verlässt den Browser nicht
+
+## Chessable-FEN-Tools
+
+Auf einer Chessable-Trainer-/Lern-Seite mit Brett erscheinen unten rechts:
+
+- **Copy FEN** (grün) — kopiert die aktuelle Stellung als FEN in die Zwischenablage (z.B. zum Einfügen in lichess.org/analysis oder chess.com/analysis).
+- **Search FEN** (blau) — öffnet die Chessable-FEN-Suche für die Stellung in einem neuen Tab (innerhalb des aktuellen Kurses, sonst global).
+- **XP-Badge** (gelb) — zeigt die zuletzt erspielten Punkte (ignoriert Overstudy/Incorrect/Alternative).
+
+Die FEN wird bevorzugt aus dem internen React-State von Chessable gelesen (korrektes Zugrecht/Rochade/Zugzähler), mit DOM-Fallback. Alles läuft rein lokal; „Search FEN" navigiert nur zu chessable.com.
 
 ## Chessable-Token auslesen (für piratechess)
 
@@ -100,7 +111,8 @@ repcheck/
 ├── extension/                    # Browser-Extension (MV3)
 │   ├── manifest.json
 │   ├── content.js                # Logik wie Userscript, RookHub-Fetches über Background
-│   ├── chessable-token.js        # Content-Script auf chessable.com: liest localStorage-JWT → chrome.storage.local
+│   ├── chessable-token.js        # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
+│   ├── chessable-fen.js          # Content-Script (world: MAIN) auf chessable.com: FEN-Copy/Search + XP-Anzeige
 │   ├── background.js             # Service-Worker (CORS-freie Fetches)
 │   ├── popup.html                # Toolbar-Button-Popup (Status + „Chessable-Token kopieren")
 │   ├── popup.js
