@@ -74,36 +74,30 @@ jobs:
             echo "::warning::AMO submission failed — continuing release with unsigned ZIP only"
 
       - name: Submit to Chrome Web Store (if secrets configured)
+        # Die chrome-webstore-upload-cli liest Zugangsdaten seit v4 NUR noch aus
+        # den Env-Vars EXTENSION_ID/CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN — die
+        # frueheren --client-id/--client-secret/--refresh-token-Flags wurden
+        # entfernt (sonst: "flags are no longer supported"-Fehler).
         env:
-          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-          CWS_APP_ID: ${{ secrets.CWS_APP_ID }}
+          EXTENSION_ID: ${{ secrets.CWS_APP_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
         run: |
-          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || \
-             [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$CWS_APP_ID" ]; then
+          if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || \
+             [ -z "$REFRESH_TOKEN" ] || [ -z "$EXTENSION_ID" ]; then
             echo "CWS secrets not set — skipping Chrome Web Store submission"
             exit 0
           fi
           cd extension
           ZIP="$(ls -1 web-ext-artifacts/*.zip | head -n1)"
-          echo "Uploading $ZIP to Chrome Web Store (extension $CWS_APP_ID)"
-          # upload = neue Version hochladen; publish = zum Review/Live einreichen.
+          echo "Uploading $ZIP to Chrome Web Store (extension $EXTENSION_ID)"
+          # upload --auto-publish: hochladen + zum Review/Live einreichen.
           # Schlaegt fehl, falls bereits eine Version im Review haengt (CWS erlaubt
-          # nur EINE gleichzeitig) — dann wird der Release-Job nur gewarnt, nicht hart
-          # abgebrochen.
-          npx --yes chrome-webstore-upload-cli@latest upload \
-            --source "$ZIP" \
-            --extension-id "$CWS_APP_ID" \
-            --client-id "$CWS_CLIENT_ID" \
-            --client-secret "$CWS_CLIENT_SECRET" \
-            --refresh-token "$CWS_REFRESH_TOKEN" && \
-          npx --yes chrome-webstore-upload-cli@latest publish \
-            --extension-id "$CWS_APP_ID" \
-            --client-id "$CWS_CLIENT_ID" \
-            --client-secret "$CWS_CLIENT_SECRET" \
-            --refresh-token "$CWS_REFRESH_TOKEN" || \
-            echo "::warning::Chrome Web Store submission failed (evtl. Version noch im Review?) — Release laeuft weiter"
+          # nur EINE gleichzeitig) — dann wird der Release-Job nur gewarnt, nicht
+          # hart abgebrochen.
+          npx --yes chrome-webstore-upload-cli@latest upload --source "$ZIP" --auto-publish \
+            || echo "::warning::Chrome Web Store submission failed (evtl. Version noch im Review?) — Release laeuft weiter"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
