@@ -120,6 +120,9 @@ jobs:
           fi
 
       - name: Create GitHub Release
+        # Nur bei echtem Tag-Push — bei manuellem workflow_dispatch (Branch-Ref)
+        # gibt es keinen Tag, das Erstellen wuerde scheitern.
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
