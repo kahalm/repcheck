@@ -336,6 +336,7 @@
         black: meta.black,
         result: meta.result,
         sourceUrl: meta.sourceUrl,
+        playedAt: meta.playedAt,
       }),
       expect: 'json',
     });
@@ -635,8 +636,38 @@
     return { white: null, black: null };
   }
 
+  // chess.com Date "2026.06.18" + EndTime "15:31:17 GMT+0000" → ISO-Zeitstempel.
+  function chessComPlayedAt(h) {
+    if (!h || !h.Date || !/^\d{4}\.\d{2}\.\d{2}$/.test(h.Date)) return null;
+    const tm = (h.EndTime || '').match(/(\d{2}):(\d{2}):(\d{2})/);
+    const time = tm ? `${tm[1]}:${tm[2]}:${tm[3]}` : '00:00:00';
+    const d = new Date(`${h.Date.replace(/\./g, '-')}T${time}Z`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // Kanonische Header (Spieler/Ergebnis/Datum) zu einer chess.com-Game-ID über
+  // die same-origin-Callback-API holen — die Analyse-Seite hat sie NICHT im
+  // og:title. Best-effort: bei Fehler null, dann greift der og:title-Fallback.
+  async function fetchChessComHeaders(id, isDaily) {
+    try {
+      const kind = isDaily ? 'daily' : 'live';
+      const resp = await fetch(`https://www.chess.com/callback/${kind}/game/${id}`, { headers: { 'Accept': 'application/json' } });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const h = data && data.game && data.game.pgnHeaders;
+      if (!h) return null;
+      return {
+        white: h.White ? String(h.White).slice(0, 120) : null,
+        black: h.Black ? String(h.Black).slice(0, 120) : null,
+        result: h.Result || null,
+        playedAt: chessComPlayedAt(h),
+      };
+    } catch (e) { return null; }
+  }
+
   // Metadaten der aktuellen Partie (Quelle, externe ID, Spieler, Ergebnis, URL).
-  function getGameMeta() {
+  // Async, weil chess.com die Spielernamen erst per Callback-API liefert.
+  async function getGameMeta() {
     const site = detectSiteKey();
     const meta = {
       source: site === 'chesscom' ? 'chess.com' : 'lichess',
@@ -645,6 +676,7 @@
       sourceUrl: location.href,
       white: null,
       black: null,
+      playedAt: null,
     };
     try {
       if (site === 'lichess') {
@@ -659,6 +691,16 @@
     const players = parsePlayersFromMeta();
     meta.white = players.white;
     meta.black = players.black;
+    // chess.com: kanonische Header (Spieler/Ergebnis/Datum) nachziehen.
+    if (site === 'chesscom' && meta.externalId) {
+      const h = await fetchChessComHeaders(meta.externalId, /\/daily\//.test(location.pathname));
+      if (h) {
+        if (h.white) meta.white = h.white;
+        if (h.black) meta.black = h.black;
+        if (h.result) meta.result = h.result;
+        if (h.playedAt) meta.playedAt = h.playedAt;
+      }
+    }
     return meta;
   }
 
@@ -958,7 +1000,7 @@
         btn.textContent = label; btn.title = title; btn.disabled = false;
       }, 1500);
       try {
-        const saved = await rookhubSaveGame(currentCfg, moves, getGameMeta());
+        const saved = await rookhubSaveGame(currentCfg, moves, await getGameMeta());
         const link = buildShareLink(currentCfg, saved);
         let copied = false;
         if (link) {
