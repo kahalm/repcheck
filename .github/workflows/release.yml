@@ -74,10 +74,12 @@ jobs:
             echo "::warning::AMO submission failed — continuing release with unsigned ZIP only"
 
       - name: Submit to Chrome Web Store (if secrets configured)
-        # Die chrome-webstore-upload-cli liest Zugangsdaten seit v4 NUR noch aus
-        # den Env-Vars EXTENSION_ID/CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN — die
-        # frueheren --client-id/--client-secret/--refresh-token-Flags wurden
-        # entfernt (sonst: "flags are no longer supported"-Fehler).
+        # Direkt gegen die Chrome Web Store API v1.1 statt der
+        # chrome-webstore-upload-cli — deren Flags/Env-Vars/Pflichtfelder haben
+        # sich zwischen Major-Versionen mehrfach geaendert (v4 verlangte zuletzt
+        # ein "publisherId"). curl+jq sind auf ubuntu-latest vorhanden.
+        # Ablauf: OAuth-Refresh → Upload (PUT) → Publish (POST). Fehler sind
+        # weiche Warnungen (z. B. wenn schon eine Version im Review haengt).
         env:
           EXTENSION_ID: ${{ secrets.CWS_APP_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
@@ -89,15 +91,33 @@ jobs:
             echo "CWS secrets not set — skipping Chrome Web Store submission"
             exit 0
           fi
-          cd extension
-          ZIP="$(ls -1 web-ext-artifacts/*.zip | head -n1)"
-          echo "Uploading $ZIP to Chrome Web Store (extension $EXTENSION_ID)"
-          # upload --auto-publish: hochladen + zum Review/Live einreichen.
-          # Schlaegt fehl, falls bereits eine Version im Review haengt (CWS erlaubt
-          # nur EINE gleichzeitig) — dann wird der Release-Job nur gewarnt, nicht
-          # hart abgebrochen.
-          npx --yes chrome-webstore-upload-cli@latest upload --source "$ZIP" --auto-publish \
-            || echo "::warning::Chrome Web Store submission failed (evtl. Version noch im Review?) — Release laeuft weiter"
+          ZIP="$(ls -1 extension/web-ext-artifacts/*.zip | head -n1)"
+          echo "Uploading $ZIP to Chrome Web Store"
+          ACCESS_TOKEN=$(curl -sS -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token" \
+            | jq -r '.access_token // empty')
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "::warning::CWS: OAuth-Refresh fehlgeschlagen — Chrome uebersprungen"
+            exit 0
+          fi
+          UPLOAD=$(curl -sS -X PUT -T "$ZIP" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" -H "x-goog-api-version: 2" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
+          echo "Upload-Antwort: $UPLOAD"
+          if [ "$(echo "$UPLOAD" | jq -r '.uploadState // empty')" != "SUCCESS" ]; then
+            echo "::warning::CWS-Upload nicht SUCCESS — Publish uebersprungen"
+            exit 0
+          fi
+          PUBLISH=$(curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "x-goog-api-version: 2" -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
+          echo "Publish-Antwort: $PUBLISH"
+          if echo "$PUBLISH" | jq -e '.status | index("OK")' >/dev/null 2>&1; then
+            echo "Chrome Web Store: Version eingereicht/veroeffentlicht."
+          else
+            echo "::warning::CWS-Publish nicht OK (evtl. noch im Review): $PUBLISH"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
