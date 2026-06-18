@@ -407,7 +407,10 @@
     refreshBtn.textContent = 'Refresh';
     styleButton(refreshBtn, '#616161');
     refreshBtn.title = 'Seite neu laden';
-    refreshBtn.addEventListener('click', () => { location.reload(); });
+    refreshBtn.addEventListener('click', () => {
+      window.addEventListener('beforeunload', (e) => { e.stopImmediatePropagation(); delete e.returnValue; }, { capture: true, once: true });
+      location.reload();
+    });
 
     const rememberBtn = document.createElement('button');
     rememberBtn.type = 'button';

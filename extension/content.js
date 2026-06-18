@@ -316,6 +316,25 @@
     return resp.body;
   }
 
+  async function rookhubSaveGame(cfg, pgn, sourceUrl) {
+    if (!cfg || !cfg.url || !cfg.token) throw new Error('RookHub: URL oder Token fehlt.');
+    const url = cfg.url.replace(/\/$/, '') + '/api/extension/games';
+    const resp = await rookhubProxy({
+      url,
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ pgn, sourceUrl }),
+      expect: 'json',
+    });
+    if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
+    if (!resp.ok) throw new Error(resp.error || ('RookHub HTTP ' + resp.status));
+    return resp.body;
+  }
+
   // Seit v1.6.0: RookHub-Modus zieht das Repertoire NICHT mehr vorab. Stattdessen
   // wird pro Review-Page ein POST /analyze-game gesendet (Game → Annotations). Hier
   // verifizieren wir nur Auth + zaehlen die Dateien, damit das Panel ein Feedback gibt.
@@ -551,6 +570,30 @@
     return moves;
   }
 
+  function buildGamePgn() {
+    const moves = getGameMoves();
+    if (!moves.length) return '';
+    let moveText = '';
+    for (let i = 0; i < moves.length; i++) {
+      if (i % 2 === 0) moveText += (Math.floor(i / 2) + 1) + '. ';
+      moveText += moves[i] + ' ';
+    }
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+    return '[Event "?"]\n[Site "' + location.href + '"]\n[Date "' + date + '"]\n[White "?"]\n[Black "?"]\n[Result "*"]\n\n' + moveText.trimEnd() + ' *\n';
+  }
+
+  async function copyGamePgn() {
+    const pgn = buildGamePgn();
+    if (!pgn) return;
+    try {
+      await navigator.clipboard.writeText(pgn);
+      const btn = document.getElementById('repcheck-copy-pgn');
+      if (btn) { const t = btn.textContent; btn.textContent = '✓'; setTimeout(() => { btn.textContent = t; }, 1200); }
+    } catch (e) {
+      console.warn('[RepertoireChecker] Clipboard:', e);
+    }
+  }
+
   function analyzeGame(gameMoves) {
     // Returns { deviation: int, gaps: int[] }
     // deviation: Index des ersten dauerhaften Ausreissers (-1 = kein)
@@ -722,7 +765,7 @@
         gap: 6px;
         align-items: flex-end;
       }
-      #repcheck-floating, #repcheck-chessable {
+      #repcheck-floating, #repcheck-chessable, #repcheck-copy-pgn, #repcheck-save-game {
         width: 36px; height: 36px;
         padding: 0;
         cursor: pointer;
@@ -735,8 +778,8 @@
         color: #d8d8d8;
         background: rgba(36,36,36,0.92);
       }
-      #repcheck-floating:hover, #repcheck-chessable:hover { background: rgba(56,56,56,0.95); }
-      #repcheck-floating:active, #repcheck-chessable:active { background: rgba(24,24,24,0.95); }
+      #repcheck-floating:hover, #repcheck-chessable:hover, #repcheck-copy-pgn:hover, #repcheck-save-game:hover { background: rgba(56,56,56,0.95); }
+      #repcheck-floating:active, #repcheck-chessable:active, #repcheck-copy-pgn:active, #repcheck-save-game:active { background: rgba(24,24,24,0.95); }
       /* Light-Theme-Variante: helle Pille mit dunklem Text. Wird ueber
          data-theme="light" am Floating-Wrap aktiviert (detectSiteTheme()). */
       #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID} {
@@ -753,13 +796,17 @@
         background: rgba(248,248,248,0.96); color: #6a6a6a;
       }
       #repcheck-floating-wrap[data-theme="light"] #repcheck-floating,
-      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable {
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-copy-pgn,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-save-game {
         background: rgba(255,255,255,0.96); color: #2a2a2a;
         border-color: rgba(0,0,0,0.10);
         box-shadow: 0 2px 6px rgba(0,0,0,0.15);
       }
       #repcheck-floating-wrap[data-theme="light"] #repcheck-floating:hover,
-      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable:hover {
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable:hover,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-copy-pgn:hover,
+      #repcheck-floating-wrap[data-theme="light"] #repcheck-save-game:hover {
         background: rgba(238,238,238,0.98);
       }
       /* chess.com: kraeftige Farben (Aktion-Buttons + Status-Indikator),
@@ -777,6 +824,12 @@
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable { background: #d04a3e; }
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:hover { background: #e85a4e; }
       #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:active { background: #b03a2f; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn { background: #2a5abe; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:hover { background: #3a6ace; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:active { background: #1f4aae; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game { background: #7a3abf; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:hover { background: #8a4acf; }
+      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:active { background: #6a2aaf; }
       /* Status-Indikator: gleiche Farbcodierung wie die Move-Highlights. */
       #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.deviation {
         background: #e67e22; color: #fff;
@@ -869,6 +922,50 @@
     }
   }
 
+  function injectCopyButton() {
+    const wrap = ensureFloatingWrap();
+    if (!wrap || document.getElementById('repcheck-copy-pgn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'repcheck-copy-pgn';
+    btn.type = 'button';
+    btn.textContent = '📋';
+    btn.title = 'Partie-PGN kopieren';
+    btn.addEventListener('click', copyGamePgn);
+    wrap.appendChild(btn);
+  }
+
+  async function syncSaveButton() {
+    const wrap = document.getElementById('repcheck-floating-wrap');
+    if (!wrap) return;
+    const existing = document.getElementById('repcheck-save-game');
+    const cfg = await loadRookhubConfig().catch(() => null);
+    if (!cfg || !cfg.url || !cfg.token) { existing?.remove(); return; }
+    if (existing) return;
+    const btn = document.createElement('button');
+    btn.id = 'repcheck-save-game';
+    btn.type = 'button';
+    btn.textContent = '💾';
+    btn.title = 'Partie-PGN in RookHub speichern';
+    btn.addEventListener('click', async () => {
+      const currentCfg = await loadRookhubConfig().catch(() => null);
+      if (!currentCfg) return;
+      const pgn = buildGamePgn();
+      if (!pgn) return;
+      btn.textContent = '…';
+      btn.disabled = true;
+      try {
+        await rookhubSaveGame(currentCfg, pgn, location.href);
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+      } catch (e) {
+        btn.textContent = '✗';
+        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        console.warn('[RepertoireChecker] Save failed:', e);
+      }
+    });
+    wrap.appendChild(btn);
+  }
+
   function removeFloatingControls() {
     document.getElementById('repcheck-floating-wrap')?.remove();
   }
@@ -885,6 +982,8 @@
     if (isReviewPage()) {
       injectFloatingButton();
       syncChessableButton();
+      injectCopyButton();
+      syncSaveButton();
     } else {
       removeFloatingControls();
     }
@@ -1075,6 +1174,7 @@
       highlightDeviation(-1, [], inRepertoire);
     }
     syncChessableButton();
+    syncSaveButton();
   }
 
   async function runCheck() {
@@ -1165,7 +1265,7 @@
     runCheck: rdcRunCheck,
     openSettings: rdcOpenSettings,
     refreshButton: refreshFloatingButton,
-    version: '1.5.1',
+    version: '1.12.0',
   };
 
   // ─── Lightweight SPA-Navigation Watch ───────────────────────────────
@@ -1188,5 +1288,5 @@
   watchNavigation();
   refreshFloatingButton();
 
-  console.log('[RepertoireChecker] Extension v1.5.1 loaded');
+  console.log('[RepertoireChecker] Extension v1.12.0 loaded');
 })();
