@@ -31,7 +31,6 @@
   const DEVIATION_CLASS = 'repcheck-deviation';
   const GAP_CLASS = 'repcheck-gap';
   const IN_REP_CLASS = 'repcheck-in-rep';
-  const BANNER_ID = 'repcheck-banner';
   const PANEL_ID = 'repcheck-panel';
   // Oeffentliche Default-Instanz fuer Erst-Nutzer (Vorbefuellung im Panel +
   // Registrierungs-Link).
@@ -343,6 +342,14 @@
     if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
     if (!resp.ok) throw new Error(resp.error || ('RookHub HTTP ' + resp.status));
     return resp.body;
+  }
+
+  // Öffentlicher Teilen-Link der gespeicherten Partie ({url}/g/{shareToken}).
+  // saved = Server-Antwort von rookhubSaveGame (SavedGameDetailDto).
+  function buildShareLink(cfg, saved) {
+    const token = saved && (saved.shareToken || saved.ShareToken);
+    if (!cfg || !cfg.url || !token) return '';
+    return cfg.url.replace(/\/$/, '') + '/g/' + token;
   }
 
   // Seit v1.6.0: RookHub-Modus zieht das Repertoire NICHT mehr vorab. Stattdessen
@@ -725,31 +732,6 @@
         background-color: rgba(46, 204, 113, 0.10) !important;
         border-radius: 2px;
       }
-      #${BANNER_ID} {
-        width: 36px; height: 36px;
-        padding: 0;
-        border: 1px solid rgba(255,255,255,0.10);
-        cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 16px;
-        border-radius: 6px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.30);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: rgba(28,28,28,0.92);
-        color: #d8d8d8;
-      }
-      #${BANNER_ID}.deviation {
-        background: rgba(120, 50, 28, 0.92);
-        color: #fbe2d4;
-      }
-      #${BANNER_ID}.in-repertoire {
-        background: rgba(28, 70, 46, 0.92);
-        color: #cfe9d6;
-      }
-      #${BANNER_ID}.no-repertoire {
-        background: rgba(28,28,28,0.92);
-        color: #a8a8a8;
-      }
       #${PANEL_ID} {
         position: fixed;
         top: 50%;
@@ -843,19 +825,6 @@
       #repcheck-floating:active, #repcheck-chessable:active, #repcheck-copy-pgn:active, #repcheck-save-game:active { background: rgba(24,24,24,0.95); }
       /* Light-Theme-Variante: helle Pille mit dunklem Text. Wird ueber
          data-theme="light" am Floating-Wrap aktiviert (detectSiteTheme()). */
-      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID} {
-        background: rgba(255,255,255,0.96); color: #2a2a2a;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-      }
-      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.deviation {
-        background: rgba(255, 235, 222, 0.96); color: #8a2e10;
-      }
-      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.in-repertoire {
-        background: rgba(220, 240, 226, 0.96); color: #1f5230;
-      }
-      #repcheck-floating-wrap[data-theme="light"] #${BANNER_ID}.no-repertoire {
-        background: rgba(248,248,248,0.96); color: #6a6a6a;
-      }
       #repcheck-floating-wrap[data-theme="light"] #repcheck-floating,
       #repcheck-floating-wrap[data-theme="light"] #repcheck-chessable,
       #repcheck-floating-wrap[data-theme="light"] #repcheck-copy-pgn,
@@ -870,37 +839,8 @@
       #repcheck-floating-wrap[data-theme="light"] #repcheck-save-game:hover {
         background: rgba(238,238,238,0.98);
       }
-      /* chess.com: kraeftige Farben (Aktion-Buttons + Status-Indikator),
-         gleiche Quadrat-Groesse wie Lichess. Lichess bleibt rundum dezent. */
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating,
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable,
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID} {
-        border: none;
-        color: #fff;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating { background: #2a8c4a; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:hover { background: #36a85a; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:active { background: #1f7a3d; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable { background: #d04a3e; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:hover { background: #e85a4e; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:active { background: #b03a2f; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn { background: #2a5abe; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:hover { background: #3a6ace; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:active { background: #1f4aae; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game { background: #7a3abf; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:hover { background: #8a4acf; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:active { background: #6a2aaf; }
-      /* Status-Indikator: gleiche Farbcodierung wie die Move-Highlights. */
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.deviation {
-        background: #e67e22; color: #fff;
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.in-repertoire {
-        background: #2a8c4a; color: #fff;
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.no-repertoire {
-        background: #555; color: #ddd;
-      }
+      /* Seit v1.14.0: KEINE site-spezifischen Button-Farben mehr — chess.com
+         und Lichess teilen sich dasselbe dezente Dark/Light-Styling oben. */
     `;
     document.head.appendChild(style);
   }
@@ -1014,13 +954,23 @@
       if (!moves.length) return;
       btn.textContent = '…';
       btn.disabled = true;
+      const reset = (label, title) => setTimeout(() => {
+        btn.textContent = label; btn.title = title; btn.disabled = false;
+      }, 1500);
       try {
-        await rookhubSaveGame(currentCfg, moves, getGameMeta());
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        const saved = await rookhubSaveGame(currentCfg, moves, getGameMeta());
+        const link = buildShareLink(currentCfg, saved);
+        let copied = false;
+        if (link) {
+          try { await navigator.clipboard.writeText(link); copied = true; }
+          catch (e) { /* Clipboard evtl. ohne User-Geste blockiert */ }
+        }
+        btn.textContent = copied ? '🔗' : '✓';
+        btn.title = copied ? 'Gespeichert · Teilen-Link kopiert' : 'Partie gespeichert';
+        reset('💾', 'Partie in RookHub speichern');
       } catch (e) {
         btn.textContent = '✗';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        reset('💾', 'Partie in RookHub speichern');
         console.warn('[RepertoireChecker] Save failed:', e);
       }
     });
@@ -1055,32 +1005,13 @@
     if (el) el.textContent = text;
   }
 
-  function showBanner(message, type) {
-    // Seit v1.6.4: Banner ist ein Icon-Only-Quadrat (\u2699) im Floating-Wrap;
-    // Statusfarbe codiert deviation/in-rep/no-rep, der Tooltip (title) zeigt
-    // den vollen Text. Klick oeffnet das Settings-Panel.
-    const wrap = ensureFloatingWrap();
-    if (!wrap) return;
-    let banner = document.getElementById(BANNER_ID);
-    if (!banner) {
-      banner = document.createElement('button');
-      banner.id = BANNER_ID;
-      banner.type = 'button';
-      banner.textContent = '\u2699';
-      banner.addEventListener('click', (e) => {
-        e.stopPropagation();
-        togglePanel();
-      });
-    }
-    // Banner immer oben im Wrap (vor Chessable-/Pruefen-Button).
-    if (banner.parentElement !== wrap || wrap.firstChild !== banner) {
-      wrap.insertBefore(banner, wrap.firstChild);
-    }
-    wrap.dataset.theme = detectSiteTheme();
-    wrap.dataset.site = detectSiteKey();
-    banner.title = message;
-    banner.className = type;
-  }
+  // Seit v1.14.0 (nur EXTENSION): der fr\u00fchere \u2699-Indikator (Status + Settings-
+  // \u00d6ffner) ist entfernt. Einstellungen laufen ausschlie\u00dflich \u00fcber das Popup
+  // (\u201eEinstellungen"); das Pr\u00fcf-Ergebnis bleibt direkt in der Zugliste farblich
+  // markiert (highlightDeviation). showBanner bleibt als No-op, damit die
+  // bestehenden Aufrufer unver\u00e4ndert bleiben.
+  // \u26a0\ufe0f Userscript-Sync: Im Userscript bleibt showBanner AKTIV (kein Popup dort).
+  function showBanner(_message, _type) { /* extension: kein \u2699-Banner mehr */ }
 
   function highlightDeviation(index, gaps, inRepertoire) {
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));

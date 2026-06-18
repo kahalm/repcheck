@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.13.0
+// @version      1.14.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -318,6 +318,14 @@
     if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
     if (!resp.ok) throw new Error('RookHub HTTP ' + resp.status);
     return resp.json().catch(() => null);
+  }
+
+  // Öffentlicher Teilen-Link der gespeicherten Partie ({url}/g/{shareToken}).
+  // saved = Server-Antwort von rookhubSaveGame (SavedGameDetailDto).
+  function buildShareLink(cfg, saved) {
+    const token = saved && (saved.shareToken || saved.ShareToken);
+    if (!cfg || !cfg.url || !token) return '';
+    return cfg.url.replace(/\/$/, '') + '/g/' + token;
   }
 
   // Seit v1.6.0: RookHub-Modus zieht das Repertoire NICHT mehr vorab. Stattdessen
@@ -844,37 +852,10 @@
       #repcheck-floating-wrap[data-theme="light"] #repcheck-save-game:hover {
         background: rgba(238,238,238,0.98);
       }
-      /* chess.com: kraeftige Farben (Aktion-Buttons + Status-Indikator),
-         gleiche Quadrat-Groesse wie Lichess. Lichess bleibt rundum dezent. */
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating,
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable,
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID} {
-        border: none;
-        color: #fff;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating { background: #2a8c4a; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:hover { background: #36a85a; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-floating:active { background: #1f7a3d; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable { background: #d04a3e; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:hover { background: #e85a4e; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-chessable:active { background: #b03a2f; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn { background: #2a5abe; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:hover { background: #3a6ace; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-copy-pgn:active { background: #1f4aae; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game { background: #7a3abf; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:hover { background: #8a4acf; }
-      #repcheck-floating-wrap[data-site="chesscom"] #repcheck-save-game:active { background: #6a2aaf; }
-      /* Status-Indikator: gleiche Farbcodierung wie die Move-Highlights. */
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.deviation {
-        background: #e67e22; color: #fff;
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.in-repertoire {
-        background: #2a8c4a; color: #fff;
-      }
-      #repcheck-floating-wrap[data-site="chesscom"] #${BANNER_ID}.no-repertoire {
-        background: #555; color: #ddd;
-      }
+      /* Seit v1.14.0: KEINE site-spezifischen Button-Farben mehr — chess.com
+         und Lichess teilen sich dasselbe dezente Dark/Light-Styling oben.
+         (Das ⚙-Status-/Settings-Quadrat bleibt im Userscript erhalten, nutzt
+         aber dieselbe dezente Optik wie die übrigen Buttons.) */
     `;
     document.head.appendChild(style);
   }
@@ -984,13 +965,25 @@
       if (!moves.length) return;
       btn.textContent = '…';
       btn.disabled = true;
+      const reset = () => setTimeout(() => {
+        btn.textContent = '💾'; btn.title = 'Partie in RookHub speichern'; btn.disabled = false;
+      }, 1500);
       try {
-        await rookhubSaveGame(currentCfg, moves, getGameMeta());
-        btn.textContent = '✓';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        const saved = await rookhubSaveGame(currentCfg, moves, getGameMeta());
+        const link = buildShareLink(currentCfg, saved);
+        let copied = false;
+        if (link) {
+          try {
+            if (typeof GM_setClipboard !== 'undefined') { GM_setClipboard(link, { type: 'text', mimetype: 'text/plain' }); copied = true; }
+            else if (navigator.clipboard) { await navigator.clipboard.writeText(link); copied = true; }
+          } catch (e) { /* Clipboard evtl. blockiert */ }
+        }
+        btn.textContent = copied ? '🔗' : '✓';
+        btn.title = copied ? 'Gespeichert · Teilen-Link kopiert' : 'Partie gespeichert';
+        reset();
       } catch (e) {
         btn.textContent = '✗';
-        setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
+        reset();
         console.warn('[RepertoireChecker] Save failed:', e);
       }
     });
@@ -1827,7 +1820,21 @@
       nextVarListenerAttached = true;
     }
 
+    // Seit v1.14.0: die FEN-Tools erscheinen NUR im Practice-Mode
+    // (chessable.com/practice/…) — sonst nicht.
+    function isPracticeMode() {
+      return /^\/practice(\/|$)/.test(location.pathname);
+    }
+
+    function removeUi() {
+      document.getElementById(CONTAINER_ID)?.remove();
+      pointsObserver?.disconnect();
+      pointsObserver = null;
+      watchedNotif = null;
+    }
+
     function ensureUi() {
+      if (!isPracticeMode()) { removeUi(); return; }
       createUi();
       initPointsTracker();
       attachNextVariationListener();
@@ -1837,7 +1844,9 @@
     if (document.body) ensureUi();
     else document.addEventListener('DOMContentLoaded', ensureUi, { once: true });
 
+    // Verlaesst der User den Practice-Mode (SPA-Nav), wird die UI wieder entfernt.
     const mo = new MutationObserver(() => {
+      if (!isPracticeMode()) { removeUi(); return; }
       if (!document.getElementById(CONTAINER_ID)) ensureUi();
       initPointsTracker();
     });

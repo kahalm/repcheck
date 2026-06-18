@@ -498,7 +498,21 @@
     nextVarListenerAttached = true;
   }
 
+  // Seit v1.14.0: die FEN-Tools erscheinen NUR im Practice-Mode
+  // (chessable.com/practice/…) — auf Kurs-Übersichten/Buch-Seiten o. Ä. nicht.
+  function isPracticeMode() {
+    return /^\/practice(\/|$)/.test(location.pathname);
+  }
+
+  function removeUi() {
+    document.getElementById(CONTAINER_ID)?.remove();
+    pointsObserver?.disconnect();
+    pointsObserver = null;
+    watchedNotif = null;
+  }
+
   function ensureUi() {
+    if (!isPracticeMode()) { removeUi(); return; }
     createUi();
     initPointsTracker();
     attachNextVariationListener();
@@ -510,7 +524,9 @@
 
   // UI ueber SPA-Navigationen am Leben halten; Points-Tracker neu pruefen, weil
   // Chessable das Notification-Element pro Aufgabe ersetzt (alter Observer stirbt).
+  // Verlaesst der User den Practice-Mode (SPA-Nav), wird die UI wieder entfernt.
   const mo = new MutationObserver(() => {
+    if (!isPracticeMode()) { removeUi(); return; }
     if (!document.getElementById(CONTAINER_ID)) ensureUi();
     initPointsTracker();
   });

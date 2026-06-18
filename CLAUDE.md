@@ -22,6 +22,12 @@ Wenn du an der Hauptlogik etwas änderst:
 - Dann `extension/content.js` **angleichen**: alles 1:1 übernehmen, außer die RookHub-Fetches — die laufen in der Extension über `chrome.runtime.sendMessage({type: 'rookhub-fetch', ...})` zum Background-Worker statt direkter `fetch()`.
 - Der einzige abweichende Codepfad ist `rookhubAnalyzeGame`: im Userscript direkter `fetch(POST …)`, in der Extension `rookhubProxy({ method:'POST', body, … })` zum Background-Worker.
 
+**Bewusste Divergenzen (NICHT 1:1 syncen):**
+- **⚙-Status/Settings-Banner (`showBanner`)** — seit v1.14.0 nur noch im **Userscript** aktiv (dort gibt es kein Popup, das ⚙/Panel ist die einzige Config-UI). In der **Extension** ist `showBanner` ein **No-op** und das ⚙ entfernt; Einstellungen laufen über das Popup („Einstellungen" → `openSettings` → `togglePanel`), das Prüf-Ergebnis bleibt über `highlightDeviation` direkt in der Zugliste markiert.
+- **Chessable-FEN-Tools** — `chessable-fen.js` (Extension) bzw. `initChessableFenTools` (Userscript) blenden ihre Buttons seit v1.14.0 NUR im **Practice-Mode** ein (`isPracticeMode()` = `location.pathname` beginnt mit `/practice`); bei SPA-Navigation aus dem Practice-Mode raus wird die UI per `removeUi()` wieder entfernt.
+- **Button-Styling** — seit v1.14.0 KEINE site-spezifischen Farben mehr; chess.com nutzt dasselbe dezente Dark/Light-Styling wie Lichess (die `[data-site="chesscom"]`-CSS-Overrides sind raus).
+- **„Partie speichern" (💾)** — bei Erfolg wird der öffentliche Teilen-Link `{RookHub-URL}/g/{shareToken}` (aus der Server-Antwort) in die Zwischenablage gelegt (`buildShareLink`); Button quittiert mit 🔗. Egress wie gehabt: Userscript `fetch`, Extension `rookhubProxy`.
+
 Ein einziger Build-Schritt, der die Userscript-Quelle als Basis nimmt und nur die Fetch-Funktionen patcht, wäre eine Option für die Zukunft — aktuell ist die Diff klein genug, um manuell synchron gehalten zu werden.
 
 ## Site-Adapter (v1.5.0+)
