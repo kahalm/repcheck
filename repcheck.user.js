@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.14.2
+// @version      1.14.3
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1807,15 +1807,7 @@
       styleButton(rememberBtn, '#6a1b9a');
       rememberBtn.addEventListener('click', () => rememberLine(rememberBtn));
 
-      const xpBadge = document.createElement('span');
-      xpBadge.id = 'repcheck-chessable-last-xp';
-      Object.assign(xpBadge.style, {
-        display: 'none', padding: '8px 10px', fontSize: '13px', fontWeight: 'bold',
-        fontFamily: 'system-ui, sans-serif', background: '#f9a825', color: '#333',
-        borderRadius: '6px', boxShadow: '0 2px 6px rgba(0,0,0,0.3)', lineHeight: '1',
-      });
-
-      wrap.appendChild(xpBadge);
+      // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
       wrap.appendChild(copyBtn);
       wrap.appendChild(searchBtn);
       wrap.appendChild(refreshBtn);
@@ -1878,9 +1870,8 @@
     function ensureUi() {
       if (!isPracticeMode()) { removeUi(); return; }
       createUi();
-      initPointsTracker();
-      attachNextVariationListener();
-      if (lastXP) updatePointsDisplay();
+      // XP-Tracker vorerst deaktiviert (kommt später wieder):
+      //   initPointsTracker(); attachNextVariationListener(); if (lastXP) updatePointsDisplay();
     }
 
     if (document.body) ensureUi();
@@ -1890,7 +1881,7 @@
     const mo = new MutationObserver(() => {
       if (!isPracticeMode()) { removeUi(); return; }
       if (!document.getElementById(CONTAINER_ID)) ensureUi();
-      initPointsTracker();
+      // initPointsTracker(); // XP-Tracker vorerst deaktiviert
     });
     mo.observe(document.documentElement, { childList: true, subtree: true });
   }

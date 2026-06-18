@@ -128,7 +128,11 @@ Auf chessable.com blendet RepCheck unten rechts Knoepfe ein — **Copy FEN**
 (aktuelle Brettstellung in die Zwischenablage), **Search FEN** (oeffnet die
 Chessable-FEN-Suche, kursintern `/course/<id>/fen/…` mit Fallback global),
 **Refresh** (`location.reload()`) und **Remember line** (FEN an RookHub merken,
-s. u.) — plus eine **XP-Anzeige** der zuletzt erspielten Punkte. Ursprung:
+s. u.). Die **XP-Anzeige** der zuletzt erspielten Punkte ist seit **v1.14.3
+vorerst deaktiviert** (Badge nicht gerendert, `initPointsTracker`/
+`attachNextVariationListener` nicht aufgerufen — Code bleibt für späteres
+Re-Aktivieren erhalten; gilt für Extension `chessable-fen.js` UND Userscript).
+Ursprung:
 [chessable-extension](https://github.com/kahalm/chessable-extension) (v0.9.4),
 erweitert.
 

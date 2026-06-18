@@ -419,22 +419,7 @@
     rememberBtn.title = 'Stellung in RookHub merken';
     rememberBtn.addEventListener('click', () => rememberLine(rememberBtn));
 
-    const xpBadge = document.createElement('span');
-    xpBadge.id = 'repcheck-chessable-last-xp';
-    Object.assign(xpBadge.style, {
-      display: 'none',
-      padding: '8px 10px',
-      fontSize: '13px',
-      fontWeight: 'bold',
-      fontFamily: 'system-ui, sans-serif',
-      background: '#f9a825',
-      color: '#333',
-      borderRadius: '6px',
-      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-      lineHeight: '1',
-    });
-
-    wrap.appendChild(xpBadge);
+    // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
     wrap.appendChild(copyBtn);
     wrap.appendChild(searchBtn);
     wrap.appendChild(refreshBtn);
@@ -514,21 +499,19 @@
   function ensureUi() {
     if (!isPracticeMode()) { removeUi(); return; }
     createUi();
-    initPointsTracker();
-    attachNextVariationListener();
-    if (lastXP) updatePointsDisplay();
+    // XP-Tracker vorerst deaktiviert (kommt später wieder):
+    //   initPointsTracker(); attachNextVariationListener(); if (lastXP) updatePointsDisplay();
   }
 
   if (document.body) ensureUi();
   else document.addEventListener('DOMContentLoaded', ensureUi, { once: true });
 
-  // UI ueber SPA-Navigationen am Leben halten; Points-Tracker neu pruefen, weil
-  // Chessable das Notification-Element pro Aufgabe ersetzt (alter Observer stirbt).
-  // Verlaesst der User den Practice-Mode (SPA-Nav), wird die UI wieder entfernt.
+  // UI ueber SPA-Navigationen am Leben halten. Verlaesst der User den
+  // Practice-Mode (SPA-Nav), wird die UI wieder entfernt.
   const mo = new MutationObserver(() => {
     if (!isPracticeMode()) { removeUi(); return; }
     if (!document.getElementById(CONTAINER_ID)) ensureUi();
-    initPointsTracker();
+    // initPointsTracker(); // XP-Tracker vorerst deaktiviert
   });
   mo.observe(document.documentElement, { childList: true, subtree: true });
 
