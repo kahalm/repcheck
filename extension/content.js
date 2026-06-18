@@ -316,7 +316,9 @@
     return resp.body;
   }
 
-  async function rookhubSaveGame(cfg, pgn, sourceUrl) {
+  // Schickt die SAN-Zugliste + Best-Effort-Metadaten; der Server baut daraus das PGN
+  // (reicheres Format als ein vorgebautes PGN: Spieler/Ergebnis/Game-ID für Dedup + Anzeige).
+  async function rookhubSaveGame(cfg, moves, meta) {
     if (!cfg || !cfg.url || !cfg.token) throw new Error('RookHub: URL oder Token fehlt.');
     const url = cfg.url.replace(/\/$/, '') + '/api/extension/games';
     const resp = await rookhubProxy({
@@ -327,7 +329,15 @@
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ pgn, sourceUrl }),
+      body: JSON.stringify({
+        source: meta.source,
+        moves: moves,
+        externalId: meta.externalId,
+        white: meta.white,
+        black: meta.black,
+        result: meta.result,
+        sourceUrl: meta.sourceUrl,
+      }),
       expect: 'json',
     });
     if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
@@ -592,6 +602,57 @@
     } catch (e) {
       console.warn('[RepertoireChecker] Clipboard:', e);
     }
+  }
+
+  // ─── Metadaten fürs Speichern ───────────────────────────────────────
+  // Ergebnis (1-0/0-1/1/2-1/2) aus der Zugliste lesen, falls vorhanden.
+  function getGameResult() {
+    try {
+      const a = getAdapter();
+      const root = a && a.getMoveListEl();
+      const text = (root ? root.textContent : '') || '';
+      const m = text.match(/(1-0|0-1|1\/2-1\/2|½-½)/);
+      if (!m) return null;
+      return m[1] === '½-½' ? '1/2-1/2' : m[1];
+    } catch (e) { return null; }
+  }
+
+  // Spielernamen aus og:title / document.title ("A vs B") best-effort lesen.
+  function parsePlayersFromMeta() {
+    try {
+      const og = document.querySelector('meta[property="og:title"]');
+      const t = (og && og.content) || document.title || '';
+      const m = t.match(/(.+?)\s+(?:vs\.?|–|-)\s+(.+?)(?:\s+(?:in|•|\||\(|,)|$)/i);
+      if (m) return { white: m[1].trim().slice(0, 120), black: m[2].trim().slice(0, 120) };
+    } catch (e) {}
+    return { white: null, black: null };
+  }
+
+  // Metadaten der aktuellen Partie (Quelle, externe ID, Spieler, Ergebnis, URL).
+  function getGameMeta() {
+    const site = detectSiteKey();
+    const meta = {
+      source: site === 'chesscom' ? 'chess.com' : 'lichess',
+      externalId: null,
+      result: getGameResult(),
+      sourceUrl: location.href,
+      white: null,
+      black: null,
+    };
+    try {
+      if (site === 'lichess') {
+        const m = location.pathname.match(/^\/([A-Za-z0-9]{8,12})/);
+        if (m) meta.externalId = m[1];
+      } else {
+        const m = location.pathname.match(/\/(?:live|daily|game|analysis\/game\/live)\/(\d+)/)
+          || location.pathname.match(/(\d{6,})/);
+        if (m) meta.externalId = m[1];
+      }
+    } catch (e) {}
+    const players = parsePlayersFromMeta();
+    meta.white = players.white;
+    meta.black = players.black;
+    return meta;
   }
 
   function analyzeGame(gameMoves) {
@@ -945,16 +1006,16 @@
     btn.id = 'repcheck-save-game';
     btn.type = 'button';
     btn.textContent = '💾';
-    btn.title = 'Partie-PGN in RookHub speichern';
+    btn.title = 'Partie in RookHub speichern';
     btn.addEventListener('click', async () => {
       const currentCfg = await loadRookhubConfig().catch(() => null);
       if (!currentCfg) return;
-      const pgn = buildGamePgn();
-      if (!pgn) return;
+      const moves = getGameMoves();
+      if (!moves.length) return;
       btn.textContent = '…';
       btn.disabled = true;
       try {
-        await rookhubSaveGame(currentCfg, pgn, location.href);
+        await rookhubSaveGame(currentCfg, moves, getGameMeta());
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = '💾'; btn.disabled = false; }, 1500);
       } catch (e) {

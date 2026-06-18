@@ -72,6 +72,25 @@ Die Extension kann das Repertoire wahlweise aus einem **lokalen Ordner** (File S
   - Key `config` → `{ url: string, token: string }`
   - Key `cache` → `{ pgnTexts: string[], savedAt: number, count: number }`
 
+## Partie kopieren / speichern → RookHub (Copy v1.12.0, Save-Payload v1.13.0)
+
+Auf chess.com/lichess-Review-/Analyse-Seiten blendet RepCheck zwei Buttons in den Floating-Wrap:
+- **📋 `#repcheck-copy-pgn`** (`copyGamePgn` → `buildGamePgn`): kopiert die aktuelle Partie als PGN
+  in die Zwischenablage (immer sichtbar im Review-Modus).
+- **💾 `#repcheck-save-game`** (`syncSaveButton`): **nur wenn RookHub konfiguriert** — schickt die
+  Partie an `POST /api/extension/games`; sie erscheint im RookHub-Bereich **„Partien"** (`/games`).
+
+**Save-Payload (v1.13.0+)**: `{ source, moves[], externalId?, white?, black?, result?, sourceUrl? }`
+— die per Site-Adapter (`getGameMoves`) extrahierte SAN-Hauptlinie + Best-Effort-Metadaten
+(`getGameMeta`: `externalId` aus URL, `result` aus dem Ergebnis-Token der Zugliste, `white`/`black`
+aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupliziert über
+(User, Source, ExternalId). (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
+`{ pgn, sourceUrl }` — auf das reichere Format umgestellt, ohne den 📋-Copy-Pfad zu ändern.)
+
+- **Egress**: **Userscript** = `rookhubSaveGame()` direkter `fetch`; **Extension** = `rookhubProxy()`
+  zum Background-Worker (CORS-frei). Beide Pfade identisch außer diesem Fetch (wie `rookhubAnalyzeGame`).
+- **Privacy**: liest nur Zugliste + Seitentitel/URL lokal; sendet ausschließlich an die konfigurierte RookHub-Instanz.
+
 ## Chessable-Token-Auslese (v1.8.0+)
 
 Unabhaengig von der Repertoire-Pruefung kann die Extension auf **chessable.com**
