@@ -99,16 +99,32 @@ function renderRepertoireList(items) {
   REP_EL.style.display = 'block';
 }
 
+// Die RookHub-Config wird vom Content-Script auch nach chrome.storage.local
+// gespiegelt (saveRookhubConfig, Key `rookhubConfig`). Das ist hier die
+// VERLAESSLICHE Quelle: die IndexedDB `RepertoireCheckerDB` ist origin-scoped
+// (chess.com/lichess) und im Popup-Origin (chrome-extension://…) NICHT lesbar —
+// readRookhubStore() liefert hier also nie die Config. chrome.storage.local ist
+// dagegen extension-weit.
+function readRookhubConfigFromStorage() {
+  return new Promise((resolve) => {
+    if (!chrome.storage || !chrome.storage.local) { resolve(null); return; }
+    chrome.storage.local.get('rookhubConfig', (res) => {
+      const c = res && res.rookhubConfig;
+      resolve(c && c.url && c.token ? c : null);
+    });
+  });
+}
+
 async function refreshStatus() {
   let store;
   try {
     store = await readRookhubStore();
   } catch {
-    STATUS_EL.className = 'status empty';
-    STATUS_EL.textContent = 'Status nicht verfügbar';
-    return;
+    store = { config: null, cache: null };
   }
-  const { config, cache } = store;
+  // chrome.storage.local-Spiegel hat Vorrang vor der (im Popup-Origin leeren) IDB.
+  const config = (await readRookhubConfigFromStorage()) || store.config;
+  const { cache } = store;
 
   if (config && config.url && config.token) {
     STATUS_EL.className = 'status';
