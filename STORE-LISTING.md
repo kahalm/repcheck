@@ -13,15 +13,17 @@ Keep this file in sync when the listing text changes.
 
 Chrome "Summary" must be ≤132 characters. AMO "Summary" allows more but keep it short.
 
-> Highlights where your games leave your opening repertoire on chess.com & lichess — with RookHub sync and Chessable FEN tools.
+> In the analysis board on chess.com & lichess: highlights where your game left your opening repertoire. RookHub sync + FEN tools.
 
-(123 characters — fits Chrome's 132 limit.)
+(128 characters — fits Chrome's 132 limit.)
 
 ---
 
 ## Description (Chrome "Description" / AMO "Description")
 
-> **RepCheck** shows you where your games leave your opening repertoire — right on **chess.com** and **lichess**.
+> **RepCheck** shows you where your games leave your opening repertoire — in the **analysis board** on **chess.com** and **lichess**.
+>
+> **⚠️ Works in the analysis / game-review board only.** Open a finished game or the analysis board and run the check there — RepCheck does **not** run during a live, ongoing game.
 >
 > **Features**
 > - Highlights the first out-of-repertoire move and transpositions directly in the move list.
