@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Checker",
-  "version": "1.14.4",
+  "version": "1.14.5",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com & lichess (PGN oder RookHub); chessable: FEN-Tools + RookHub.",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
@@ -52,6 +52,9 @@
       "data_collection_permissions": {
         "required": ["none"]
       }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
     }
   }
 }
