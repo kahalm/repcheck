@@ -252,5 +252,15 @@ werden. Entweder warten bis das Review durch ist und dann das neue ZIP
 hochladen, oder im Developer Dashboard die Pending-Submission canceln, Paket
 ersetzen und neu einreichen (setzt die Review-Uhr zurueck). Permission-/Host-
 Aenderungen (z. B. v1.8.0: `storage` + chessable.com) loesen ohnehin ein
-erneutes, ggf. gruendlicheres Review aus. CWS-Upload ist manuell (ZIP aus
-`web-ext build`) — dafuer gibt es keine Automation.
+erneutes, ggf. gruendlicheres Review aus.
+
+CWS-Upload ist seit 2026-06-18 ebenfalls per CI automatisiert: derselbe
+`release.yml`-Tag-Trigger laedt die ZIP per Chrome-Web-Store-Publish-API hoch
+und reicht sie ein, **sofern** die Secrets `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`,
+`CWS_REFRESH_TOKEN`, `CWS_APP_ID` gesetzt sind (sonst Skip). Den `refresh_token`
+einmalig lokal erzeugen mit `node extension/get-cws-refresh-token.mjs <id> <secret>`
+(OAuth-Client Typ „Desktop app", Redirect `http://localhost:8976`, Chrome Web
+Store API im Google-Cloud-Projekt aktiviert). Wegen der „nur EINE Version im
+Review"-Regel schlaegt der Step nur als Warnung fehl, wenn schon eine haengt —
+der GitHub-Release laeuft trotzdem durch. Manueller Fallback (ZIP aus
+`web-ext build` im Developer Dashboard hochladen) bleibt moeglich.
