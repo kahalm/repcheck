@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.14.5
+// @version      1.14.6
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1762,8 +1762,31 @@
       setTimeout(() => { btn.textContent = oldText; btn.style.background = oldBg; }, 1200);
     }
 
+    // Mobile: Buttons höher setzen (+ Safe-Area) + umbrechen, damit sie nicht
+    // die Firefox-/System-Leiste unten überdecken. !important wegen Inline-Style.
+    const MOBILE_STYLE_ID = 'repcheck-chessable-fen-mobile-style';
+    function injectMobileStyle() {
+      if (document.getElementById(MOBILE_STYLE_ID)) return;
+      const st = document.createElement('style');
+      st.id = MOBILE_STYLE_ID;
+      st.textContent = `
+        @media (max-width: 768px) {
+          #${CONTAINER_ID} {
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 88px) !important;
+            right: calc(env(safe-area-inset-right, 0px) + 8px) !important;
+            left: 8px !important;
+            flex-wrap: wrap !important;
+            justify-content: flex-end !important;
+            gap: 6px !important;
+          }
+          #${CONTAINER_ID} button { padding: 6px 10px !important; font-size: 12px !important; }
+        }`;
+      (document.head || document.documentElement).appendChild(st);
+    }
+
     function createUi() {
       if (document.getElementById(CONTAINER_ID)) return;
+      injectMobileStyle();
       const wrap = document.createElement('div');
       wrap.id = CONTAINER_ID;
       Object.assign(wrap.style, {

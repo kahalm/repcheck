@@ -357,8 +357,32 @@
     btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.9'; });
   }
 
+  // Mobile: die Floating-Buttons kollidieren unten mit der Firefox-/System-
+  // Leiste. Auf schmalen Screens daher höher setzen (+ Safe-Area) und umbrechen
+  // lassen. !important, weil die Basis-Position als Inline-Style gesetzt ist.
+  const MOBILE_STYLE_ID = 'repcheck-chessable-fen-mobile-style';
+  function injectMobileStyle() {
+    if (document.getElementById(MOBILE_STYLE_ID)) return;
+    const st = document.createElement('style');
+    st.id = MOBILE_STYLE_ID;
+    st.textContent = `
+      @media (max-width: 768px) {
+        #${CONTAINER_ID} {
+          bottom: calc(env(safe-area-inset-bottom, 0px) + 88px) !important;
+          right: calc(env(safe-area-inset-right, 0px) + 8px) !important;
+          left: 8px !important;
+          flex-wrap: wrap !important;
+          justify-content: flex-end !important;
+          gap: 6px !important;
+        }
+        #${CONTAINER_ID} button { padding: 6px 10px !important; font-size: 12px !important; }
+      }`;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
   function createUi() {
     if (document.getElementById(CONTAINER_ID)) return;
+    injectMobileStyle();
 
     const wrap = document.createElement('div');
     wrap.id = CONTAINER_ID;
