@@ -28,6 +28,8 @@
   let movesTrained = 0;
   let lastActivity = 0;
   let lastFlush = Date.now();
+  let courseKind = null;      // RepertoireKind-Zahl (0-3) oder null = unbekannt
+  let lookedUpCourseId = null; // verhindert Doppel-Lookups bei unveraenderter Kurs-ID
 
   const now = () => Date.now();
   const bump = () => { lastActivity = now(); };
@@ -74,6 +76,36 @@
     });
   }
 
+  function courseIdFromUrl() {
+    const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
+    return m ? m[1] : null;
+  }
+
+  // Einmalig pro Kurs-ID: fragt RookHub-Repertoires ab und sucht den passenden Kind-Wert.
+  async function lookupCourseKind() {
+    const courseId = courseIdFromUrl();
+    if (!courseId || courseId === lookedUpCourseId) return;
+    lookedUpCourseId = courseId;
+    courseKind = null;
+
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) return;
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    try {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/repertoires',
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' },
+        expect: 'json',
+      }, (resp) => {
+        if (chrome.runtime.lastError || !resp || !resp.ok || !Array.isArray(resp.body)) return;
+        const match = resp.body.find(r => r.chessableCourseId === courseId);
+        if (match != null) courseKind = match.kind;
+      });
+    } catch (e) {}
+  }
+
   async function flush(force) {
     if (!force && activeMs < MIN_FLUSH_MS) return;
     const secs = Math.min(MAX_FLUSH_S, Math.round(activeMs / 1000));
@@ -100,7 +132,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind }),
         expect: 'json',
       }, (resp) => {
         if (chrome.runtime.lastError || !resp || !resp.ok) {
@@ -116,7 +148,9 @@
   }
 
   // ---- Takt ----
+  lookupCourseKind();
   setInterval(() => {
+    lookupCourseKind(); // neu bei SPA-Navigation in anderen Kurs
     watchMoveNotif();
     watchBoard();
     if (document.visibilityState === 'visible' && document.hasFocus()

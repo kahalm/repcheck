@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.14.6
+// @version      1.15.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1385,6 +1385,7 @@
 
     const TICK_MS = 5000, IDLE_MS = 60000, FLUSH_MS = 60000, MIN_FLUSH_MS = 10000, MAX_FLUSH_S = 3600;
     let activeMs = 0, movesTrained = 0, lastActivity = 0, lastFlush = Date.now();
+    let courseKind = null, lookedUpCourseId = null;
 
     const now = () => Date.now();
     const bump = () => { lastActivity = now(); };
@@ -1426,6 +1427,29 @@
       return null;
     }
 
+    function courseIdFromUrl() {
+      const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
+      return m ? m[1] : null;
+    }
+
+    function lookupCourseKind() {
+      const courseId = courseIdFromUrl();
+      if (!courseId || courseId === lookedUpCourseId) return;
+      lookedUpCourseId = courseId;
+      courseKind = null;
+      const cfg = readConfig();
+      if (!cfg || !cfg.url || !cfg.token) return;
+      fetch(String(cfg.url).replace(/\/$/, '') + '/api/extension/repertoires', {
+        method: 'GET',
+        mode: 'cors',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' },
+      }).then(r => r.ok ? r.json() : null).then(list => {
+        if (!Array.isArray(list)) return;
+        const match = list.find(r => r.chessableCourseId === courseId);
+        if (match != null) courseKind = match.kind;
+      }).catch(() => {});
+    }
+
     function flush(force) {
       if (!force && activeMs < MIN_FLUSH_MS) return;
       const secs = Math.min(MAX_FLUSH_S, Math.round(activeMs / 1000));
@@ -1447,13 +1471,15 @@
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind }),
       }).then((resp) => {
         if (!resp.ok) { activeMs += secs * 1000; movesTrained += moves; }
       }).catch(() => { activeMs += secs * 1000; movesTrained += moves; });
     }
 
+    lookupCourseKind();
     setInterval(() => {
+      lookupCourseKind(); // neu bei SPA-Navigation in anderen Kurs
       watchMoveNotif();
       watchBoard();
       if (document.visibilityState === 'visible' && document.hasFocus()
