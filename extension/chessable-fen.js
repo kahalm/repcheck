@@ -539,5 +539,18 @@
   });
   mo.observe(document.documentElement, { childList: true, subtree: true });
 
+  // Kurs-ID an die isolierte Welt (chessable-activity.js) spiegeln: dort ist der
+  // React-Fiber nicht lesbar und die Practice-URL (/practice/…) traegt keine Kurs-ID.
+  // Nur bei Aenderung posten (kein Spam); deckt initiales Laden + SPA-Navigation ab.
+  let lastBroadcastCourseId = null;
+  function broadcastCourseId() {
+    const id = currentCourseId();
+    if (id === lastBroadcastCourseId) return;
+    lastBroadcastCourseId = id;
+    window.postMessage({ __repcheck: 'course-id', courseId: id }, location.origin);
+  }
+  broadcastCourseId();
+  setInterval(broadcastCourseId, 5000);
+
   console.log('[RepCheck Chessable] FEN-Tools aktiv');
 })();

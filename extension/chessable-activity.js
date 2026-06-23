@@ -28,8 +28,9 @@
   let movesTrained = 0;
   let lastActivity = 0;
   let lastFlush = Date.now();
-  let courseKind = null;      // RepertoireKind-Zahl (0-3) oder null = unbekannt
+  let courseKind = null;       // RepertoireKind (vom Server, z. B. "Opening") oder null = unbekannt
   let lookedUpCourseId = null; // verhindert Doppel-Lookups bei unveraenderter Kurs-ID
+  let bridgedCourseId = null;  // Kurs-ID aus chessable-fen.js (MAIN-World, liest den React-Fiber)
 
   const now = () => Date.now();
   const bump = () => { lastActivity = now(); };
@@ -76,14 +77,30 @@
     });
   }
 
-  function courseIdFromUrl() {
+  // Kurs-ID ermitteln. In der isolierten Welt ist der React-Fiber NICHT lesbar und
+  // die Practice-URL (/practice/…) traegt keine Kurs-ID — daher bevorzugt die von
+  // chessable-fen.js (MAIN-World) gespiegelte ID, sonst URL- bzw. Link-Heuristik.
+  function currentCourseId() {
+    if (bridgedCourseId) return bridgedCourseId;
     const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
-    return m ? m[1] : null;
+    if (m) return m[1];
+    for (const a of document.querySelectorAll('a[href*="/course/"]')) {
+      const am = /\/course\/(\d+)(?:\/|$)/.exec(a.getAttribute('href') || '');
+      if (am) return am[1];
+    }
+    return null;
   }
+
+  // chessable-fen.js (MAIN-World) spiegelt die per React-Fiber aufgeloeste Kurs-ID hierher.
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data || e.data.__repcheck !== 'course-id') return;
+    const id = e.data.courseId;
+    bridgedCourseId = (id != null && /^\d+$/.test(String(id))) ? String(id) : null;
+  });
 
   // Einmalig pro Kurs-ID: fragt RookHub-Repertoires ab und sucht den passenden Kind-Wert.
   async function lookupCourseKind() {
-    const courseId = courseIdFromUrl();
+    const courseId = currentCourseId();
     if (!courseId || courseId === lookedUpCourseId) return;
     lookedUpCourseId = courseId;
     courseKind = null;

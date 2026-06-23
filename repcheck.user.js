@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.15.0
+// @version      1.15.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1427,13 +1427,41 @@
       return null;
     }
 
-    function courseIdFromUrl() {
-      const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
-      return m ? m[1] : null;
+    // Kurs-ID robust ermitteln: URL → Kurs-Links → React-Fiber. Im Page-Kontext ist
+    // der Fiber lesbar; die Practice-URL (/practice/…) traegt keine Kurs-ID. Logik
+    // analog currentCourseId() in initChessableFenTools().
+    function getReactFiber(el) {
+      if (!el) return null;
+      const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+      return key ? el[key] : null;
+    }
+    function fiberCourseId(props) {
+      if (!props || typeof props !== 'object') return null;
+      const candidates = [props.courseId, props.courseID, props.course_id, props.course?.id, props.course?.courseId];
+      for (const c of candidates) {
+        if (c != null && /^\d+$/.test(String(c))) return String(c);
+      }
+      return null;
+    }
+    function currentCourseId() {
+      const urlM = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
+      if (urlM) return urlM[1];
+      for (const a of document.querySelectorAll('a[href*="/course/"]')) {
+        const m = /\/course\/(\d+)(?:\/|$)/.exec(a.getAttribute('href') || '');
+        if (m) return m[1];
+      }
+      const anchor = document.getElementById('board') || document.querySelector('[data-square]');
+      let fiber = getReactFiber(anchor), depth = 0;
+      while (fiber && depth < 60) {
+        const id = fiberCourseId(fiber.memoizedProps) || fiberCourseId(fiber.pendingProps);
+        if (id) return id;
+        fiber = fiber.return; depth++;
+      }
+      return null;
     }
 
     function lookupCourseKind() {
-      const courseId = courseIdFromUrl();
+      const courseId = currentCourseId();
       if (!courseId || courseId === lookedUpCourseId) return;
       lookedUpCourseId = courseId;
       courseKind = null;
