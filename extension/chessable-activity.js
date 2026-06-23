@@ -31,6 +31,7 @@
   let courseKind = null;       // RepertoireKind (vom Server, z. B. "Opening") oder null = unbekannt
   let lookedUpCourseId = null; // verhindert Doppel-Lookups bei unveraenderter Kurs-ID
   let bridgedCourseId = null;  // Kurs-ID aus chessable-fen.js (MAIN-World, liest den React-Fiber)
+  let bridgedCourseName = null; // Kursname aus chessable-fen.js (best-effort, nur Anzeige)
 
   const now = () => Date.now();
   const bump = () => { lastActivity = now(); };
@@ -96,7 +97,23 @@
     if (e.source !== window || !e.data || e.data.__repcheck !== 'course-id') return;
     const id = e.data.courseId;
     bridgedCourseId = (id != null && /^\d+$/.test(String(id))) ? String(id) : null;
+    const name = e.data.courseName;
+    bridgedCourseName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 200) : null;
   });
+
+  // Lesbarer Kursname (Fallback, falls die MAIN-World-Bridge noch nichts gespiegelt hat).
+  function currentCourseName() {
+    if (bridgedCourseName) return bridgedCourseName;
+    const id = currentCourseId();
+    if (id) {
+      for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
+        const txt = (a.textContent || '').trim();
+        if (txt && txt.length <= 200) return txt;
+      }
+    }
+    const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
+    return t || null;
+  }
 
   // Einmalig pro Kurs-ID: fragt RookHub-Repertoires ab und sucht den passenden Kind-Wert.
   async function lookupCourseKind() {
@@ -149,7 +166,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: currentCourseName() }),
         expect: 'json',
       }, (resp) => {
         if (chrome.runtime.lastError || !resp || !resp.ok) {

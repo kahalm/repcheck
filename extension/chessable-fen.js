@@ -539,15 +539,31 @@
   });
   mo.observe(document.documentElement, { childList: true, subtree: true });
 
-  // Kurs-ID an die isolierte Welt (chessable-activity.js) spiegeln: dort ist der
+  // Lesbarer Kursname (best-effort, nur Anzeige): Text des Kurs-Links, sonst document.title.
+  function currentCourseName() {
+    const id = currentCourseId();
+    if (id) {
+      for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
+        const txt = (a.textContent || '').trim();
+        if (txt && txt.length <= 200) return txt;
+      }
+    }
+    const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
+    return t || null;
+  }
+
+  // Kurs-ID (+ Name) an die isolierte Welt (chessable-activity.js) spiegeln: dort ist der
   // React-Fiber nicht lesbar und die Practice-URL (/practice/…) traegt keine Kurs-ID.
   // Nur bei Aenderung posten (kein Spam); deckt initiales Laden + SPA-Navigation ab.
   let lastBroadcastCourseId = null;
+  let lastBroadcastCourseName = null;
   function broadcastCourseId() {
     const id = currentCourseId();
-    if (id === lastBroadcastCourseId) return;
+    const name = currentCourseName();
+    if (id === lastBroadcastCourseId && name === lastBroadcastCourseName) return;
     lastBroadcastCourseId = id;
-    window.postMessage({ __repcheck: 'course-id', courseId: id }, location.origin);
+    lastBroadcastCourseName = name;
+    window.postMessage({ __repcheck: 'course-id', courseId: id, courseName: name }, location.origin);
   }
   broadcastCourseId();
   setInterval(broadcastCourseId, 5000);

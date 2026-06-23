@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.15.1
+// @version      1.16.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1460,6 +1460,19 @@
       return null;
     }
 
+    // Lesbarer Kursname (best-effort, nur Anzeige): Text des Kurs-Links, sonst document.title.
+    function currentCourseName() {
+      const id = currentCourseId();
+      if (id) {
+        for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
+          const txt = (a.textContent || '').trim();
+          if (txt && txt.length <= 200) return txt;
+        }
+      }
+      const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
+      return t || null;
+    }
+
     function lookupCourseKind() {
       const courseId = currentCourseId();
       if (!courseId || courseId === lookedUpCourseId) return;
@@ -1499,7 +1512,7 @@
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: currentCourseName() }),
       }).then((resp) => {
         if (!resp.ok) { activeMs += secs * 1000; movesTrained += moves; }
       }).catch(() => { activeMs += secs * 1000; movesTrained += moves; });
