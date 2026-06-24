@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.16.0
+// @version      1.16.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1460,14 +1460,31 @@
       return null;
     }
 
-    // Lesbarer Kursname (best-effort, nur Anzeige): Text des Kurs-Links, sonst document.title.
+    // Navigations-/UI-Linktexte auf der Practice-Seite, die KEIN Kursname sind
+    // (z. B. „Practice Moves", „nächsten Kapitel", „Next chapter", „Previous variation").
+    // Diese Links zeigen ebenfalls auf /course/{id}/… und haben sonst den echten Titel verdrängt.
+    function isNavLabel(txt) {
+      const t = txt.toLowerCase().trim();
+      // Eigenständige Nav-/UI-Labels.
+      if (/^(practice( moves)?|next|previous|prev|continue|weiter)$/.test(t)) return true;
+      // „Next/Previous chapter|variation|move|line" bzw. deutsche Entsprechungen.
+      if (/^(next|previous|prev|nächst\w*|naechst\w*|vorherig\w*|vorig\w*|letzt\w*)\b/.test(t)
+          && /(chapter|variation|move|line|kapitel|variante|zug|linie)/.test(t)) return true;
+      return false;
+    }
+
+    // Lesbarer Kursname (best-effort, nur Anzeige): bevorzugt den beschreibendsten
+    // Kurs-Linktext (Nav-Labels werden verworfen), sonst document.title.
     function currentCourseName() {
       const id = currentCourseId();
       if (id) {
+        const candidates = [];
         for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
-          const txt = (a.textContent || '').trim();
-          if (txt && txt.length <= 200) return txt;
+          const txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+          if (txt && txt.length <= 200 && !isNavLabel(txt)) candidates.push(txt);
         }
+        // Kurstitel ist i. d. R. der längste, beschreibende Linktext (Nav-Labels sind raus).
+        if (candidates.length) return candidates.sort((a, b) => b.length - a.length)[0];
       }
       const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
       return t || null;
