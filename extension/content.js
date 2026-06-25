@@ -222,14 +222,19 @@
     return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY);
   }
 
-  function saveRookhubConfig(cfg) {
+  async function saveRookhubConfig(cfg) {
     // Zusaetzlich nach chrome.storage.local spiegeln: IndexedDB ist origin-scoped,
     // also auf chess.com/lichess. Das Chessable-Activity-Script (chessable.com-Origin)
     // kann diese IDB NICHT lesen — chrome.storage.local ist hingegen extension-weit
     // (origin-uebergreifend) und liefert ihm so URL+Token.
+    // Der Set wird ABGEWARTET, weil der Background-Worker die erlaubte Ziel-Origin aus
+    // chrome.storage.local liest, bevor der erste Proxy-Fetch (Verbindungs-Check) laeuft.
     try {
       if (cfg && cfg.url && cfg.token) {
-        chrome.storage.local.set({ rookhubConfig: { url: cfg.url, token: cfg.token } });
+        await new Promise((resolve) => {
+          try { chrome.storage.local.set({ rookhubConfig: { url: cfg.url, token: cfg.token } }, resolve); }
+          catch (e) { resolve(); }
+        });
       }
     } catch (e) { /* storage nicht verfuegbar — ignorieren */ }
     return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
@@ -1299,7 +1304,7 @@
     runCheck: rdcRunCheck,
     openSettings: rdcOpenSettings,
     refreshButton: refreshFloatingButton,
-    version: '1.12.0',
+    version: '1.17.0',   // mit manifest.json/@version synchron halten
   };
 
   // ─── Lightweight SPA-Navigation Watch ───────────────────────────────
