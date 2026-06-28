@@ -2,6 +2,8 @@
 
 Markiert auf chess.com- und lichess.org-Analyse-Seiten, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft. Repertoire kann lokal als `.pgn`-Ordner liegen, gepasted werden — oder live aus einer eigenen [RookHub](https://github.com/kahalm/rookhub)-Instanz gezogen werden.
 
+💬 **Community / Fragen?** Komm in unseren Discord: https://discord.gg/nKQCdC7Xff
+
 Zwei Distributions-Pfade:
 
 | Variante | Datei / Verzeichnis | Installation |
