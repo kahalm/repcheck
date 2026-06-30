@@ -15,6 +15,7 @@ module.exports = {
   ignoreFiles: [
     'web-ext-config.cjs',
     'generate-icons.py',
+    'lib/**',          // nur Test-Spiegel der reinen Logik, nicht ins Add-on bundeln
     '**/*.md',
     '**/.DS_Store',
   ],
