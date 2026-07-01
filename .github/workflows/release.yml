@@ -86,6 +86,13 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
         run: |
+          # Whitespace (auch \r/Newline aus Copy-Paste bzw. Web-UI) aus den Secrets strippen —
+          # ein Trailing-Newline in client_id führt sonst zu "invalid_client: OAuth client not found",
+          # obwohl der Wert lokal (ohne Umbruch) funktioniert. Keiner der Werte enthält interne Spaces.
+          CLIENT_ID="$(printf %s "$CLIENT_ID" | tr -d '[:space:]')"
+          CLIENT_SECRET="$(printf %s "$CLIENT_SECRET" | tr -d '[:space:]')"
+          REFRESH_TOKEN="$(printf %s "$REFRESH_TOKEN" | tr -d '[:space:]')"
+          EXTENSION_ID="$(printf %s "$EXTENSION_ID" | tr -d '[:space:]')"
           if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || \
              [ -z "$REFRESH_TOKEN" ] || [ -z "$EXTENSION_ID" ]; then
             echo "CWS secrets not set — skipping Chrome Web Store submission"
