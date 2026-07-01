@@ -137,8 +137,17 @@ Ursprung:
 erweitert.
 
 **Remember line (v1.11.0+):** schickt die aktuelle FEN + Kontext (Kurs-ID,
-Seiten-URL) an `POST /api/extension/remember-line` der RookHub-Instanz → dort in
-`RememberedPositions` gespeichert (Verwendungszweck offen). Egress wie beim
+**Kursname**, Seiten-URL) an `POST /api/extension/remember-line` der RookHub-Instanz → dort in
+`RememberedPositions` gespeichert (Verwendungszweck offen). **Kursname über den Bearer
+(v1.19.0+):** statt der unzuverlässigen DOM-/React-Fiber-Heuristik wird der echte Kurstitel
+über den erfassten Chessable-Bearer aufgelöst — `chessable-course-name`-Resolver (in
+`chessable-activity.js`, isolierte Welt) decodiert die `uid` aus dem in `chrome.storage.local`
+liegenden JWT (`chessableToken`) und ruft **same-origin** Chessables `getHomeData` ab
+(`homeData.booksList[]` → `bid→Name`-Karte, in `chrome.storage.local`/GM-Storage gecacht, TTL 6 h).
+Same-origin auf chessable.com → keine CORS-/Cloudflare-Hürde, der Bearer verlässt den Browser
+nicht (Anfrage geht an chessable.com). Fehlt der Name (kein Token/Miss), löst ihn der Server aus
+dem beim User hinterlegten Bearer auf. Reine Bausteine (uid-Decode, Map-Parsing) gespiegelt in
+`extension/lib/chessable-course-names.js` (Node-Test `test/chessable-course-names.test.js`). Egress wie beim
 Activity-Tracking: **Extension** = chessable-fen.js (MAIN-World) postet per
 `window.postMessage` zur isolierten chessable-activity.js, die mit RookHub-Config
 + Background-Worker sendet (Token bleibt aus dem Page-Kontext);
@@ -203,6 +212,7 @@ extension/
 ├── chessable-token.js    # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
 ├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub
 ├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
+├── lib/chessable-course-names.js # reine Spiegel-Logik (uid-Decode + getHomeData-Parsing) für Node-Tests
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei)
 ├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren"
 ├── icons/              # 16/48/128 PNG

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.18.2
+// @version      1.19.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1366,8 +1366,11 @@
         alert('RepCheck: Chessable-Token in die Zwischenablage kopiert.');
       });
     }
-    initChessableFenTools();
-    initChessableActivityTracking();
+    // Autoritativer Kursname über den Chessable-Bearer (localStorage-JWT → getHomeData);
+    // geteilt zwischen FEN-Tools („Remember line") und Aktivitaets-Tracking.
+    const courseNameApi = createChessableCourseNameApi(CHESSABLE_LS_KEY, extractChessableJwt);
+    initChessableFenTools(courseNameApi);
+    initChessableActivityTracking(courseNameApi);
     console.log('[RepertoireChecker] Chessable-Modus aktiv (FEN-Tools + Aktivitaet + Token)');
     return;
   }
@@ -1379,7 +1382,85 @@
   // gespiegelt von saveRookhubConfig); ohne Config wird nichts gesendet. Egress
   // per fetch (CORS fuer chessable.com ist serverseitig erlaubt). Pendant zur
   // Extension-Datei extension/chessable-activity.js.
-  function initChessableActivityTracking() {
+  // Baut aus dem eingeloggten Chessable-JWT (localStorage) + getHomeData eine autoritative
+  // bid→Name-Karte. Same-origin auf chessable.com (keine CORS-/Cloudflare-Hürde, wie die
+  // Chessable-SPA selbst); der Token verlaesst den Browser nicht. Pendant zur Extension-Logik
+  // in extension/chessable-activity.js. Persistiert best-effort in GM-Storage.
+  function createChessableCourseNameApi(lsKey, extractJwt) {
+    const TTL = 6 * 60 * 60 * 1000; // 6 h
+    let names = {}, fetchedAt = 0, fetching = null, loaded = false;
+
+    function b64urlDecode(s) {
+      s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) s += '=';
+      return atob(s);
+    }
+    function decodeUid(token) {
+      try {
+        const parts = String(token).split('.');
+        if (parts.length < 2) return null;
+        const o = JSON.parse(b64urlDecode(parts[1]));
+        const uid = o && o.user && o.user.uid;
+        return (uid != null && /^\d+$/.test(String(uid))) ? String(uid) : null;
+      } catch (e) { return null; }
+    }
+    function readToken() {
+      try { return extractJwt(localStorage.getItem(lsKey)); } catch (e) { return null; }
+    }
+    async function fetchMap() {
+      const token = readToken();
+      if (!token) return null;
+      const uid = decodeUid(token);
+      if (!uid) return null;
+      try {
+        const resp = await fetch(
+          `https://www.chessable.com/api/v1/getHomeData?uid=${uid}&sortBookRowsBy=alphabetically&userLanguageShort=en`,
+          { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const home = data && (data.homeData || data.HomeData);
+        const books = home && (home.booksList || home.BooksList);
+        if (!Array.isArray(books)) return null;
+        const map = {};
+        for (const b of books) {
+          const bid = b && (b.bid != null ? b.bid : b.Bid);
+          const name = b && (b.name != null ? b.name : b.Name);
+          if (bid != null && typeof name === 'string' && name.trim())
+            map[String(bid)] = name.trim().slice(0, 200);
+        }
+        return Object.keys(map).length ? map : null;
+      } catch (e) { return null; }
+    }
+    function loadPersisted() {
+      try {
+        if (typeof GM_getValue !== 'undefined') {
+          const c = GM_getValue('chessableCourseNames', null);
+          if (c && c.map && typeof c.map === 'object') { names = c.map; fetchedAt = c.fetchedAt || 0; }
+        }
+      } catch (e) {}
+    }
+    async function ensureCourseNames(force) {
+      if (!loaded) { loaded = true; loadPersisted(); }
+      if (!force && Object.keys(names).length && (Date.now() - fetchedAt) < TTL) return names;
+      if (fetching) return fetching;
+      fetching = (async () => {
+        const map = await fetchMap();
+        if (map) {
+          names = map; fetchedAt = Date.now();
+          try { if (typeof GM_setValue !== 'undefined') GM_setValue('chessableCourseNames', { map, fetchedAt }); } catch (e) {}
+        }
+        fetching = null;
+        return names;
+      })();
+      return fetching;
+    }
+    return {
+      apiCourseName: (id) => (id && names[String(id)]) || null,
+      ensureCourseNames,
+    };
+  }
+
+  function initChessableActivityTracking(courseNameApi) {
     if (window.__repcheckChessableActivity) return;
     window.__repcheckChessableActivity = true;
 
@@ -1516,11 +1597,18 @@
       return t || null;
     }
 
+    // Bester verfügbarer Kursname: Chessable-API (autoritativ, via Bearer) > DOM-Heuristik.
+    function bestCourseName() {
+      return courseNameApi.apiCourseName(currentCourseId()) || currentCourseName();
+    }
+
     function lookupCourseKind() {
       const courseId = currentCourseId();
       if (!courseId || courseId === lookedUpCourseId) return;
       lookedUpCourseId = courseId;
       courseKind = null;
+      // Kursname-Karte für den (evtl. neuen) Kurs sicherstellen — force nur bei unbekanntem Kurs.
+      courseNameApi.ensureCourseNames(!courseNameApi.apiCourseName(courseId));
       const cfg = readConfig();
       if (!cfg || !cfg.url || !cfg.token) return;
       fetch(String(cfg.url).replace(/\/$/, '') + '/api/extension/repertoires', {
@@ -1555,12 +1643,13 @@
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: currentCourseName() }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: bestCourseName() }),
       }).then((resp) => {
         if (!resp.ok) { activeMs += secs * 1000; movesTrained += moves; }
       }).catch(() => { activeMs += secs * 1000; movesTrained += moves; });
     }
 
+    courseNameApi.ensureCourseNames(false); // Kursname-Karte vorwärmen
     lookupCourseKind();
     setInterval(() => {
       lookupCourseKind(); // neu bei SPA-Navigation in anderen Kurs
@@ -1585,7 +1674,7 @@
   // Portiert aus github.com/kahalm/chessable-extension (v0.9.4). Im Userscript
   // (Tampermonkey) ist der React-Fiber an den Brett-DOM-Knoten lesbar; in der
   // Extension uebernimmt das die MAIN-World-Datei extension/chessable-fen.js.
-  function initChessableFenTools() {
+  function initChessableFenTools(courseNameApi) {
     if (window.__repcheckChessableFen) return;
     window.__repcheckChessableFen = true;
 
@@ -1951,7 +2040,7 @@
     // „Remember line": aktuelle FEN + Kontext an RookHub schicken (zum spaeteren
     // Gebrauch dort gespeichert). Config aus GM-Storage (origin-uebergreifend),
     // Egress per fetch (RookHub-CORS erlaubt chessable.com + POST).
-    function rememberLine(btn) {
+    async function rememberLine(btn) {
       const fen = buildFEN();
       if (!fen) { flash(btn, 'No board found', '#c62828'); debugDump(); return; }
       let cfg = null;
@@ -1960,10 +2049,18 @@
       const base = String(cfg.url).replace(/\/$/, '');
       const oldText = btn.textContent;
       btn.textContent = 'Saving…'; btn.disabled = true;
+      // Autoritativen Kursnamen über den Chessable-Bearer bestimmen; bei Miss einmal frisch holen.
+      // Bleibt er leer, löst der Server ihn aus dem gespeicherten Bearer des Users auf.
+      const courseId = currentCourseId();
+      let courseName = courseNameApi ? courseNameApi.apiCourseName(courseId) : null;
+      if (!courseName && courseId && courseNameApi) {
+        await courseNameApi.ensureCourseNames(true);
+        courseName = courseNameApi.apiCourseName(courseId);
+      }
       fetch(base + '/api/extension/remember-line', {
         method: 'POST', mode: 'cors',
         headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fen, courseId: currentCourseId(), sourceUrl: location.href }),
+        body: JSON.stringify({ fen, courseId, courseName, sourceUrl: location.href }),
       }).then((resp) => {
         btn.disabled = false; btn.textContent = oldText;
         flash(btn, resp.ok ? 'Remembered!' : 'Failed', resp.ok ? '#2e7d32' : '#c62828');

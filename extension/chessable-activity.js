@@ -115,12 +115,127 @@
     return t || null;
   }
 
+  // ---- Autoritativer Kursname über den Chessable-Bearer ----
+  //
+  // Der DOM/React-Fiber liefert im Practice-/Learn-Modus oft nur Modus-Labels statt des
+  // echten Kurstitels. chessable-token.js legt den eingeloggten Chessable-JWT in
+  // chrome.storage.local (`chessableToken`) ab; damit fragen wir Chessables eigene
+  // getHomeData-API ab (same-origin auf chessable.com → keine CORS-/Cloudflare-Hürde,
+  // genau wie die Chessable-SPA selbst) und bauen eine autoritative bid→Name-Karte.
+  // Der Token verlässt den Browser nicht — die Anfrage geht an chessable.com.
+  const API_NAMES_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+  let apiCourseNames = {};      // bid(string) → Kursname
+  let apiNamesFetchedAt = 0;
+  let apiNamesFetching = null;  // in-flight Promise (dedupe)
+  let apiNamesLoaded = false;   // persistierten Cache erst einmal laden
+
+  function b64urlDecode(s) {
+    s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return atob(s);
+  }
+
+  // uid steckt im JWT-Payload unter user.uid (wie piratechess/JwtHelper).
+  function decodeUid(token) {
+    try {
+      const parts = String(token).split('.');
+      if (parts.length < 2) return null;
+      const obj = JSON.parse(b64urlDecode(parts[1]));
+      const uid = obj && obj.user && obj.user.uid;
+      return (uid != null && /^\d+$/.test(String(uid))) ? String(uid) : null;
+    } catch (e) { return null; }
+  }
+
+  function readChessableToken() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get('chessableToken', (r) =>
+          resolve((r && r.chessableToken && r.chessableToken.token) || null));
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  async function fetchCourseNameMap() {
+    const token = await readChessableToken();
+    if (!token) return null;
+    const uid = decodeUid(token);
+    if (!uid) return null;
+    try {
+      const resp = await fetch(
+        `https://www.chessable.com/api/v1/getHomeData?uid=${uid}&sortBookRowsBy=alphabetically&userLanguageShort=en`,
+        { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const home = data && (data.homeData || data.HomeData);
+      const books = home && (home.booksList || home.BooksList);
+      if (!Array.isArray(books)) return null;
+      const map = {};
+      for (const b of books) {
+        const bid = b && (b.bid != null ? b.bid : b.Bid);
+        const name = b && (b.name != null ? b.name : b.Name);
+        if (bid != null && typeof name === 'string' && name.trim())
+          map[String(bid)] = name.trim().slice(0, 200);
+      }
+      return Object.keys(map).length ? map : null;
+    } catch (e) { return null; }
+  }
+
+  function loadPersistedNames() {
+    if (apiNamesLoaded) return Promise.resolve();
+    apiNamesLoaded = true;
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get('chessableCourseNames', (r) => {
+          const c = r && r.chessableCourseNames;
+          if (c && c.map && typeof c.map === 'object') {
+            apiCourseNames = c.map;
+            apiNamesFetchedAt = c.fetchedAt || 0;
+          }
+          resolve();
+        });
+      } catch (e) { resolve(); }
+    });
+  }
+
+  // Baut/aktualisiert die bid→Name-Karte. `force` umgeht die TTL (z. B. bei neuem, noch
+  // unbekanntem Kurs). Concurrent-Aufrufe teilen sich denselben Fetch.
+  async function ensureCourseNames(force) {
+    await loadPersistedNames();
+    if (!force && Object.keys(apiCourseNames).length && (Date.now() - apiNamesFetchedAt) < API_NAMES_TTL_MS)
+      return apiCourseNames;
+    if (apiNamesFetching) return apiNamesFetching;
+    apiNamesFetching = (async () => {
+      const map = await fetchCourseNameMap();
+      if (map) {
+        apiCourseNames = map;
+        apiNamesFetchedAt = Date.now();
+        try { chrome.storage.local.set({ chessableCourseNames: { map, fetchedAt: apiNamesFetchedAt } }); } catch (e) {}
+      }
+      apiNamesFetching = null;
+      return apiCourseNames;
+    })();
+    return apiNamesFetching;
+  }
+
+  function apiCourseName(courseId) {
+    return (courseId && apiCourseNames[String(courseId)]) || null;
+  }
+
+  // Bester verfügbarer Name: Chessable-API (autoritativ) > MAIN-World-DOM-Bridge > lokale Heuristik.
+  function bestCourseName(courseId) {
+    return apiCourseName(courseId) || bridgedCourseName || currentCourseName();
+  }
+
   // Einmalig pro Kurs-ID: fragt RookHub-Repertoires ab und sucht den passenden Kind-Wert.
   async function lookupCourseKind() {
     const courseId = currentCourseId();
     if (!courseId || courseId === lookedUpCourseId) return;
     lookedUpCourseId = courseId;
     courseKind = null;
+
+    // Kursname-Karte für den (evtl. neuen) Kurs sicherstellen — unabhängig von der
+    // RookHub-Config; force-refresh nur, wenn der Kurs noch keinen bekannten Namen hat.
+    ensureCourseNames(!apiCourseName(courseId));
 
     const cfg = await readConfig();
     if (!cfg || !cfg.url || !cfg.token) return;
@@ -166,7 +281,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: currentCourseName() }),
+        body: JSON.stringify({ secondsActive: secs, movesTrained: moves, courseKind, courseId: currentCourseId(), courseName: bestCourseName(currentCourseId()) }),
         expect: 'json',
       }, (resp) => {
         if (chrome.runtime.lastError || !resp || !resp.ok) {
@@ -182,6 +297,7 @@
   }
 
   // ---- Takt ----
+  ensureCourseNames(false); // Kursname-Karte vorwärmen (persistierter Cache + ggf. Refresh)
   lookupCourseKind();
   setInterval(() => {
     lookupCourseKind(); // neu bei SPA-Navigation in anderen Kurs
@@ -210,6 +326,13 @@
 
     const cfg = await readConfig();
     if (!cfg || !cfg.url || !cfg.token) { reply(false, 'Not connected'); return; }
+
+    // Autoritativen Kursnamen über den Chessable-Bearer bestimmen; ist er für diesen Kurs
+    // noch nicht bekannt, einmal frisch holen (User-Aktion → kurze Wartezeit ok).
+    let courseName = apiCourseName(courseId);
+    if (!courseName && courseId) { await ensureCourseNames(true); courseName = apiCourseName(courseId); }
+    if (!courseName) courseName = bridgedCourseName || currentCourseName();
+
     const baseUrl = String(cfg.url).replace(/\/$/, '');
     try {
       chrome.runtime.sendMessage({
@@ -221,7 +344,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ fen, courseId, sourceUrl }),
+        body: JSON.stringify({ fen, courseId, courseName, sourceUrl }),
         expect: 'json',
       }, (resp) => {
         reply(!chrome.runtime.lastError && resp && resp.ok);
