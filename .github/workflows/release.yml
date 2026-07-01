@@ -93,12 +93,14 @@ jobs:
           fi
           ZIP="$(ls -1 extension/web-ext-artifacts/*.zip | head -n1)"
           echo "Uploading $ZIP to Chrome Web Store"
-          ACCESS_TOKEN=$(curl -sS -X POST https://oauth2.googleapis.com/token \
+          TOKEN_RESP=$(curl -sS -X POST https://oauth2.googleapis.com/token \
             -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
-            -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token" \
-            | jq -r '.access_token // empty')
+            -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token")
+          ACCESS_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')
           if [ -z "$ACCESS_TOKEN" ]; then
-            echo "::warning::CWS: OAuth-Refresh fehlgeschlagen — Chrome uebersprungen"
+            # Nur die Fehlerfelder loggen (kein Token/Secret in der Antwort) — verrät die Ursache
+            # (invalid_client = ID/Secret falsch, invalid_grant = Refresh-Token passt nicht/widerrufen).
+            echo "::warning::CWS: OAuth-Refresh fehlgeschlagen ($(echo "$TOKEN_RESP" | jq -rc '{error, error_description}')) — Chrome uebersprungen"
             exit 0
           fi
           UPLOAD=$(curl -sS -X PUT -T "$ZIP" \
