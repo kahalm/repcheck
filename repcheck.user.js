@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.18.1
+// @version      1.18.2
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1460,22 +1460,48 @@
       return null;
     }
 
-    // Navigations-/UI-Linktexte auf der Practice-Seite, die KEIN Kursname sind
-    // (z. B. „Practice Moves", „nächsten Kapitel", „Next chapter", „Previous variation").
-    // Diese Links zeigen ebenfalls auf /course/{id}/… und haben sonst den echten Titel verdrängt.
+    // Navigations-/UI-Linktexte auf der Practice-/Learn-Seite, die KEIN Kursname sind
+    // (z. B. „Practice Moves", „Learn Moves", „Review", „nächstes Kapitel", „Previous variation").
+    // Diese Links/Labels zeigen ebenfalls auf /course/{id}/… bzw. beschriften den Modus und haben
+    // sonst den echten Titel verdrängt (Beispiel: gemeldeter Kursname „Practice Moves"/„Learn Moves").
     function isNavLabel(txt) {
       const t = txt.toLowerCase().trim();
-      // Eigenständige Nav-/UI-Labels.
-      if (/^(practice( moves)?|next|previous|prev|continue|weiter)$/.test(t)) return true;
+      // Eigenständige Nav-/Modus-/UI-Labels (exakter Match — echte Titel wie „Learn Chess Openings" bleiben).
+      if (/^(practice( moves)?|learn( moves)?|review|overview|variations?|move ?trainer|next|previous|prev|continue|weiter|home)$/.test(t)) return true;
       // „Next/Previous chapter|variation|move|line" bzw. deutsche Entsprechungen.
       if (/^(next|previous|prev|nächst\w*|naechst\w*|vorherig\w*|vorig\w*|letzt\w*)\b/.test(t)
           && /(chapter|variation|move|line|kapitel|variante|zug|linie)/.test(t)) return true;
       return false;
     }
 
-    // Lesbarer Kursname (best-effort, nur Anzeige): bevorzugt den beschreibendsten
-    // Kurs-Linktext (Nav-Labels werden verworfen), sonst document.title.
+    // Kursname aus den React-Fiber-Props (autoritativ, gleiche Quelle wie die verlässliche Kurs-ID):
+    // das `course`-Objekt trägt neben `id` auch `name`/`title`. Robuster als Seitentext, der im
+    // Practice-/Learn-Modus nur das Modus-Label liefert.
+    function fiberCourseName(props) {
+      if (!props || typeof props !== 'object') return null;
+      const candidates = [
+        props.course?.name, props.course?.title, props.course?.courseName,
+        props.courseName, props.courseTitle,
+        props.book?.name, props.book?.title,
+      ];
+      for (const c of candidates) {
+        if (typeof c !== 'string') continue;
+        const t = c.replace(/\s+/g, ' ').trim();
+        if (t && t.length <= 200 && !isNavLabel(t)) return t;
+      }
+      return null;
+    }
+
+    // Lesbarer Kursname: bevorzugt den echten Titel aus dem React-Fiber; sonst der beschreibendste
+    // Kurs-Linktext (Nav-/Modus-Labels werden verworfen), zuletzt document.title.
     function currentCourseName() {
+      const anchor = document.getElementById('board') || document.querySelector('[data-square]');
+      let fiber = getReactFiber(anchor), depth = 0;
+      while (fiber && depth < 60) {
+        const n = fiberCourseName(fiber.memoizedProps) || fiberCourseName(fiber.pendingProps);
+        if (n) return n;
+        fiber = fiber.return; depth++;
+      }
       const id = currentCourseId();
       if (id) {
         const candidates = [];
