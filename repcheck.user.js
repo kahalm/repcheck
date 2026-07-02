@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.19.0
+// @version      1.19.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -224,20 +224,38 @@
     });
   }
 
-  function loadRookhubConfig() {
-    return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY);
+  // Config laden. Der TOKEN kommt aus dem GM-Storage (Tampermonkey-Sandbox, NICHT
+  // seiten-lesbar), nicht aus der IndexedDB: die IDB liegt auf dem
+  // chess.com/lichess-Origin und wäre für Host-/XSS-Skripte lesbar; ein dort
+  // abgelegter Token wäre exfiltrierbar. Legacy-Migration: ein noch im IDB
+  // liegender Token wird einmalig nach GM gehoben und aus dem IDB entfernt (dort
+  // bleibt nur die URL).
+  async function loadRookhubConfig() {
+    let gm = null;
+    try { if (typeof GM_getValue !== 'undefined') gm = GM_getValue('rookhubConfig', null); } catch (e) {}
+    if (gm && gm.url && gm.token) return gm;
+
+    const legacy = await idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY).catch(() => null);
+    if (legacy && legacy.url && legacy.token) {
+      try { if (typeof GM_setValue !== 'undefined') GM_setValue('rookhubConfig', { url: legacy.url, token: legacy.token }); } catch (e) {}
+      try { await idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, { url: legacy.url }); } catch (e) {}
+      return { url: legacy.url, token: legacy.token };
+    }
+    if (gm && gm.url) return gm;
+    return (legacy && legacy.url) ? { url: legacy.url } : null;
   }
 
   function saveRookhubConfig(cfg) {
-    // Zusaetzlich in den (origin-uebergreifenden) GM-Storage spiegeln: die IndexedDB
-    // liegt auf chess.com/lichess-Origin und ist auf chessable.com NICHT lesbar. Das
-    // Chessable-Activity-Tracking liest URL+Token von dort (GM_getValue).
+    // Token NUR im GM-Storage (Tampermonkey-Sandbox, origin-übergreifend, nicht
+    // seiten-lesbar) — das Chessable-Activity-Tracking liest URL+Token von dort
+    // (GM_getValue). In die origin-scoped IndexedDB (chess.com/lichess, für
+    // Host-Skripte lesbar) kommt bewusst NUR die URL — nie der Token.
     try {
       if (typeof GM_setValue !== 'undefined' && cfg && cfg.url && cfg.token) {
         GM_setValue('rookhubConfig', { url: cfg.url, token: cfg.token });
       }
     } catch (e) { /* GM-Storage nicht verfuegbar — ignorieren */ }
-    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
+    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, { url: cfg && cfg.url });
   }
 
   // pgnTexts-Cache (vor 1.6.0): nur noch lesend fuer einmalige Migration zum Position-Set.

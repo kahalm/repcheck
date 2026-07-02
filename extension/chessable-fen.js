@@ -471,7 +471,7 @@
   }
 
   window.addEventListener('message', (e) => {
-    if (e.source !== window || !e.data || e.data.__repcheck !== 'remember-line-result') return;
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'remember-line-result') return;
     const btn = pendingRememberBtn;
     pendingRememberBtn = null;
     if (!btn) return;

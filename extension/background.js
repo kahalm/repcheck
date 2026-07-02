@@ -26,10 +26,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  // Allow-list: only http(s). Defense in depth — the user enters this URL
-  // freely, so refusing file:// / chrome-extension:// / data: is wise.
-  if (!/^https?:\/\//i.test(url)) {
-    sendResponse({ ok: false, error: 'url must be http(s)' });
+  // Allow-list: HTTPS only (plus http on localhost/127.0.0.1 for local dev) so the
+  // bearer token is never sent in cleartext to a remote host — and file:// /
+  // chrome-extension:// / data: are refused. Matches the manifest host_permissions.
+  if (!/^https:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url)) {
+    sendResponse({ ok: false, error: 'url must be https (http only allowed for localhost)' });
     return false;
   }
 

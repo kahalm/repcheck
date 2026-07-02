@@ -7,7 +7,7 @@ Dieses Repo liefert **zwei** Varianten derselben Funktionalität, die parallel g
 1. **Tampermonkey-Userscript** — `repcheck.user.js` im Root. Eigenständig, Cross-Browser via Tampermonkey/Greasemonkey. Auto-Update über die GitHub-Raw-URL.
 2. **Browser-Extension (Manifest V3)** — `extension/`-Verzeichnis. Chrome Web Store + Firefox AMO. Content-Script-Logik identisch zum Userscript, RookHub-Fetches laufen über Background-Service-Worker (`background.js`) statt direkter `fetch()`.
 
-**Beide teilen sich denselben IndexedDB-Layout** (DB `RepertoireCheckerDB`, Stores `handles` + `rookhub`). User können zwischen den Varianten wechseln, ohne URL/Token erneut zu hinterlegen.
+**Beide teilen sich denselben IndexedDB-Layout** (DB `RepertoireCheckerDB`, Stores `handles` + `rookhub`). Die RookHub-**URL** wird dort origin-scoped geteilt (Variantenwechsel ohne erneutes URL-Eintragen). Der **Token** liegt seit v1.19.1 NICHT mehr im (seiten-lesbaren) IndexedDB, sondern extension-privat in `chrome.storage.local` (Extension) bzw. GM-Storage (Userscript) — er wird daher zwischen Extension↔Userscript NICHT geteilt und muss beim Variantenwechsel einmal neu eingetragen werden (bewusster Sicherheits-Tradeoff, s. „Sicherheit").
 
 ## Versioning
 - Bei jeder Änderung an `repcheck.user.js` muss die `@version` im Tampermonkey-Header erhöht werden.
@@ -75,7 +75,7 @@ Die Extension kann das Repertoire wahlweise aus einem **lokalen Ordner** (File S
 - DB `RepertoireCheckerDB`, version 2
 - Store `handles` (v1) — File System Access API directory handle
 - Store `rookhub` (v2):
-  - Key `config` → `{ url: string, token: string }`
+  - Key `config` → `{ url: string }` (seit v1.19.1 OHNE Token — der liegt extension-privat in `chrome.storage.local`/GM-Storage, nicht im seiten-lesbaren IDB)
   - Key `cache` → `{ pgnTexts: string[], savedAt: number, count: number }`
 
 ## Partie kopieren / speichern → RookHub (Copy v1.12.0, Save-Payload v1.13.0)
@@ -239,6 +239,16 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 - **Chrome**: `chrome://extensions/` → „Entwicklermodus" → „Entpackt laden" → `extension/`
 - **Firefox**: `about:debugging#/runtime/this-firefox` → „Temporäres Add-on" → `extension/manifest.json`
 - **Empfohlen**: `web-ext run` (Auto-Reload). Voraussetzung: `npm install -g web-ext`.
+
+## Sicherheit (v1.19.1+ — nicht zurückbauen)
+
+Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst beibehalten:
+
+- **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`) bzw. Tampermonkey-GM-Storage; im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token), `saveRookhubConfig()` schreibt ins IDB nur `{ url }`. Gilt für Extension UND Userscript.
+- **MAIN↔isoliert postMessage-Bridge** (`chessable-fen.js` ↔ `chessable-activity.js`): Empfänger prüfen `e.source === window` **UND** `e.origin === location.origin`. Rest-Risiko (same-origin Page-Skript könnte Bridge-Messages fälschen) ist bewusst akzeptiert — der Token bleibt aus dem Page-Kontext heraus, Impact wäre nur Daten-Injection, kein Token-Diebstahl. Ein Handshake-Nonce hilft hier nicht robust (MAIN-World ist page-beobachtbar).
+- **Background-Egress** (`background.js`): nur `type:'rookhub-fetch'` von `sender.id === chrome.runtime.id`, Ziel-Origin MUSS = `rookhubConfig.url`-Origin, **HTTPS-only** (http nur für `localhost`/`127.0.0.1`), `credentials:'omit'`. Kein offener Proxy.
+- **Manifest `host_permissions`**: `https://*/*` + `http://localhost|127.0.0.1` (kein `http://*/*` — verhindert Klartext-Token-Egress + reduziert Store-Review-Reibung).
+- **Packaging**: `web-ext-config.cjs` `ignoreFiles` hält Dev-/CI-Skripte (`*.mjs` CWS-OAuth-Helfer, `*.ps1`) und `web-ext-artifacts/**` aus dem ausgelieferten Paket.
 
 ## Submission
 

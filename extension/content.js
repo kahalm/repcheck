@@ -218,17 +218,50 @@
     });
   }
 
-  function loadRookhubConfig() {
-    return idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY);
+  // Extension-privater Config-Spiegel (chrome.storage.local) — seit v1.19.1 die
+  // maßgebliche Quelle für den TOKEN (siehe saveRookhubConfig).
+  function readLocalRookhubConfig() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get('rookhubConfig', (r) => resolve((r && r.rookhubConfig) || null));
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  // Config laden. Der TOKEN wird bewusst NUR aus chrome.storage.local gelesen
+  // (extension-privat), NICHT aus der IndexedDB: die IDB liegt auf dem
+  // chess.com/lichess-Origin und ist damit von den Skripten der Host-Seite — und
+  // jedem XSS dort — lesbar; ein dort abgelegter Token wäre exfiltrierbar.
+  // Legacy-Migration: liegt der Token noch im alten IDB-Config-Record, wird er
+  // einmalig nach chrome.storage.local gehoben und aus dem IDB entfernt.
+  async function loadRookhubConfig() {
+    const local = await readLocalRookhubConfig();
+    if (local && local.url && local.token) return local;
+
+    const legacy = await idbGet(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY).catch(() => null);
+    if (legacy && legacy.url && legacy.token) {
+      try {
+        await new Promise((resolve) => {
+          try { chrome.storage.local.set({ rookhubConfig: { url: legacy.url, token: legacy.token } }, resolve); }
+          catch (e) { resolve(); }
+        });
+      } catch (e) { /* ignore */ }
+      try { await idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, { url: legacy.url }); } catch (e) { /* ignore */ }
+      return { url: legacy.url, token: legacy.token };
+    }
+    // Kein Token — höchstens eine URL (neuer Zustand: IDB hält nur die URL).
+    if (local && local.url) return local;
+    return (legacy && legacy.url) ? { url: legacy.url } : null;
   }
 
   async function saveRookhubConfig(cfg) {
-    // Zusaetzlich nach chrome.storage.local spiegeln: IndexedDB ist origin-scoped,
-    // also auf chess.com/lichess. Das Chessable-Activity-Script (chessable.com-Origin)
-    // kann diese IDB NICHT lesen — chrome.storage.local ist hingegen extension-weit
-    // (origin-uebergreifend) und liefert ihm so URL+Token.
-    // Der Set wird ABGEWARTET, weil der Background-Worker die erlaubte Ziel-Origin aus
-    // chrome.storage.local liest, bevor der erste Proxy-Fetch (Verbindungs-Check) laeuft.
+    // Token NUR extension-privat (chrome.storage.local) persistieren; das
+    // Chessable-Activity-Script (chessable.com-Origin) + der Background-Worker
+    // lesen ihn von dort (origin-übergreifend). In die origin-scoped IndexedDB
+    // (chess.com/lichess, für Host-Skripte lesbar) landet bewusst NUR die URL —
+    // nie der Token. Der Set wird ABGEWARTET, weil der Background-Worker die
+    // erlaubte Ziel-Origin aus chrome.storage.local liest, bevor der erste
+    // Proxy-Fetch (Verbindungs-Check) laeuft.
     try {
       if (cfg && cfg.url && cfg.token) {
         await new Promise((resolve) => {
@@ -237,7 +270,7 @@
         });
       }
     } catch (e) { /* storage nicht verfuegbar — ignorieren */ }
-    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, cfg);
+    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, { url: cfg && cfg.url });
   }
 
   // pgnTexts-Cache (vor 1.6.0): nur noch lesend fuer einmalige Migration zum Position-Set.

@@ -93,8 +93,12 @@
   }
 
   // chessable-fen.js (MAIN-World) spiegelt die per React-Fiber aufgeloeste Kurs-ID hierher.
+  // Nur Same-Window + Same-Origin akzeptieren (Defense-in-Depth). Rest-Risiko: ein
+  // beliebiges Skript IM chessable.com-Tab teilt window+origin und könnte diese
+  // Bridge-Messages fälschen — der Token bleibt aber aus dem Page-Kontext heraus,
+  // Impact wäre nur eingeschleuste Anzeige-/Merk-Daten, kein Token-Diebstahl.
   window.addEventListener('message', (e) => {
-    if (e.source !== window || !e.data || e.data.__repcheck !== 'course-id') return;
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'course-id') return;
     const id = e.data.courseId;
     bridgedCourseId = (id != null && /^\d+$/.test(String(id))) ? String(id) : null;
     const name = e.data.courseName;
@@ -319,7 +323,7 @@
   // chessable-fen.js (Page-Kontext) postet die FEN; hier (isoliert) haengen
   // RookHub-Config + Background-Egress, damit der Token nie in den Page-Kontext geraet.
   window.addEventListener('message', async (e) => {
-    if (e.source !== window || !e.data || e.data.__repcheck !== 'remember-line') return;
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'remember-line') return;
     const { fen, courseId, sourceUrl } = e.data;
     const reply = (ok, error) =>
       window.postMessage({ __repcheck: 'remember-line-result', ok: !!ok, error: error || null }, location.origin);

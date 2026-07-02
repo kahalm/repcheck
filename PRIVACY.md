@@ -11,7 +11,7 @@ Die Erweiterung sendet **keine Daten an den Autor** und kommuniziert nur mit den
 |-------|-------------|-------|
 | **Repertoire-PGNs** | Lokale IndexedDB (`RepertoireCheckerDB`) im Browserprofil | Move-Trie zur Abweichungs­erkennung auf chess.com-Analyse-Seiten |
 | **RookHub-URL** | Lokale IndexedDB | Damit die Erweiterung beim nächsten Start weiß, welcher RookHub-Server angesprochen werden soll |
-| **RookHub-Token (`rkh_…`)** | Lokale IndexedDB | Auth-Header für API-Aufrufe an genau die eingetragene RookHub-Instanz |
+| **RookHub-Token (`rkh_…`)** | Extension: `chrome.storage.local` (Key `rookhubConfig`); Userscript: Tampermonkey-GM-Storage — **extension-/skript-privat, nicht von Webseiten lesbar** (seit v1.19.1; zuvor in der seiten-lesbaren IndexedDB) | Auth-Header für API-Aufrufe an genau die eingetragene RookHub-Instanz |
 | **Ordner-Handle** (Chrome File System Access API) | Lokale IndexedDB | Damit der zuletzt gewählte PGN-Ordner ohne erneutes Picken gelesen werden kann |
 | **chess.com-Partiezüge** | Nur im Arbeitsspeicher des aktiven Tabs | Vergleich mit dem Repertoire-Trie; werden nirgendwo gespeichert oder gesendet |
 | **Chessable-API-Token (JWT)** | `chrome.storage.local` im Browserprofil (Key `chessableToken`) | Wird auf chessable.com aus `localStorage['chessable.web.production.JWT']` gelesen, damit der Nutzer ihn per Knopfdruck in die Zwischenablage kopieren kann — zur Nutzung in piratechess (https://github.com/kahalm/piratechess), das Chessable-Kurse als PGN exportiert. Wird **nicht** versendet |
@@ -29,7 +29,7 @@ Die Extension kommuniziert mit **keinem** anderen Server. Insbesondere:
 
 ## Wo werden Daten gespeichert?
 
-**Alle** lokal im Browser: Repertoire-Daten in der IndexedDB-Datenbank `RepertoireCheckerDB` (Stores `handles` und `rookhub`), der Chessable-Token in `chrome.storage.local` (Key `chessableToken`). Daten verlassen das Gerät nur Richtung:
+**Alle** lokal im Browser: Repertoire-Daten in der IndexedDB-Datenbank `RepertoireCheckerDB` (Stores `handles` und `rookhub`; die RookHub-**URL** liegt hier, der **Token** NICHT). Der RookHub-Token liegt extension-privat in `chrome.storage.local` (Key `rookhubConfig`) bzw. im Tampermonkey-GM-Storage des Userscripts, der Chessable-Token in `chrome.storage.local` (Key `chessableToken`) — beide von Webseiten nicht lesbar. Daten verlassen das Gerät nur Richtung:
 - Der RookHub-Server, dessen URL der Nutzer einträgt, beim API-Call
 - Niemand sonst (insbesondere wird der Chessable-Token nirgendwohin gesendet — er landet ausschließlich auf Knopfdruck in der Zwischenablage)
 
