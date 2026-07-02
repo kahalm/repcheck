@@ -674,11 +674,10 @@
   // chessableSearchUrl (globale Chessable-FEN-Such-URL): siehe Shared-Core (self.RepCheckLib).
 
   // ─── UI ─────────────────────────────────────────────────────────────
-  function injectStyles() {
-    if (document.getElementById('repcheck-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'repcheck-styles';
-    style.textContent = `
+  // Styles der Deviation-Marker + des Settings-Panels + der Floating-Buttons.
+  // Als Konstante ausgelagert (statt inline in injectStyles), damit die Funktion
+  // nur noch das Injizieren macht.
+  const STYLE_CSS = `
       .${DEVIATION_CLASS} {
         background-color: rgba(255, 120, 50, 0.20) !important;
         border-radius: 2px;
@@ -801,6 +800,12 @@
       /* Seit v1.14.0: KEINE site-spezifischen Button-Farben mehr — chess.com
          und Lichess teilen sich dasselbe dezente Dark/Light-Styling oben. */
     `;
+
+  function injectStyles() {
+    if (document.getElementById('repcheck-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'repcheck-styles';
+    style.textContent = STYLE_CSS;
     document.head.appendChild(style);
   }
 
@@ -999,36 +1004,9 @@
     }
   }
 
-  function togglePanel() {
-    const existing = document.getElementById(PANEL_ID);
-    if (existing) {
-      existing.remove();
-      document.getElementById('repcheck-overlay')?.remove();
-      return;
-    }
-
-    const overlay = document.createElement('div');
-    overlay.id = 'repcheck-overlay';
-    overlay.addEventListener('click', togglePanel);
-    document.body.appendChild(overlay);
-
-    const panel = document.createElement('div');
-    panel.id = PANEL_ID;
-
-    // RookHub-Config zum Vorbefuellen der Felder laden (async, dann DOM updaten).
-    // Wenn noch keine Config vorhanden, mit der oeffentlichen Default-Instanz
-    // vorbelegen, damit Neu-User nicht erst eine URL suchen muessen.
-    loadRookhubConfig().then(cfg => {
-      const urlInput = document.getElementById('repcheck-rookhub-url');
-      const tokenInput = document.getElementById('repcheck-rookhub-token');
-      if (urlInput) urlInput.value = (cfg && cfg.url) || ROOKHUB_DEFAULT_URL;
-      if (cfg && tokenInput) tokenInput.value = cfg.token || '';
-    }).catch(() => {
-      const urlInput = document.getElementById('repcheck-rookhub-url');
-      if (urlInput && !urlInput.value) urlInput.value = ROOKHUB_DEFAULT_URL;
-    });
-
-    panel.innerHTML = `
+  // Panel-Markup (reiner String, keine DOM-Nebenwirkungen).
+  function panelHtml() {
+    return `
       <h3>Repertoire Settings</h3>
       <div style="margin-bottom: 12px;">
         <strong>RookHub:</strong><br>
@@ -1059,8 +1037,21 @@
         ${repertoirePositions ? 'Repertoire loaded' : 'No repertoire loaded'}
       </div>
     `;
+  }
 
-    document.body.appendChild(panel);
+  // RookHub-Felder vorbefuellen (async) + alle Panel-Buttons verdrahten.
+  function wirePanelEvents() {
+    // Config laden; ohne vorhandene mit der Default-Instanz vorbelegen, damit
+    // Neu-User nicht erst eine URL suchen muessen.
+    loadRookhubConfig().then(cfg => {
+      const urlInput = document.getElementById('repcheck-rookhub-url');
+      const tokenInput = document.getElementById('repcheck-rookhub-token');
+      if (urlInput) urlInput.value = (cfg && cfg.url) || ROOKHUB_DEFAULT_URL;
+      if (cfg && tokenInput) tokenInput.value = cfg.token || '';
+    }).catch(() => {
+      const urlInput = document.getElementById('repcheck-rookhub-url');
+      if (urlInput && !urlInput.value) urlInput.value = ROOKHUB_DEFAULT_URL;
+    });
 
     document.getElementById('repcheck-pick-dir')?.addEventListener('click', async () => {
       await pickDirectory();
@@ -1097,6 +1088,27 @@
         updateStatusText('RookHub: ' + e.message);
       }
     });
+  }
+
+  function togglePanel() {
+    const existing = document.getElementById(PANEL_ID);
+    if (existing) {
+      existing.remove();
+      document.getElementById('repcheck-overlay')?.remove();
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'repcheck-overlay';
+    overlay.addEventListener('click', togglePanel);
+    document.body.appendChild(overlay);
+
+    const panel = document.createElement('div');
+    panel.id = PANEL_ID;
+    panel.innerHTML = panelHtml();
+    document.body.appendChild(panel);
+
+    wirePanelEvents();
   }
 
   // ─── Main Check Logic ───────────────────────────────────────────────
