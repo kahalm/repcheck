@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.20.1
+// @version      1.21.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -50,11 +50,10 @@
   let lastGameMovesKey = '';
   let lastDeviationFen = null; // FEN vor dem Out-of-Rep-Zug fuer Chessable-Suche
 
-  // ─── Lightweight PGN Parser ─────────────────────────────────────────
-  // Parses PGN move text into a flat list with variation support.
-  // Returns array of games, each game = array of moves.
-  // Each move = { san: string, variations: [ [move, ...], ... ] }
-
+  // ─── Shared Core: reine PGN-/FEN-Helfer ────────────────────────────
+  // GENERIERT aus extension/lib/repertoire-text.js via `npm run build:userscript`
+  // (build/assemble.mjs). NICHT VON HAND EDITIEREN — Logik in lib/ ändern + neu bauen.
+  // >>>REPCHECK-SHARED:repertoire-text
   function tokenizePgn(movetext) {
     // Remove comments { ... } and ; line comments
     movetext = movetext.replace(/\{[^}]*\}/g, ' ');
@@ -166,6 +165,28 @@
 
     return games;
   }
+
+  function normalizedFen(fen) {
+    // Nur die ersten 4 Felder (Stellung, Seite, Rochaderechte, en-passant).
+    // Halbzug- und Vollzugzaehler spielen fuer Repertoire-Matching keine Rolle.
+    return fen.split(' ').slice(0, 4).join(' ');
+  }
+
+  function chessComPlayedAt(h) {
+    if (!h || !h.Date || !/^\d{4}\.\d{2}\.\d{2}$/.test(h.Date)) return null;
+    const tm = (h.EndTime || '').match(/(\d{2}):(\d{2}):(\d{2})/);
+    const time = tm ? `${tm[1]}:${tm[2]}:${tm[3]}` : '00:00:00';
+    const d = new Date(`${h.Date.replace(/\./g, '-')}T${time}Z`);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  function chessableSearchUrl(fen) {
+    // Globale Chessable-FEN-Suche: "/" wird zu "U", " " zu "%20" (chessable-
+    // spezifische Kodierung, KEIN encodeURIComponent).
+    const encoded = fen.replace(/\//g, 'U').replace(/ /g, '%20');
+    return 'https://www.chessable.com/courses/fen/' + encoded + '/';
+  }
+  // <<<REPCHECK-SHARED:repertoire-text
 
   // ─── IndexedDB helpers ───────────────────────────────────────────────
   function openIDB() {
@@ -368,9 +389,7 @@
   // die dieselbe Stellung ueber verschiedene Zugfolgen erreichen, treffen
   // auf denselben FEN-Eintrag.
 
-  function normalizedFen(fen) {
-    return fen.split(' ').slice(0, 4).join(' ');
-  }
+  // normalizedFen: siehe Shared-Core-Region oben (aus lib/repertoire-text.js).
 
   function walkMovesForPositions(chess, moves, positions) {
     // Wir nutzen denselben Chess-Instanz fuer alle Varianten und stellen den
@@ -632,14 +651,7 @@
     return { white: null, black: null };
   }
 
-  // chess.com Date "2026.06.18" + EndTime "15:31:17 GMT+0000" → ISO-Zeitstempel.
-  function chessComPlayedAt(h) {
-    if (!h || !h.Date || !/^\d{4}\.\d{2}\.\d{2}$/.test(h.Date)) return null;
-    const tm = (h.EndTime || '').match(/(\d{2}):(\d{2}):(\d{2})/);
-    const time = tm ? `${tm[1]}:${tm[2]}:${tm[3]}` : '00:00:00';
-    const d = new Date(`${h.Date.replace(/\./g, '-')}T${time}Z`);
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  }
+  // chessComPlayedAt: siehe Shared-Core-Region oben (aus lib/repertoire-text.js).
 
   // Kanonische Header (Spieler/Ergebnis/Datum) zu einer chess.com-Game-ID über
   // die same-origin-Callback-API holen — die Analyse-Seite hat sie NICHT im
@@ -742,12 +754,7 @@
     return chess.fen();
   }
 
-  function chessableSearchUrl(fen) {
-    // Globale Chessable-FEN-Suche: "/" wird zu "U", " " zu "%20" (chessable-
-    // spezifische Kodierung, KEIN encodeURIComponent).
-    const encoded = fen.replace(/\//g, 'U').replace(/ /g, '%20');
-    return 'https://www.chessable.com/courses/fen/' + encoded + '/';
-  }
+  // chessableSearchUrl: siehe Shared-Core-Region oben (aus lib/repertoire-text.js).
 
   // ─── UI ─────────────────────────────────────────────────────────────
   // Styles der Deviation-Marker + des Settings-Panels + der Floating-Buttons.

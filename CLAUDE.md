@@ -17,7 +17,10 @@ Dieses Repo liefert **zwei** Varianten derselben Funktionalität, die parallel g
 
 ## Code-Synchronisation Userscript ↔ Extension
 
-**Shared Core (seit v1.20.0):** die reinen Text-/PGN-/FEN-Helfer liegen NUR noch in `extension/lib/repertoire-text.js` (Node-getestet). Die **Extension** lädt diese Datei als eigenes Content-Script VOR `content.js` (Manifest `content_scripts` + Popup-`executeScript`) und bezieht die Helfer über `self.RepCheckLib`; `content.js` hat KEINE Inline-Kopien mehr. Der **Userscript** trägt vorerst noch eine Inline-Kopie — die vollständige Zusammenführung über einen Build-Schritt (eine Quelle → beide Distributionen) ist in Arbeit. Bis dahin: Änderungen an `lib/repertoire-text.js` UND der Userscript-Inline-Kopie angleichen.
+**Shared Core (seit v1.20.0, single-sourced seit v1.21.0):** die reinen Text-/PGN-/FEN-Helfer (`tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl`) leben in EINER Quelle: `extension/lib/repertoire-text.js` (Node-getestet).
+- **Extension**: lädt die Datei als eigenes Content-Script VOR `content.js` (Manifest `content_scripts` + Popup-`executeScript`) und bezieht die Helfer über `self.RepCheckLib`; `content.js` hat keine Inline-Kopien.
+- **Userscript**: `repcheck.user.js` kann keine separate Datei laden → der Build-Schritt **`build/assemble.mjs`** (`npm run build:userscript`) fügt die Funktionen aus `lib/repertoire-text.js` zwischen den Sentinel-Markern `>>>REPCHECK-SHARED:repertoire-text` … `<<<` ein. Die Region ist **generiert — NICHT von Hand editieren**.
+- **Workflow bei Logik-Änderung an diesen Helfern**: nur `lib/repertoire-text.js` ändern → `npm test` → `npm run build:userscript` → beide Distributionen sind synchron. Der Rest der Hauptlogik (Position-Set/Analyse/Adapter/UI) ist weiterhin zwischen `content.js` und Userscript hand-gepflegt (siehe unten).
 
 Wenn du an der übrigen Hauptlogik etwas änderst:
 - **Den Userscript** `repcheck.user.js` anpassen

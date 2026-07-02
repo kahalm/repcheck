@@ -4,6 +4,7 @@
   "private": true,
   "description": "Dev-Tooling + Unit-Tests für die reine RepCheck-Logik. NICHT Teil des ausgelieferten Add-ons/Userscripts.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build:userscript": "node build/assemble.mjs"
   }
 }

@@ -4,10 +4,10 @@
 // Content-Script (Manifest content_scripts + Popup-executeScript, VOR content.js)
 // und konsumiert die Helfer über `self.RepCheckLib` — `content.js` hält KEINE
 // eigenen Kopien mehr. Node-Tests: ../test/repertoire-text.test.js.
-// HINWEIS: der Userscript (repcheck.user.js) hält vorerst noch eine Inline-Kopie
-// dieser Logik; die Zusammenführung über einen Build-Schritt (eine Quelle → beide
-// Distributionen) ist der nächste Schritt. Bis dahin: Änderungen hier + im
-// Userscript angleichen.
+// Der Userscript (repcheck.user.js) bezieht dieselben Funktionen über den
+// Build-Schritt build/assemble.mjs (`npm run build:userscript`), der sie zwischen
+// den Sentinel-Markern einfügt. Also: Logik NUR hier ändern, dann neu bauen —
+// NICHT die generierte Region im Userscript von Hand editieren.
 
 function tokenizePgn(movetext) {
   // Remove comments { ... } and ; line comments
