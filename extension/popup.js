@@ -223,10 +223,10 @@ async function triggerInTab(action) {
       func: () => !!window.__rdc_loaded,
     });
     if (!precheck || !precheck.result) {
-      // 2) Lazy-Inject chess.min.js + content.js (einmalig pro Tab).
+      // 2) Lazy-Inject chess.min.js + Shared-Core (RepCheckLib) + content.js (einmalig pro Tab).
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['chess.min.js', 'content.js'],
+        files: ['chess.min.js', 'lib/repertoire-text.js', 'content.js'],
       });
     }
     // 3) Aktion ausloesen.

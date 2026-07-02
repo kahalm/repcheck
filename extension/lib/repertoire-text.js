@@ -1,11 +1,13 @@
 // RepCheck — reine (DOM-/Browser-freie) Text-/PGN-/FEN-Helfer.
 //
-// ⚠️ SPIEGEL-KOPIE für Unit-Tests. Dieselbe Logik existiert (per Projekt-
-// Konvention bewusst dupliziert) INLINE in `extension/content.js` UND
-// `repcheck.user.js`. Dieses Modul ist NICHT ins ausgelieferte Add-on
-// eingebunden — es dient nur dazu, die reine Logik ohne Browser-Umgebung
-// testbar zu machen (siehe ../test/repertoire-text.test.js). Bei Änderungen
-// an den Inline-Kopien diese Datei mit angleichen.
+// SHARED CORE (seit v1.20.0): die Extension lädt dieses Modul als eigenes
+// Content-Script (Manifest content_scripts + Popup-executeScript, VOR content.js)
+// und konsumiert die Helfer über `self.RepCheckLib` — `content.js` hält KEINE
+// eigenen Kopien mehr. Node-Tests: ../test/repertoire-text.test.js.
+// HINWEIS: der Userscript (repcheck.user.js) hält vorerst noch eine Inline-Kopie
+// dieser Logik; die Zusammenführung über einen Build-Schritt (eine Quelle → beide
+// Distributionen) ist der nächste Schritt. Bis dahin: Änderungen hier + im
+// Userscript angleichen.
 
 function tokenizePgn(movetext) {
   // Remove comments { ... } and ; line comments
@@ -146,4 +148,13 @@ if (typeof module !== 'undefined' && module.exports) {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
     normalizedFen, chessComPlayedAt, chessableSearchUrl,
   };
+}
+
+// Browser (Content-Script / Userscript): an ein gemeinsames Namespace hängen,
+// aus dem content.js die Helfer bezieht. `self` deckt Window- + Worker-Kontext ab.
+if (typeof self !== 'undefined') {
+  self.RepCheckLib = Object.assign(self.RepCheckLib || {}, {
+    tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl,
+  });
 }

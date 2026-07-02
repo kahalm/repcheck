@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Checker",
-  "version": "1.19.1",
+  "version": "1.20.0",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com & lichess (PGN oder RookHub); chessable: FEN-Tools + RookHub.",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
@@ -11,27 +11,51 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.chess.com/*", "https://lichess.org/*"],
-      "js": ["chess.min.js", "content.js"],
+      "matches": [
+        "https://www.chess.com/*",
+        "https://lichess.org/*"
+      ],
+      "js": [
+        "chess.min.js",
+        "lib/repertoire-text.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.chessable.com/*", "https://chessable.com/*"],
-      "js": ["chessable-token.js", "chessable-activity.js"],
+      "matches": [
+        "https://www.chessable.com/*",
+        "https://chessable.com/*"
+      ],
+      "js": [
+        "chessable-token.js",
+        "chessable-activity.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.chessable.com/*", "https://chessable.com/*"],
-      "js": ["chessable-fen.js"],
+      "matches": [
+        "https://www.chessable.com/*",
+        "https://chessable.com/*"
+      ],
+      "js": [
+        "chessable-fen.js"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     }
   ],
   "background": {
     "service_worker": "background.js",
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
-  "permissions": ["scripting", "activeTab", "storage"],
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -51,7 +75,9 @@
       "id": "chesscom-repertoire-checker@kahalm.github.io",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     },
     "gecko_android": {

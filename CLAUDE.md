@@ -17,7 +17,9 @@ Dieses Repo liefert **zwei** Varianten derselben Funktionalität, die parallel g
 
 ## Code-Synchronisation Userscript ↔ Extension
 
-Wenn du an der Hauptlogik etwas änderst:
+**Shared Core (seit v1.20.0):** die reinen Text-/PGN-/FEN-Helfer liegen NUR noch in `extension/lib/repertoire-text.js` (Node-getestet). Die **Extension** lädt diese Datei als eigenes Content-Script VOR `content.js` (Manifest `content_scripts` + Popup-`executeScript`) und bezieht die Helfer über `self.RepCheckLib`; `content.js` hat KEINE Inline-Kopien mehr. Der **Userscript** trägt vorerst noch eine Inline-Kopie — die vollständige Zusammenführung über einen Build-Schritt (eine Quelle → beide Distributionen) ist in Arbeit. Bis dahin: Änderungen an `lib/repertoire-text.js` UND der Userscript-Inline-Kopie angleichen.
+
+Wenn du an der übrigen Hauptlogik etwas änderst:
 - **Den Userscript** `repcheck.user.js` anpassen
 - Dann `extension/content.js` **angleichen**: alles 1:1 übernehmen, außer die RookHub-Fetches — die laufen in der Extension über `chrome.runtime.sendMessage({type: 'rookhub-fetch', ...})` zum Background-Worker statt direkter `fetch()`.
 - Der einzige abweichende Codepfad ist `rookhubAnalyzeGame`: im Userscript direkter `fetch(POST …)`, in der Extension `rookhubProxy({ method:'POST', body, … })` zum Background-Worker.
