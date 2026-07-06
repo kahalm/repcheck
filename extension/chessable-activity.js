@@ -358,5 +358,21 @@
     }
   });
 
+  // ---- RookHub-URL-Bridge (hier isoliert → MAIN-World chessable-fen.js) ----
+  // Die RookHub-URL liegt in chrome.storage.local (nur isoliert lesbar). chessable-fen.js
+  // (Page-Kontext) braucht sie, um den „Analyse"-Button synchron im Klick-Handler in einen
+  // neuen Tab öffnen zu können (Popup-Blocker-sicher). Nur die URL wird gespiegelt — der
+  // Token bleibt in der isolierten Welt.
+  async function broadcastRookhubUrl() {
+    const cfg = await readConfig();
+    const url = cfg && cfg.url ? String(cfg.url).replace(/\/$/, '') : null;
+    if (url) window.postMessage({ __repcheck: 'rookhub-url', url }, location.origin);
+  }
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'request-rookhub-url') return;
+    broadcastRookhubUrl();
+  });
+  broadcastRookhubUrl();   // proaktiv, falls fen.js seine Anfrage vor unserem Listener stellte
+
   console.log('[RepCheck Chessable] Activity-Tracking aktiv');
 })();

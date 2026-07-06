@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.21.0
+// @version      1.22.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -2040,6 +2040,23 @@
         else { flash(copyBtn, 'Copy failed', '#c62828'); console.log('[RepCheck Chessable] FEN:', fen); }
       });
 
+      const analyseBtn = document.createElement('button');
+      analyseBtn.type = 'button';
+      analyseBtn.textContent = 'Analyse';
+      analyseBtn.title = 'Stellung in RookHub analysieren (neuer Tab)';
+      styleButton(analyseBtn, '#00695c');
+      analyseBtn.addEventListener('click', () => {
+        const fen = buildFEN();
+        if (!fen) { flash(analyseBtn, 'No board found', '#c62828'); debugDump(); return; }
+        let cfg = null;
+        try { if (typeof GM_getValue !== 'undefined') cfg = GM_getValue('rookhubConfig', null); } catch (e) {}
+        if (!cfg || !cfg.url) { flash(analyseBtn, 'Set RookHub URL', '#c62828'); return; }
+        const orient = fen.split(' ')[1] === 'b' ? 'black' : 'white';   // Brett aus Sicht der Seite am Zug
+        const url = String(cfg.url).replace(/\/$/, '') + '/analysis?fen=' + encodeURIComponent(fen) + '&orientation=' + orient;
+        const win = window.open(url, '_blank', 'noopener');
+        if (!win) flash(analyseBtn, 'Popup blocked', '#c62828');
+      });
+
       const searchBtn = document.createElement('button');
       searchBtn.type = 'button';
       searchBtn.textContent = 'Search FEN';
@@ -2067,6 +2084,7 @@
 
       // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
       wrap.appendChild(copyBtn);
+      wrap.appendChild(analyseBtn);
       wrap.appendChild(searchBtn);
       wrap.appendChild(refreshBtn);
       wrap.appendChild(rememberBtn);

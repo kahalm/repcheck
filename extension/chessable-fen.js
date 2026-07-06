@@ -412,6 +412,22 @@
       }
     });
 
+    const analyseBtn = document.createElement('button');
+    analyseBtn.type = 'button';
+    analyseBtn.textContent = 'Analyse';
+    analyseBtn.title = 'Stellung in RookHub analysieren (neuer Tab)';
+    styleButton(analyseBtn, '#00695c');
+    analyseBtn.addEventListener('click', () => {
+      const fen = buildFEN();
+      if (!fen) { flash(analyseBtn, 'No board found', '#c62828'); debugDump(); return; }
+      if (!rookhubBaseUrl) { requestRookhubUrl(); flash(analyseBtn, 'Set RookHub URL', '#c62828'); return; }
+      const orient = fen.split(' ')[1] === 'b' ? 'black' : 'white';   // Brett aus Sicht der Seite am Zug
+      const url = rookhubBaseUrl.replace(/\/$/, '') + '/analysis?fen=' + encodeURIComponent(fen) + '&orientation=' + orient;
+      console.log('[RepCheck Chessable Analyse]', fen, '->', url);
+      const win = window.open(url, '_blank', 'noopener');
+      if (!win) flash(analyseBtn, 'Popup blocked', '#c62828');
+    });
+
     const searchBtn = document.createElement('button');
     searchBtn.id = SEARCH_BTN_ID;
     searchBtn.type = 'button';
@@ -445,11 +461,28 @@
 
     // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
     wrap.appendChild(copyBtn);
+    wrap.appendChild(analyseBtn);
     wrap.appendChild(searchBtn);
     wrap.appendChild(refreshBtn);
     wrap.appendChild(rememberBtn);
     document.body.appendChild(wrap);
+    // RookHub-URL aus der isolierten Welt (chessable-activity.js) anfordern, damit der
+    // Analyse-Button beim Klick synchron einen neuen Tab öffnen kann (Popup-Blocker-sicher).
+    requestRookhubUrl();
   }
+
+  // Die RookHub-URL liegt extension-privat in chrome.storage.local (nur isolierte Welt lesbar);
+  // chessable-activity.js spiegelt sie hierher, damit der Analyse-Button sie synchron im
+  // Klick-Handler hat. Nur Same-Window + Same-Origin akzeptieren (Defense-in-Depth; die URL ist
+  // kein Secret, der Token bleibt in der isolierten Welt).
+  let rookhubBaseUrl = null;
+  function requestRookhubUrl() {
+    window.postMessage({ __repcheck: 'request-rookhub-url' }, location.origin);
+  }
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'rookhub-url') return;
+    if (typeof e.data.url === 'string' && e.data.url) rookhubBaseUrl = e.data.url;
+  });
 
   // „Remember line": FEN + Kontext per window.postMessage an die isolierte Welt
   // (chessable-activity.js), die den Egress mit RookHub-Config + Background-Worker
