@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.24.0
+// @version      1.24.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -710,7 +710,10 @@
       let result = hdr('Result');
       if (result !== '1-0' && result !== '0-1' && result !== '1/2-1/2') result = null;
       const games = (typeof parsePgnText === 'function') ? parsePgnText(pgn) : [];
-      const moves = (games && games[0] && games[0].length) ? games[0] : null;
+      // parsePgnText liefert Zug-OBJEKTE ({san, variations}); der Save braucht SAN-Strings.
+      const moves = (games && games[0] && games[0].length)
+        ? games[0].map(m => (typeof m === 'string' ? m : m && m.san)).filter(Boolean)
+        : null;
       return {
         white: hdr('White') ? hdr('White').slice(0, 120) : null,
         black: hdr('Black') ? hdr('Black').slice(0, 120) : null,
