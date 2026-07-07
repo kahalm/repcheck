@@ -609,6 +609,34 @@
     } catch (e) { return null; }
   }
 
+  // Kanonische Partie-Daten (Spieler/Ergebnis/Elo/Datum + saubere SAN-Zugliste) zu einer
+  // lichess-Game-ID über die same-origin Export-API holen. Zuverlässiger als der og:title
+  // (Namen/Elo) UND die DOM-Zugauslese (die auf Analyse-/Study-Ansichten „…"-Lücken liefern
+  // kann). Best-effort: bei Fehler null, dann greifen og:title + DOM-Züge als Fallback.
+  async function fetchLichessGame(id) {
+    try {
+      const resp = await fetch(`https://lichess.org/game/export/${id}?clocks=false&evals=false&literate=false`,
+        { headers: { 'Accept': 'application/x-chess-pgn' } });
+      if (!resp.ok) return null;
+      const pgn = await resp.text();
+      if (!pgn || /^\s*</.test(pgn)) return null;   // HTML statt PGN → aufgeben
+      const hdr = (tag) => { const m = pgn.match(new RegExp('\\[' + tag + ' "([^"]*)"\\]')); return m ? m[1] : null; };
+      let result = hdr('Result');
+      if (result !== '1-0' && result !== '0-1' && result !== '1/2-1/2') result = null;
+      const games = (typeof parsePgnText === 'function') ? parsePgnText(pgn) : [];
+      const moves = (games && games[0] && games[0].length) ? games[0] : null;
+      return {
+        white: hdr('White') ? hdr('White').slice(0, 120) : null,
+        black: hdr('Black') ? hdr('Black').slice(0, 120) : null,
+        result,
+        whiteElo: parseElo(hdr('WhiteElo')),
+        blackElo: parseElo(hdr('BlackElo')),
+        playedAt: chessComPlayedAt({ Date: hdr('UTCDate'), EndTime: hdr('UTCTime') }),
+        moves,
+      };
+    } catch (e) { return null; }
+  }
+
   // Metadaten der aktuellen Partie (Quelle, externe ID, Spieler, Ergebnis, URL).
   // Async, weil chess.com die Spielernamen erst per Callback-API liefert.
   async function getGameMeta() {
@@ -623,10 +651,11 @@
       playedAt: null,
       whiteElo: null,
       blackElo: null,
+      moves: null,
     };
     try {
       if (site === 'lichess') {
-        const m = location.pathname.match(/^\/([A-Za-z0-9]{8,12})/);
+        const m = location.pathname.match(/^\/([A-Za-z0-9]{8})/);
         if (m) meta.externalId = m[1];
       } else {
         const m = location.pathname.match(/\/(?:live|daily|game|analysis\/game\/live)\/(\d+)/)
@@ -639,6 +668,19 @@
     meta.black = players.black;
     meta.whiteElo = players.whiteElo;
     meta.blackElo = players.blackElo;
+    // lichess: kanonische Daten (Spieler/Ergebnis/Elo/Datum + saubere Züge) via Export-API.
+    if (site === 'lichess' && meta.externalId) {
+      const g = await fetchLichessGame(meta.externalId);
+      if (g) {
+        if (g.white) meta.white = g.white;
+        if (g.black) meta.black = g.black;
+        if (g.result) meta.result = g.result;
+        if (g.playedAt) meta.playedAt = g.playedAt;
+        if (g.whiteElo != null) meta.whiteElo = g.whiteElo;
+        if (g.blackElo != null) meta.blackElo = g.blackElo;
+        if (g.moves) meta.moves = g.moves;
+      }
+    }
     // chess.com: kanonische Header (Spieler/Ergebnis/Datum/Elo) nachziehen.
     if (site === 'chesscom' && meta.externalId) {
       const h = await fetchChessComHeaders(meta.externalId, /\/daily\//.test(location.pathname));
@@ -942,15 +984,18 @@
     btn.addEventListener('click', async () => {
       const currentCfg = await loadRookhubConfig().catch(() => null);
       if (!currentCfg) return;
-      const moves = getGameMoves();
-      if (!moves.length) return;
+      const domMoves = getGameMoves();
+      if (!domMoves.length) return;
       btn.textContent = '…';
       btn.disabled = true;
       const reset = (label, title) => setTimeout(() => {
         btn.textContent = label; btn.title = title; btn.disabled = false;
       }, 1500);
       try {
-        const saved = await rookhubSaveGame(currentCfg, moves, await getGameMeta());
+        const meta = await getGameMeta();
+        // Kanonische Zugliste (lichess-Export) bevorzugen, sonst DOM-Auslese.
+        const moves = (meta.moves && meta.moves.length) ? meta.moves : domMoves;
+        const saved = await rookhubSaveGame(currentCfg, moves, meta);
         const link = buildShareLink(currentCfg, saved);
         let copied = false;
         if (link) {
