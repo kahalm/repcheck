@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.22.0
+// @version      1.23.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -353,6 +353,8 @@
         result: meta.result,
         sourceUrl: meta.sourceUrl,
         playedAt: meta.playedAt,
+        whiteElo: meta.whiteElo,
+        blackElo: meta.blackElo,
       }),
     });
     if (resp.status === 401) throw new Error('Token ungültig oder abgelaufen.');
@@ -640,15 +642,33 @@
     } catch (e) { return null; }
   }
 
-  // Spielernamen aus og:title / document.title ("A vs B") best-effort lesen.
+  // Elo/Rating plausibilisieren (100–4000); sonst null.
+  function parseElo(v) {
+    const n = parseInt(String(v ?? '').replace(/[^\d]/g, ''), 10);
+    return Number.isFinite(n) && n >= 100 && n <= 4000 ? n : null;
+  }
+
+  // Name + optionales trailing "(Rating)" trennen (Lichess-og:title: "Name (1234)").
+  function splitNameElo(raw) {
+    const s = (raw || '').trim();
+    const m = s.match(/^(.*?)\s*\((\d{2,4})\)\s*$/);
+    if (m) return { name: m[1].trim().slice(0, 120), elo: parseElo(m[2]) };
+    return { name: s.slice(0, 120), elo: null };
+  }
+
+  // Spielernamen + Ratings aus og:title / document.title ("A (1234) vs B (1456)") best-effort lesen.
   function parsePlayersFromMeta() {
     try {
       const og = document.querySelector('meta[property="og:title"]');
       const t = (og && og.content) || document.title || '';
-      const m = t.match(/(.+?)\s+(?:vs\.?|–|-)\s+(.+?)(?:\s+(?:in|•|\||\(|,)|$)/i);
-      if (m) return { white: m[1].trim().slice(0, 120), black: m[2].trim().slice(0, 120) };
+      const m = t.match(/(.+?)\s+(?:vs\.?|–|-)\s+(.+?)(?:\s+(?:in|•|\||,)|$)/i);
+      if (m) {
+        const w = splitNameElo(m[1]);
+        const b = splitNameElo(m[2]);
+        return { white: w.name, black: b.name, whiteElo: w.elo, blackElo: b.elo };
+      }
     } catch (e) {}
-    return { white: null, black: null };
+    return { white: null, black: null, whiteElo: null, blackElo: null };
   }
 
   // chessComPlayedAt: siehe Shared-Core-Region oben (aus lib/repertoire-text.js).
@@ -669,6 +689,8 @@
         black: h.Black ? String(h.Black).slice(0, 120) : null,
         result: h.Result || null,
         playedAt: chessComPlayedAt(h),
+        whiteElo: parseElo(h.WhiteElo),
+        blackElo: parseElo(h.BlackElo),
       };
     } catch (e) { return null; }
   }
@@ -685,6 +707,8 @@
       white: null,
       black: null,
       playedAt: null,
+      whiteElo: null,
+      blackElo: null,
     };
     try {
       if (site === 'lichess') {
@@ -699,7 +723,9 @@
     const players = parsePlayersFromMeta();
     meta.white = players.white;
     meta.black = players.black;
-    // chess.com: kanonische Header (Spieler/Ergebnis/Datum) nachziehen.
+    meta.whiteElo = players.whiteElo;
+    meta.blackElo = players.blackElo;
+    // chess.com: kanonische Header (Spieler/Ergebnis/Datum/Elo) nachziehen.
     if (site === 'chesscom' && meta.externalId) {
       const h = await fetchChessComHeaders(meta.externalId, /\/daily\//.test(location.pathname));
       if (h) {
@@ -707,6 +733,8 @@
         if (h.black) meta.black = h.black;
         if (h.result) meta.result = h.result;
         if (h.playedAt) meta.playedAt = h.playedAt;
+        if (h.whiteElo != null) meta.whiteElo = h.whiteElo;
+        if (h.blackElo != null) meta.blackElo = h.blackElo;
       }
     }
     return meta;
