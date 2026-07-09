@@ -27,6 +27,14 @@
 </head>
 <body>
 <h1>♟ RepCheck</h1>
+<div id="sharebar" class="repertoires" style="display:none;margin-top:0;">
+  <div class="heading">Link zur aktuellen Line</div>
+  <div class="row" style="margin:4px 0 0 0;align-items:center;">
+    <input id="share-url" readonly style="flex:1;min-width:0;font-size:11px;padding:5px 6px;border:1px solid #ccc;border-radius:4px;background:#fff;color:#222;" />
+    <button id="copy-share" class="secondary" style="flex:0 0 auto;">Kopieren</button>
+  </div>
+  <span id="share-state" style="font-size:11px;color:#7a8a9a;display:block;margin-top:4px;"></span>
+</div>
 <div id="status" class="status">Lade Status…</div>
 <div id="repertoires" class="repertoires" style="display:none;"></div>
 <div class="row">

@@ -102,6 +102,22 @@ aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupli
   zum Background-Worker (CORS-frei). Beide Pfade identisch außer diesem Fetch (wie `rookhubAnalyzeGame`).
 - **Privacy**: liest nur Zugliste + Seitentitel/URL lokal; sendet ausschließlich an die konfigurierte RookHub-Instanz.
 
+## Sharebar: Link zur aktuellen Line (v1.25.0+, **Extension-only**)
+
+Das **Popup** zeigt oben eine „Sharebar" mit einem öffentlichen Nur-Ansehen-Link
+(`{RookHub-URL}/l/{token}`) zur aktuell auf chess.com/lichess gespielten Zugfolge —
+kein Button-Umweg, direkt beim Öffnen des Popups sichtbar/kopierbar.
+- **Ablauf** (`popup.js` `initShareBar`): nur bei konfigurierter RookHub-Instanz + chess.com/lichess-Tab.
+  `getCurrentLineFromTab` lazy-injiziert content.js (`ensureContentLoaded`) und ruft die neue
+  API-Methode `window.__rdc_loaded.getCurrentLine()` (→ `{ moves, title }` aus `getGameMoves()`),
+  dann `POST /api/extension/share-line { moves, title }` über den Background-Worker → `{ shareToken }`.
+- **Dedup**: serverseitig über die **Zugfolge** (nicht den variablen Seitentitel) → derselbe Spielstand
+  liefert denselben Link (`SharedLineService.CreateStandaloneAsync`, RookHub).
+- **Nur Extension**: das Userscript hat kein Popup und definiert kein `__rdc_loaded` → `getCurrentLine`
+  lebt nur in `content.js`, NICHT im Userscript (wie die übrigen Popup-Pfade). Server-Endpoint ist geteilt.
+- **Privacy/Egress**: wie „Partie speichern" — nur Zugliste + Seitentitel lokal gelesen, Egress via
+  Background-Worker an die konfigurierte RookHub-Instanz.
+
 ## Chessable-Token-Auslese (v1.8.0+)
 
 Unabhaengig von der Repertoire-Pruefung kann die Extension auf **chessable.com**

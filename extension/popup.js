@@ -207,6 +207,106 @@ async function getActiveTab() {
   return tabs[0] || null;
 }
 
+// ─── Sharebar: Link zur aktuellen Line ─────────────────────────────────
+// Oben im Popup ein oeffentlicher Nur-Ansehen-Link (/l/{token}) zur gerade auf
+// chess.com/lichess gespielten Zugfolge. Beim Oeffnen des Popups wird die
+// aktuelle Line aus dem Tab gelesen und serverseitig als Line geteilt (Dedup:
+// dieselbe Zugfolge -> derselbe Link). Braucht eine konfigurierte RookHub-Instanz.
+const SHAREBAR = document.getElementById('sharebar');
+const SHARE_URL = document.getElementById('share-url');
+const COPY_SHARE = document.getElementById('copy-share');
+const SHARE_STATE = document.getElementById('share-state');
+
+async function ensureContentLoaded(tab) {
+  const [precheck] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => !!window.__rdc_loaded,
+  });
+  if (!precheck || !precheck.result) {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['chess.min.js', 'lib/repertoire-text.js', 'content.js'],
+    });
+  }
+}
+
+async function getCurrentLineFromTab(tab) {
+  await ensureContentLoaded(tab);
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => {
+      const api = window.__rdc_loaded;
+      return api && typeof api.getCurrentLine === 'function' ? api.getCurrentLine() : { moves: [], title: '' };
+    },
+  });
+  return (res && res.result) || { moves: [], title: '' };
+}
+
+function postShareLine(cfg, moves, title) {
+  const baseUrl = (cfg.url || '').replace(/\/$/, '');
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({
+      type: 'rookhub-fetch',
+      url: baseUrl + '/api/extension/share-line',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ moves, title }),
+      expect: 'json',
+    }, (resp) => {
+      if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message)); return; }
+      if (!resp) { reject(new Error('keine Antwort vom Background-Worker')); return; }
+      if (resp.status === 401) { reject(new Error('Token ungültig oder abgelaufen.')); return; }
+      if (!resp.ok) { reject(new Error(resp.error || ('HTTP ' + resp.status))); return; }
+      resolve(resp.body);
+    });
+  });
+}
+
+async function initShareBar() {
+  const cfg = await readRookhubConfigFromStorage();
+  if (!cfg) return; // ohne RookHub-Config kein Teilen-Link
+  const tab = await getActiveTab();
+  if (!tab || !tab.url || !/^https:\/\/(www\.chess\.com|lichess\.org)\//.test(tab.url)) return;
+  SHAREBAR.style.display = 'block';
+  SHARE_STATE.textContent = 'lade…';
+  COPY_SHARE.disabled = true;
+  try {
+    const line = await getCurrentLineFromTab(tab);
+    if (!line.moves || !line.moves.length) {
+      SHARE_URL.value = '';
+      SHARE_STATE.textContent = 'Keine Zugfolge auf dieser Seite.';
+      return;
+    }
+    const res = await postShareLine(cfg, line.moves, line.title);
+    const token = res && (res.shareToken || res.ShareToken);
+    if (!token) throw new Error('kein Token in der Antwort');
+    SHARE_URL.value = (cfg.url || '').replace(/\/$/, '') + '/l/' + token;
+    COPY_SHARE.disabled = false;
+    const n = line.moves.length;
+    SHARE_STATE.textContent = `${n} Halbzug${n === 1 ? '' : 'e'} · klick „Kopieren"`;
+  } catch (e) {
+    SHARE_URL.value = '';
+    SHARE_STATE.textContent = 'Link fehlgeschlagen: ' + (e && e.message ? e.message : String(e));
+  }
+}
+
+COPY_SHARE.addEventListener('click', async () => {
+  if (!SHARE_URL.value) return;
+  try {
+    await navigator.clipboard.writeText(SHARE_URL.value);
+  } catch {
+    SHARE_URL.select();
+    document.execCommand('copy');
+  }
+  SHARE_STATE.textContent = 'kopiert ✓';
+});
+
+initShareBar();
+
 // Triggert die angegebene Aktion im Content-Script. Laedt chess.min.js +
 // content.js nur dann, wenn der Tab sie noch nicht hat (Idempotency-Guard
 // in content.js).

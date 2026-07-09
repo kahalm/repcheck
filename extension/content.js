@@ -519,6 +519,15 @@
     return moves;
   }
 
+  // Aktuelle Hauptlinie + kurzer Titel — vom Popup (Sharebar) via executeScript gelesen.
+  function rdcGetCurrentLine() {
+    try {
+      return { moves: getGameMoves() || [], title: (document.title || '').slice(0, 120) };
+    } catch {
+      return { moves: [], title: '' };
+    }
+  }
+
   function buildGamePgn() {
     const moves = getGameMoves();
     if (!moves.length) return '';
@@ -1304,6 +1313,7 @@
     runCheck: rdcRunCheck,
     openSettings: rdcOpenSettings,
     refreshButton: refreshFloatingButton,
+    getCurrentLine: rdcGetCurrentLine,
     version: '1.17.0',   // mit manifest.json/@version synchron halten
   };
 
