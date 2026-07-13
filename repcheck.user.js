@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.25.0
+// @version      1.26.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1483,8 +1483,192 @@
     const courseNameApi = createChessableCourseNameApi(CHESSABLE_LS_KEY, extractChessableJwt);
     initChessableFenTools(courseNameApi);
     initChessableActivityTracking(courseNameApi);
-    console.log('[RepertoireChecker] Chessable-Modus aktiv (FEN-Tools + Aktivitaet + Token)');
+    initChessableBrowserImport(courseNameApi, CHESSABLE_LS_KEY, extractChessableJwt);
+    console.log('[RepertoireChecker] Chessable-Modus aktiv (FEN-Tools + Aktivitaet + Token + Import)');
     return;
+  }
+
+  // Browser-Kurs-Import (Pendant zu extension/chessable-capture.js + dem Import-Teil von
+  // chessable-activity.js): V1 = passiver Mitschnitt der Chessable-Kurs-API beim Training,
+  // V2 = aktives Holen des ganzen Kurses (getCourse→getList→getGame). Der Browser holt die Daten
+  // als echte eingeloggte Session (passiert Cloudflare) und schickt das ROHE JSON an RookHub
+  // (POST /api/extension/chessable/ingest); der fetch-freie piratechess-Parser macht daraus PGN.
+  // Im Userscript alles im Page-Kontext: fetch/XHR direkt patchbar, Egress via direktem fetch
+  // (RookHub-ExtensionPolicy erlaubt chessable.com). Kein MAIN/isoliert-Split noetig.
+  function initChessableBrowserImport(courseNameApi, lsKey, extractJwt) {
+    // --- reine Helfer (Spiegel von extension/lib/chessable-crawl.js) ---
+    function classifyApi(url) {
+      let u; try { u = new URL(url, 'https://www.chessable.com'); } catch (e) { return null; }
+      if (!/(^|\.)chessable\.com$/i.test(u.hostname)) return null;
+      const p = u.pathname.replace(/\/+$/, '');
+      if (p.endsWith('/api/v1/getCourse')) return { kind: 'course', bid: u.searchParams.get('bid') };
+      if (p.endsWith('/api/v1/getList')) return { kind: 'list', bid: u.searchParams.get('bid'), lid: u.searchParams.get('lid') };
+      if (p.endsWith('/api/v1/getGame')) return { kind: 'game', oid: u.searchParams.get('oid') };
+      return null;
+    }
+    function parseChapterLids(t) { let o; try { o = typeof t === 'string' ? JSON.parse(t) : t; } catch (e) { return []; } const a = o && (o.course || o.Course) && ((o.course || o.Course).data || (o.course || o.Course).Data); return Array.isArray(a) ? a.map(c => c && (c.id != null ? c.id : c.Id)).filter(v => v != null).map(String) : []; }
+    function parseLineOids(t) { let o; try { o = typeof t === 'string' ? JSON.parse(t) : t; } catch (e) { return []; } const l = o && (o.list || o.List); const a = l && (l.data || l.Data); return Array.isArray(a) ? a.map(x => x && (x.id != null ? x.id : x.Id)).filter(v => v != null).map(String) : []; }
+    function buildIngestChapters(chapters) {
+      const out = [];
+      for (const ch of (chapters || [])) {
+        if (!ch || typeof ch.listText !== 'string') continue;
+        const lines = [];
+        for (const oid of parseLineOids(ch.listText)) {
+          const g = ch.games && ch.games[oid];
+          if (typeof g === 'string' && g.trim() && g.trim() !== '{}') lines.push(g);
+        }
+        if (lines.length) out.push({ chapterJson: ch.listText, lines });
+      }
+      return out;
+    }
+
+    // --- Config/Token/Kurs-ID ---
+    function getCfg() { try { if (typeof GM_getValue !== 'undefined') return GM_getValue('rookhubConfig', null); } catch (e) {} return null; }
+    function b64urlDecode(s) { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return atob(s); }
+    function decodeUid(token) { try { const parts = String(token).split('.'); if (parts.length < 2) return null; const o = JSON.parse(b64urlDecode(parts[1])); const uid = o && o.user && o.user.uid; return (uid != null && /^\d+$/.test(String(uid))) ? String(uid) : null; } catch (e) { return null; } }
+    function getToken() { try { return extractJwt(localStorage.getItem(lsKey)); } catch (e) { return null; } }
+    function currentCourseId() {
+      const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
+      if (m) return m[1];
+      for (const a of document.querySelectorAll('a[href*="/course/"]')) {
+        const am = /\/course\/(\d+)(?:\/|$)/.exec(a.getAttribute('href') || '');
+        if (am) return am[1];
+      }
+      return null;
+    }
+
+    // --- V1: passiver Mitschnitt (fetch + XHR im Page-Kontext direkt patchen) ---
+    const cap = { bid: null, courseText: null, lists: {}, games: {}, bytes: 0 };
+    const CAP_MAX = 40 * 1024 * 1024;
+    function resetCap(bid) { cap.bid = bid; cap.courseText = null; cap.lists = {}; cap.games = {}; cap.bytes = 0; }
+    function absorb(url, body) {
+      if (typeof body !== 'string' || !body || body.trim() === '' || body.trim() === '{}') return;
+      const info = classifyApi(url);
+      if (!info || cap.bytes + body.length > CAP_MAX) return;
+      if (info.kind === 'course') { const bid = info.bid || currentCourseId(); if (bid && bid !== cap.bid) resetCap(bid); if (!cap.bid) cap.bid = bid || null; cap.courseText = body; cap.bytes += body.length; }
+      else if (info.kind === 'list') { if (info.bid && info.bid !== cap.bid) resetCap(info.bid); if (!cap.bid && info.bid) cap.bid = info.bid; if (info.lid != null) { cap.lists[info.lid] = body; cap.bytes += body.length; } }
+      else if (info.kind === 'game') { if (info.oid != null && !cap.games[info.oid]) { cap.games[info.oid] = body; cap.bytes += body.length; } }
+      updatePanel();
+      if (autoImport) scheduleAutoImport();
+    }
+    const RELEVANT = /\/api\/v1\/(getCourse|getList|getGame)(\?|$)/;
+    const origFetch = window.fetch;
+    if (typeof origFetch === 'function') {
+      window.fetch = function (...args) {
+        const p = origFetch.apply(this, args);
+        try { const a0 = args[0]; const url = (a0 && typeof a0 === 'object' && 'url' in a0) ? a0.url : String(a0 || ''); if (RELEVANT.test(url)) p.then(r => { try { r.clone().text().then(t => absorb(url, t)).catch(() => {}); } catch (e) {} }).catch(() => {}); } catch (e) {}
+        return p;
+      };
+    }
+    const XHR = window.XMLHttpRequest;
+    if (XHR && XHR.prototype) {
+      const oOpen = XHR.prototype.open, oSend = XHR.prototype.send;
+      XHR.prototype.open = function (m, url, ...rest) { try { this.__rcUrl = String(url || ''); } catch (e) {} return oOpen.call(this, m, url, ...rest); };
+      XHR.prototype.send = function (...a) { try { const url = this.__rcUrl || ''; if (RELEVANT.test(url)) this.addEventListener('load', function () { try { const t = (this.responseType === '' || this.responseType === 'text') ? this.responseText : (this.responseType === 'json' ? JSON.stringify(this.response) : null); if (t) absorb(url, t); } catch (e) {} }); } catch (e) {} return oSend.apply(this, a); };
+    }
+
+    function capturedChapters() {
+      const lids = cap.courseText ? parseChapterLids(cap.courseText) : Object.keys(cap.lists);
+      return buildIngestChapters(lids.filter(lid => cap.lists[lid]).map(lid => ({ listText: cap.lists[lid], games: cap.games })));
+    }
+    function capturedLineCount() { return capturedChapters().reduce((n, c) => n + c.lines.length, 0); }
+
+    // --- Egress + Chessable-Fetch ---
+    async function ingest(bid, chapters, target) {
+      const cfg = getCfg();
+      if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+      const baseUrl = String(cfg.url).replace(/\/$/, '');
+      const courseName = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
+      const resp = await fetch(baseUrl + '/api/extension/chessable/ingest', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ bid, target, courseName, chapters }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+      return data;
+    }
+    async function chessableGet(path) {
+      const token = getToken(); if (!token) throw new Error('Kein Chessable-Token (eingeloggt?)');
+      const uid = decodeUid(token); if (!uid) throw new Error('Token ohne uid');
+      const sep = path.includes('?') ? '&' : '?';
+      const resp = await fetch(`https://www.chessable.com/api/v1/${path}${sep}uid=${uid}`, { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' });
+      if (!resp.ok) throw new Error('Chessable HTTP ' + resp.status);
+      return resp.text();
+    }
+
+    const INTER_MS = 350; const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let crawling = false;
+    async function crawlAndImport(target) {
+      if (crawling) return; crawling = true; updatePanel();
+      const bid = currentCourseId();
+      try {
+        if (!bid) throw new Error('Kein Kurs erkannt');
+        setStatus('Hole Kursstruktur …');
+        const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}`);
+        const lids = parseChapterLids(courseText);
+        if (!lids.length) throw new Error('Keine Kapitel gefunden');
+        const lists = []; let total = 0;
+        for (const lid of lids) { const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; await sleep(INTER_MS); }
+        const chapters = []; let done = 0;
+        for (const { listText, oids } of lists) {
+          const games = {};
+          for (const oid of oids) { let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { games[oid] = g; cap.games[oid] = g; } done++; setStatus(`Hole Linien … ${done}/${total}`); }
+          chapters.push({ listText, games });
+        }
+        const payload = buildIngestChapters(chapters);
+        if (!payload.length) throw new Error('Keine Linien geholt');
+        setStatus('Importiere in RookHub …');
+        const res = await ingest(bid, payload, target);
+        setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+      } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
+      finally { crawling = false; updatePanel(); }
+    }
+    async function importCaptured(target) {
+      const bid = cap.bid || currentCourseId(); const chapters = capturedChapters();
+      if (!bid || !chapters.length) { setStatus('Nichts mitgeschnitten.'); return; }
+      try { setStatus('Importiere Mitschnitt …'); const res = await ingest(bid, chapters, target); setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); }
+      catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
+    }
+
+    let autoImport = false, autoImportTimer = null;
+    try { if (typeof GM_getValue !== 'undefined') autoImport = !!GM_getValue('rookhubChessableAutoImport', false); } catch (e) {}
+    function scheduleAutoImport() { if (autoImportTimer) return; autoImportTimer = setTimeout(() => { autoImportTimer = null; if (capturedLineCount() > 0) importCaptured(currentTarget()); }, 8000); }
+
+    // --- UI-Panel ---
+    let panel = null, statusEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+    function currentTarget() { const r = panel && panel.querySelector('input[name="rc-target"]:checked'); return r ? r.value : 'repertoire'; }
+    function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
+    function ensurePanel() {
+      if (panel || !document.body || !currentCourseId()) return;
+      panel = document.createElement('div');
+      panel.id = 'repcheck-import-panel';
+      panel.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483000;background:#1f2530;color:#e8eaed;font:12px/1.4 system-ui,sans-serif;border:1px solid #3a4250;border-radius:8px;padding:10px 12px;max-width:260px;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+      panel.innerHTML =
+        '<div style="font-weight:600;margin-bottom:6px">RookHub-Import (Browser)</div>' +
+        '<div style="margin-bottom:6px"><label style="margin-right:10px"><input type="radio" name="rc-target" value="repertoire" checked> Repertoire</label><label><input type="radio" name="rc-target" value="book"> Kurs/Buch</label></div>' +
+        '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
+        '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
+        '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
+        '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Beim Training automatisch importieren</label>' +
+        '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
+      document.body.appendChild(panel);
+      statusEl = panel.querySelector('#rc-status'); capInfoEl = panel.querySelector('#rc-capinfo');
+      importCapBtn = panel.querySelector('#rc-importcap'); crawlBtn = panel.querySelector('#rc-crawl'); autoChk = panel.querySelector('#rc-auto');
+      crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
+      importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
+      autoChk.addEventListener('change', () => { autoImport = autoChk.checked; try { if (typeof GM_setValue !== 'undefined') GM_setValue('rookhubChessableAutoImport', autoImport); } catch (e) {} });
+      updatePanel();
+    }
+    function updatePanel() {
+      if (!panel) return;
+      const n = capturedLineCount();
+      if (capInfoEl) capInfoEl.textContent = n > 0 ? `${n} Linien mitgeschnitten` : 'Noch nichts mitgeschnitten';
+      if (importCapBtn) importCapBtn.style.display = n > 0 ? 'block' : 'none';
+      if (autoChk) autoChk.checked = autoImport;
+      if (crawlBtn) crawlBtn.disabled = crawling;
+    }
+    setInterval(ensurePanel, 5000); ensurePanel();
   }
 
   // Misst AKTIVE Chessable-Trainingszeit und meldet sie an RookHub (Kategorie

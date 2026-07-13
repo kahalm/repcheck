@@ -374,5 +374,212 @@
   });
   broadcastRookhubUrl();   // proaktiv, falls fen.js seine Anfrage vor unserem Listener stellte
 
+  // ======================================================================================
+  // Browser-Kurs-Import: V1 (passiver Mitschnitt der Kurs-API) + V2 (aktives Holen). Der Browser
+  // holt die Chessable-Daten als echte eingeloggte Session (passiert Cloudflare) und schickt das rohe
+  // JSON an RookHub (POST /api/extension/chessable/ingest); der fetch-freie piratechess-Parser macht
+  // daraus PGN. Kein serverseitiger Chessable-Abruf/VPN nötig. Additiv — der Server-Import bleibt.
+  // ======================================================================================
+  const Crawl = self.RepCheckCrawl || null;
+
+  // Per-bid-Mitschnitt-Puffer (Session, in-memory). getGame trägt nur die oid → oid→lid via getList.
+  const cap = { bid: null, courseText: null, lists: {}, oidToLid: {}, games: {}, bytes: 0 };
+  const CAP_MAX_BYTES = 40 * 1024 * 1024;   // Speicher-Deckel (großer Kurs)
+  let autoImport = false;                   // V1: Mitschnitt beim Training automatisch senden
+  let autoImportTimer = null;
+
+  try { chrome.storage.local.get('rookhubChessableAutoImport', (r) => { autoImport = !!(r && r.rookhubChessableAutoImport); updatePanel(); }); } catch (e) {}
+
+  function resetCap(bid) { cap.bid = bid; cap.courseText = null; cap.lists = {}; cap.oidToLid = {}; cap.games = {}; cap.bytes = 0; }
+
+  // MAIN-World chessable-capture.js → hier: rohe Kurs-API-Antworten puffern (nur source+origin-geprüft).
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'chessable-capture') return;
+    if (!Crawl) return;
+    const info = Crawl.classifyChessableApi(e.data.url);
+    const body = e.data.body;
+    if (!info || typeof body !== 'string') return;
+    if (cap.bytes + body.length > CAP_MAX_BYTES) return;
+    if (info.kind === 'course') {
+      const bid = info.bid || currentCourseId();
+      if (bid && bid !== cap.bid) resetCap(bid);
+      if (!cap.bid) cap.bid = bid || null;
+      cap.courseText = body; cap.bytes += body.length;
+    } else if (info.kind === 'list') {
+      if (info.bid && info.bid !== cap.bid) resetCap(info.bid);
+      if (!cap.bid && info.bid) cap.bid = info.bid;
+      if (info.lid != null) {
+        cap.lists[info.lid] = body; cap.bytes += body.length;
+        for (const oid of Crawl.parseLineOids(body)) cap.oidToLid[oid] = info.lid;
+      }
+    } else if (info.kind === 'game') {
+      if (info.oid != null && !cap.games[info.oid]) { cap.games[info.oid] = body; cap.bytes += body.length; }
+    }
+    updatePanel();
+    if (autoImport) scheduleAutoImport();
+  });
+
+  // Kapitel-Payload aus dem Puffer (nur Mitgeschnittenes), in getCourse-Reihenfolge.
+  function capturedChapters() {
+    if (!Crawl) return [];
+    const lids = cap.courseText ? Crawl.parseChapterLids(cap.courseText) : Object.keys(cap.lists);
+    const chapters = lids.filter(lid => cap.lists[lid]).map(lid => ({ listText: cap.lists[lid], games: cap.games }));
+    return Crawl.buildIngestChapters(chapters);
+  }
+  function capturedLineCount() { return capturedChapters().reduce((n, c) => n + c.lines.length, 0); }
+
+  // ---- Ingest an RookHub (Egress über Background-Worker, CORS-frei; Token bleibt hier) ----
+  async function ingest(bid, chapters, target, courseName) {
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/chessable/ingest',
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ bid, target, courseName, chapters }),
+        expect: 'json',
+      }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || ('HTTP ' + (resp && resp.status))));
+        resolve(resp.body);
+      });
+    });
+  }
+
+  // same-origin Chessable-Fetch (V2 aktiv) — gleiche Rezeptur wie fetchCourseNameMap (Bearer, credentials).
+  async function chessableGet(path) {
+    const token = await readChessableToken();
+    if (!token) throw new Error('Kein Chessable-Token (auf chessable.com eingeloggt?)');
+    const uid = decodeUid(token);
+    if (!uid) throw new Error('Chessable-Token ohne uid');
+    const sep = path.includes('?') ? '&' : '?';
+    const resp = await fetch(`https://www.chessable.com/api/v1/${path}${sep}uid=${uid}`,
+      { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' });
+    if (!resp.ok) throw new Error('Chessable HTTP ' + resp.status);
+    return resp.text();
+  }
+
+  const CRAWL_INTER_MS = 350;   // schonender Takt gegen das eigene Chessable-Konto
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  let crawling = false;
+
+  // V2: kompletten Kurs aktiv holen (getCourse→getList→getGame), Mitschnitt wo vorhanden wiederverwenden.
+  async function crawlAndImport(target) {
+    if (crawling) return; crawling = true; updatePanel();
+    const bid = currentCourseId();
+    try {
+      if (!bid) throw new Error('Kein Kurs erkannt');
+      if (!Crawl) throw new Error('Interne lib fehlt');
+      setStatus('Hole Kursstruktur …');
+      const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}`);
+      const lids = Crawl.parseChapterLids(courseText);
+      if (!lids.length) throw new Error('Keine Kapitel gefunden');
+      const lists = [];
+      let total = 0;
+      for (const lid of lids) {
+        const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
+        const oids = Crawl.parseLineOids(listText);
+        lists.push({ listText, oids });
+        total += oids.length;
+        await sleep(CRAWL_INTER_MS);
+      }
+      const chapters = [];
+      let done = 0;
+      for (const { listText, oids } of lists) {
+        const games = {};
+        for (const oid of oids) {
+          let g = cap.games[oid];
+          if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(CRAWL_INTER_MS); }
+          if (g && g.trim() && g.trim() !== '{}') { games[oid] = g; cap.games[oid] = g; }
+          done++; setStatus(`Hole Linien … ${done}/${total}`);
+        }
+        chapters.push({ listText, games });
+      }
+      const payload = Crawl.buildIngestChapters(chapters);
+      if (!payload.length) throw new Error('Keine Linien geholt');
+      setStatus('Importiere in RookHub …');
+      const res = await ingest(bid, payload, target, bestCourseName(bid));
+      setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+    } catch (err) {
+      setStatus('Fehler: ' + ((err && err.message) || err));
+    } finally { crawling = false; updatePanel(); }
+  }
+
+  // V1: nur den passiven Mitschnitt importieren (kein aktives Holen).
+  async function importCaptured(target) {
+    const bid = cap.bid || currentCourseId();
+    const chapters = capturedChapters();
+    if (!bid || !chapters.length) { setStatus('Nichts mitgeschnitten.'); return; }
+    try {
+      setStatus('Importiere Mitschnitt …');
+      const res = await ingest(bid, chapters, target, bestCourseName(bid));
+      setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+    } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
+  }
+
+  function scheduleAutoImport() {
+    if (autoImportTimer) return;
+    autoImportTimer = setTimeout(() => {
+      autoImportTimer = null;
+      if (capturedLineCount() > 0) importCaptured(currentTarget());
+    }, 8000);
+  }
+
+  // ---- UI-Panel (isolierte Welt darf DOM manipulieren) ----
+  let panel = null, statusEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+
+  function currentTarget() {
+    const r = panel && panel.querySelector('input[name="rc-target"]:checked');
+    return r ? r.value : 'repertoire';
+  }
+  function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
+
+  function ensurePanel() {
+    if (panel || !document.body) return;
+    if (!currentCourseId()) return;   // nur auf Kurs-/Practice-Seiten
+    panel = document.createElement('div');
+    panel.id = 'repcheck-import-panel';
+    panel.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483000;background:#1f2530;color:#e8eaed;font:12px/1.4 system-ui,sans-serif;border:1px solid #3a4250;border-radius:8px;padding:10px 12px;max-width:260px;box-shadow:0 4px 16px rgba(0,0,0,.4)';
+    panel.innerHTML =
+      '<div style="font-weight:600;margin-bottom:6px">RookHub-Import (Browser)</div>' +
+      '<div style="margin-bottom:6px">' +
+        '<label style="margin-right:10px"><input type="radio" name="rc-target" value="repertoire" checked> Repertoire</label>' +
+        '<label><input type="radio" name="rc-target" value="book"> Kurs/Buch</label>' +
+      '</div>' +
+      '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
+      '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
+      '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
+      '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Beim Training automatisch importieren</label>' +
+      '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
+    document.body.appendChild(panel);
+    statusEl = panel.querySelector('#rc-status');
+    capInfoEl = panel.querySelector('#rc-capinfo');
+    importCapBtn = panel.querySelector('#rc-importcap');
+    crawlBtn = panel.querySelector('#rc-crawl');
+    autoChk = panel.querySelector('#rc-auto');
+    crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
+    importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
+    autoChk.addEventListener('change', () => {
+      autoImport = autoChk.checked;
+      try { chrome.storage.local.set({ rookhubChessableAutoImport: autoImport }); } catch (e) {}
+    });
+    updatePanel();
+  }
+
+  function updatePanel() {
+    if (!panel) return;
+    const n = capturedLineCount();
+    if (capInfoEl) capInfoEl.textContent = n > 0 ? `${n} Linien mitgeschnitten` : 'Noch nichts mitgeschnitten';
+    if (importCapBtn) importCapBtn.style.display = n > 0 ? 'block' : 'none';
+    if (autoChk) autoChk.checked = autoImport;
+    if (crawlBtn) crawlBtn.disabled = crawling;
+  }
+
+  setInterval(ensurePanel, TICK_MS);
+  ensurePanel();
+
   console.log('[RepCheck Chessable] Activity-Tracking aktiv');
 })();

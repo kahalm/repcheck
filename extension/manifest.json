@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RepCheck — Opening Repertoire Checker",
-  "version": "1.25.0",
+  "version": "1.26.0",
   "description": "Markiert Abweichungen vom Eröffnungsrepertoire auf chess.com & lichess (PGN oder RookHub); chessable: FEN-Tools + RookHub.",
   "homepage_url": "https://github.com/kahalm/repcheck",
   "icons": {
@@ -29,9 +29,21 @@
       ],
       "js": [
         "chessable-token.js",
+        "lib/chessable-crawl.js",
         "chessable-activity.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.chessable.com/*",
+        "https://chessable.com/*"
+      ],
+      "js": [
+        "chessable-capture.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": [
