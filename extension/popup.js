@@ -388,6 +388,16 @@ async function initChessableImport() {
   ciRender(st);
 
   CI_CRAWL.addEventListener('click', async () => {
+    // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
+    const ok = window.confirm(
+      'Bannrisiko\n\n' +
+      '„Kurs holen" ruft die Chessable-API automatisiert im Schnelldurchlauf ab. ' +
+      'Das kann gegen Chessables Nutzungsbedingungen verstoßen und im schlimmsten Fall ' +
+      'zur Sperrung deines Kontos führen.\n\n' +
+      'Nutze es nur für eigene Kurse und auf eigenes Risiko.\n\n' +
+      'Wirklich fortfahren?'
+    );
+    if (!ok) return;
     CI_STATUS.textContent = 'Starte …';
     await ciSend('crawl', { target: ciSelectedTarget() });
     ciTick();

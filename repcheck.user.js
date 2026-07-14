@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.30.1
+// @version      1.31.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1822,6 +1822,7 @@
       panel.innerHTML =
         '<div style="font-weight:600;margin-bottom:6px">RookHub-Import (Browser)</div>' +
         '<div style="margin-bottom:6px"><label style="margin-right:10px"><input type="radio" name="rc-target" value="repertoire" checked> Repertoire</label><label><input type="radio" name="rc-target" value="book"> Kurs/Buch</label></div>' +
+        '<div style="font-weight:bold;color:#ffb3b3;background:#3a1f1f;border:1px solid #6b2b2b;border-radius:5px;padding:6px 8px;margin-bottom:6px;line-height:1.35">⚠️ Bannrisiko: „Kurs holen" ruft die Chessable-API automatisiert im Schnelldurchlauf ab. Das kann gegen Chessables Nutzungsbedingungen verstoßen und im schlimmsten Fall zur Sperrung deines Kontos führen. Nur für eigene Kurse, auf eigenes Risiko. Der passive „Mitschnitt" ist unbedenklich.</div>' +
         '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
         '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
         '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
@@ -1831,7 +1832,15 @@
       document.body.appendChild(panel);
       statusEl = panel.querySelector('#rc-status'); progressEl = panel.querySelector('#rc-progress'); capInfoEl = panel.querySelector('#rc-capinfo');
       importCapBtn = panel.querySelector('#rc-importcap'); crawlBtn = panel.querySelector('#rc-crawl'); autoChk = panel.querySelector('#rc-auto');
-      crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
+      crawlBtn.addEventListener('click', () => {
+        // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
+        const ok = window.confirm(
+          'Bannrisiko\n\n„Kurs holen" ruft die Chessable-API automatisiert im Schnelldurchlauf ab. ' +
+          'Das kann gegen Chessables Nutzungsbedingungen verstoßen und im schlimmsten Fall ' +
+          'zur Sperrung deines Kontos führen.\n\nNutze es nur für eigene Kurse und auf eigenes Risiko.\n\nWirklich fortfahren?');
+        if (!ok) return;
+        crawlAndImport(currentTarget());
+      });
       importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
       autoChk.addEventListener('change', () => { autoImport = autoChk.checked; try { if (typeof GM_setValue !== 'undefined') GM_setValue('rookhubChessableAutoImport', autoImport); } catch (e) {} if (autoImport && hasUnsentLine()) scheduleAutoImport(); });
       updatePanel();
