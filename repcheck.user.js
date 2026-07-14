@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.26.0
+// @version      1.27.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1597,11 +1597,30 @@
       return resp.text();
     }
 
+    // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded); final=true schließt die Session ab.
+    async function ingestChunk(sessionId, bid, target, courseName, chapter, final) {
+      const cfg = getCfg();
+      if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+      const baseUrl = String(cfg.url).replace(/\/$/, '');
+      const resp = await fetch(baseUrl + '/api/extension/chessable/ingest/chunk', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ sessionId, bid, target, courseName, chapter, final }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+      return data;
+    }
+
     const INTER_MS = 350; const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const newSessionId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
     let crawling = false;
+    // V2: kompletten Kurs aktiv holen und KAPITELWEISE streamen (kein Riesen-Body; Import beim finalen Chunk).
     async function crawlAndImport(target) {
       if (crawling) return; crawling = true; updatePanel();
       const bid = currentCourseId();
+      const sessionId = newSessionId();
+      const courseName = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
       try {
         if (!bid) throw new Error('Kein Kurs erkannt');
         setStatus('Hole Kursstruktur …');
@@ -1610,16 +1629,15 @@
         if (!lids.length) throw new Error('Keine Kapitel gefunden');
         const lists = []; let total = 0;
         for (const lid of lids) { const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; await sleep(INTER_MS); }
-        const chapters = []; let done = 0;
+        let done = 0, sent = 0;
         for (const { listText, oids } of lists) {
-          const games = {};
-          for (const oid of oids) { let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { games[oid] = g; cap.games[oid] = g; } done++; setStatus(`Hole Linien … ${done}/${total}`); }
-          chapters.push({ listText, games });
+          const lines = [];
+          for (const oid of oids) { let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(`Hole Linien … ${done}/${total}`); }
+          if (lines.length) { await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false); sent++; }
         }
-        const payload = buildIngestChapters(chapters);
-        if (!payload.length) throw new Error('Keine Linien geholt');
+        if (!sent) throw new Error('Keine Linien geholt');
         setStatus('Importiere in RookHub …');
-        const res = await ingest(bid, payload, target);
+        const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
         setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
       } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
       finally { crawling = false; updatePanel(); }

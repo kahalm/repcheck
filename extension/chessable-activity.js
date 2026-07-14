@@ -462,14 +462,39 @@
     return resp.text();
   }
 
+  // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). final=true schließt die
+  // Session ab → Server parst+importiert den GANZEN Kurs (korrekte Kapitel-/Round-Reihenfolge).
+  async function ingestChunk(sessionId, bid, target, courseName, chapter, final) {
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/chessable/ingest/chunk',
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ sessionId, bid, target, courseName, chapter, final }),
+        expect: 'json',
+      }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || ('HTTP ' + (resp && resp.status))));
+        resolve(resp.body);
+      });
+    });
+  }
+
   const CRAWL_INTER_MS = 350;   // schonender Takt gegen das eigene Chessable-Konto
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const newSessionId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
   let crawling = false;
 
-  // V2: kompletten Kurs aktiv holen (getCourse→getList→getGame), Mitschnitt wo vorhanden wiederverwenden.
+  // V2: kompletten Kurs aktiv holen (getCourse→getList→getGame) und KAPITELWEISE streamen — der Server
+  // sammelt die Kapitel je Session und importiert erst beim finalen Chunk (kein Riesen-Body).
   async function crawlAndImport(target) {
     if (crawling) return; crawling = true; updatePanel();
     const bid = currentCourseId();
+    const sessionId = newSessionId();
     try {
       if (!bid) throw new Error('Kein Kurs erkannt');
       if (!Crawl) throw new Error('Interne lib fehlt');
@@ -486,22 +511,21 @@
         total += oids.length;
         await sleep(CRAWL_INTER_MS);
       }
-      const chapters = [];
-      let done = 0;
+      const courseName = bestCourseName(bid);
+      let done = 0, sent = 0;
       for (const { listText, oids } of lists) {
-        const games = {};
+        const lines = [];
         for (const oid of oids) {
           let g = cap.games[oid];
           if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(CRAWL_INTER_MS); }
-          if (g && g.trim() && g.trim() !== '{}') { games[oid] = g; cap.games[oid] = g; }
+          if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; }
           done++; setStatus(`Hole Linien … ${done}/${total}`);
         }
-        chapters.push({ listText, games });
+        if (lines.length) { await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false); sent++; }
       }
-      const payload = Crawl.buildIngestChapters(chapters);
-      if (!payload.length) throw new Error('Keine Linien geholt');
+      if (!sent) throw new Error('Keine Linien geholt');
       setStatus('Importiere in RookHub …');
-      const res = await ingest(bid, payload, target, bestCourseName(bid));
+      const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
       setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
     } catch (err) {
       setStatus('Fehler: ' + ((err && err.message) || err));
