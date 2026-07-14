@@ -460,16 +460,41 @@
     rememberBtn.addEventListener('click', () => rememberLine(rememberBtn));
 
     // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
+    btnRefs = { copyFen: copyBtn, analyse: analyseBtn, searchFen: searchBtn, refresh: refreshBtn, remember: rememberBtn };
     wrap.appendChild(copyBtn);
     wrap.appendChild(analyseBtn);
     wrap.appendChild(searchBtn);
     wrap.appendChild(refreshBtn);
     wrap.appendChild(rememberBtn);
     document.body.appendChild(wrap);
+    applyButtonSettings();     // je nach Popup-Einstellung ein-/ausblenden
+    requestButtonSettings();   // aktuelle Einstellung aus der isolierten Welt anfordern
     // RookHub-URL aus der isolierten Welt (chessable-activity.js) anfordern, damit der
     // Analyse-Button beim Klick synchron einen neuen Tab öffnen kann (Popup-Blocker-sicher).
     requestRookhubUrl();
   }
+
+  // ---- Pro-Button-Sichtbarkeit (im Popup einstellbar) ----
+  // Welche der FEN-Tool-Buttons erscheinen, ist im Extension-Popup pro Button umschaltbar
+  // (chrome.storage.local `chessableButtons`). chessable-fen.js läuft in der MAIN-World ohne
+  // chrome.*-Zugriff → chessable-activity.js (isoliert) spiegelt die Einstellung per postMessage
+  // hierher (Same-Window + Same-Origin geprüft; kein Secret).
+  let btnRefs = {};
+  let buttonSettings = { copyFen: true, analyse: true, searchFen: true, refresh: true, remember: true };
+  function applyButtonSettings() {
+    for (const key of Object.keys(btnRefs)) {
+      const btn = btnRefs[key];
+      if (btn) btn.style.display = (buttonSettings[key] === false) ? 'none' : '';
+    }
+  }
+  function requestButtonSettings() {
+    window.postMessage({ __repcheck: 'request-chessable-buttons' }, location.origin);
+  }
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'chessable-buttons') return;
+    const s = e.data.settings;
+    if (s && typeof s === 'object') { buttonSettings = Object.assign({ copyFen: true, analyse: true, searchFen: true, refresh: true, remember: true }, s); applyButtonSettings(); }
+  });
 
   // Die RookHub-URL liegt extension-privat in chrome.storage.local (nur isolierte Welt lesbar);
   // chessable-activity.js spiegelt sie hierher, damit der Analyse-Button sie synchron im

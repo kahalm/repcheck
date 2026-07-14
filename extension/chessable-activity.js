@@ -374,6 +374,30 @@
   });
   broadcastRookhubUrl();   // proaktiv, falls fen.js seine Anfrage vor unserem Listener stellte
 
+  // ---- Chessable-Buttons-Einstellung-Bridge (isoliert → MAIN chessable-fen.js) ----
+  // Welche FEN-Tool-Buttons erscheinen, ist im Popup pro Button umschaltbar (chrome.storage.local
+  // `chessableButtons`). Nur die isolierte Welt liest chrome.storage → wir spiegeln die Einstellung
+  // an chessable-fen.js (MAIN) und aktualisieren sie live, wenn das Popup sie ändert.
+  const DEFAULT_BUTTONS = { copyFen: true, analyse: true, searchFen: true, refresh: true, remember: true };
+  function broadcastChessableButtons() {
+    try {
+      chrome.storage.local.get('chessableButtons', (r) => {
+        const s = Object.assign({}, DEFAULT_BUTTONS, (r && r.chessableButtons) || {});
+        window.postMessage({ __repcheck: 'chessable-buttons', settings: s }, location.origin);
+      });
+    } catch (e) {}
+  }
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'request-chessable-buttons') return;
+    broadcastChessableButtons();
+  });
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.chessableButtons) broadcastChessableButtons();
+    });
+  } catch (e) {}
+  broadcastChessableButtons();   // proaktiv
+
   // ======================================================================================
   // Browser-Kurs-Import: V1 (passiver Mitschnitt der Kurs-API) + V2 (aktives Holen). Der Browser
   // holt die Chessable-Daten als echte eingeloggte Session (passiert Cloudflare) und schickt das rohe

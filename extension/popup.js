@@ -14,7 +14,39 @@ document.getElementById('open-lichess').addEventListener('click', () => {
 });
 
 document.getElementById('run-check').addEventListener('click', () => triggerInTab('runCheck'));
-document.getElementById('open-settings').addEventListener('click', () => triggerInTab('openSettings'));
+
+// „Einstellungen" funktioniert auf allen drei Sites: auf chess.com/lichess öffnet es das
+// In-Page-Konfigpanel (Repertoire-Prüfung); sonst — v. a. auf chessable.com — klappt es die
+// Chessable-Button-Einstellungen direkt hier im Popup auf/zu (dort gibt es kein In-Page-Panel).
+document.getElementById('open-settings').addEventListener('click', async () => {
+  const tab = await getActiveTab();
+  if (tab && tab.url && /^https:\/\/(www\.chess\.com|lichess\.org)\//.test(tab.url)) {
+    triggerInTab('openSettings');
+    return;
+  }
+  const box = document.getElementById('chessable-settings');
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+});
+
+// ─── Chessable-Button-Einstellungen (pro Button ein-/ausblendbar) ──────
+// Persistiert in chrome.storage.local `chessableButtons`; chessable-activity.js spiegelt es live
+// an chessable-fen.js (MAIN-World), das die Buttons entsprechend zeigt/versteckt.
+const CB_KEYS = ['copyFen', 'analyse', 'searchFen', 'refresh', 'remember'];
+function cbEl(k) { return document.getElementById('cb-' + k); }
+function loadChessableButtons() {
+  if (!chrome.storage || !chrome.storage.local) return;
+  chrome.storage.local.get('chessableButtons', (res) => {
+    const s = (res && res.chessableButtons) || {};
+    for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.checked = s[k] !== false; }
+  });
+}
+function saveChessableButtons() {
+  const s = {};
+  for (const k of CB_KEYS) { const el = cbEl(k); s[k] = el ? el.checked : true; }
+  try { chrome.storage.local.set({ chessableButtons: s }); } catch (e) {}
+}
+for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.addEventListener('change', saveChessableButtons); }
+loadChessableButtons();
 
 function readRookhubStore() {
   return new Promise((resolve) => {
