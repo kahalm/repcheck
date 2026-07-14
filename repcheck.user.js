@@ -1659,12 +1659,18 @@
     const INTER_MS = 3000; const sleep = (ms) => new Promise(r => setTimeout(r, ms));  // ~1 Request / 3 s; Backoff s. chessableGet
     const newSessionId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
     let crawling = false;
+    let cancelRequested = false;          // Abbrechen-Button während des Laufs
+    let crawlStartedAt = null;            // ms-Start des Crawls (mitlaufender Timer im Status)
+    let crawlTimerInt = null;
+    let statusBase = '';
     // V2: kompletten Kurs aktiv holen und KAPITELWEISE streamen (kein Riesen-Body; Import beim finalen Chunk).
     // Repertoire (Default): INKREMENTELL — schon auf RookHub liegende oids werden NICHT erneut von Chessable
     // geholt, nur neue via ingestLive angehängt (spart Abrufe + Ban-Risiko). Buch: voll holen + Chunk-Stream
     // (Round-basierte LineId braucht den ganzen Kurs am Stück).
     async function crawlAndImport(target) {
-      if (crawling) return; crawling = true; updatePanel();
+      if (crawling) return; crawling = true; cancelRequested = false; crawlStartedAt = Date.now();
+      if (!crawlTimerInt) crawlTimerInt = setInterval(paintStatus, 1000);
+      updatePanel();
       const bid = currentCourseId();
       const sessionId = newSessionId();
       const incremental = target !== 'book';
@@ -1678,13 +1684,13 @@
         const lids = parseChapterLids(courseText);
         if (!lids.length) throw new Error('Keine Kapitel gefunden');
         const lists = []; let total = 0, toFetch = 0;
-        for (const lid of lids) { const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; await sleep(INTER_MS); }
+        for (const lid of lids) { if (cancelRequested) { setStatus('Abgebrochen.'); return; } const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; await sleep(INTER_MS); }
         if (incremental && toFetch === 0) { setStatus(`Nichts Neues — alle ${total} Linien schon auf RookHub.`); ensureProgress(true); return; }
         let done = 0, sent = 0, skipped = 0;
         const newChapters = [];
         for (const { listText, oids } of lists) {
           const lines = [];
-          for (const oid of oids) { if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(`Hole neue Linien … ${done}/${toFetch}`); }
+          for (const oid of oids) { if (cancelRequested) { setStatus('Abgebrochen.'); return; } if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(`Hole neue Linien … ${done}/${toFetch}`); }
           if (!lines.length) continue;
           if (incremental) newChapters.push({ chapterJson: listText, lines });
           else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);
@@ -1701,7 +1707,7 @@
           setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); ensureProgress(true);
         }
       } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
-      finally { crawling = false; updatePanel(); }
+      finally { crawling = false; crawlStartedAt = null; if (crawlTimerInt) { clearInterval(crawlTimerInt); crawlTimerInt = null; } updatePanel(); }
     }
     async function importCaptured(target) {
       const bid = cap.bid || currentCourseId(); const chapters = capturedChapters();
@@ -1830,7 +1836,9 @@
     }
 
     function currentTarget() { const r = panel && panel.querySelector('input[name="rc-target"]:checked'); return r ? r.value : 'repertoire'; }
-    function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
+    function elapsedLabel(ms) { const s = Math.max(0, Math.floor((Date.now() - ms) / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+    function paintStatus() { if (!statusEl) return; statusEl.textContent = crawlStartedAt ? (statusBase ? `${statusBase} · ${elapsedLabel(crawlStartedAt)}` : elapsedLabel(crawlStartedAt)) : statusBase; }
+    function setStatus(t) { statusBase = t || ''; paintStatus(); }
     function ensurePanel() {
       if (panel || !document.body || !currentCourseId()) return;
       panel = document.createElement('div');
@@ -1850,6 +1858,8 @@
       statusEl = panel.querySelector('#rc-status'); progressEl = panel.querySelector('#rc-progress'); capInfoEl = panel.querySelector('#rc-capinfo');
       importCapBtn = panel.querySelector('#rc-importcap'); crawlBtn = panel.querySelector('#rc-crawl'); autoChk = panel.querySelector('#rc-auto');
       crawlBtn.addEventListener('click', () => {
+        // Läuft ein Crawl, ist derselbe Button der Abbrechen-Knopf.
+        if (crawling) { cancelRequested = true; setStatus('Abbruch angefordert …'); return; }
         // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
         const ok = window.confirm(
           'Bannrisiko\n\n„Kurs holen" ruft die Chessable-API automatisiert im Schnelldurchlauf ab. ' +
@@ -1868,7 +1878,11 @@
       if (capInfoEl) capInfoEl.textContent = n > 0 ? `${n} Linien mitgeschnitten` : 'Noch nichts mitgeschnitten';
       if (importCapBtn) importCapBtn.style.display = n > 0 ? 'block' : 'none';
       if (autoChk) autoChk.checked = autoImport;
-      if (crawlBtn) crawlBtn.disabled = crawling;
+      if (crawlBtn) {
+        crawlBtn.disabled = false;
+        crawlBtn.textContent = crawling ? 'Abbrechen' : '⚡ Kurs über meinen Browser holen';
+        crawlBtn.style.background = crawling ? '#c62828' : '#2d6cdf';
+      }
     }
     setInterval(() => { ensurePanel(); startDomObserver(); ensureProgress(false); }, 5000); ensurePanel(); startDomObserver(); ensureProgress(false);
   }

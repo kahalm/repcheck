@@ -512,6 +512,8 @@
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const newSessionId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
   let crawling = false;
+  let crawlStartedAt = null;   // ms-Zeitstempel des laufenden Crawls (fürs Popup: mitlaufender Timer)
+  let cancelRequested = false; // vom Popup gesetzt (Aktion 'cancel'); die Crawl-Schleifen brechen dann sauber ab
 
   // V2: Kurs aktiv holen (getCourse→getList→getGame).
   //  • Repertoire (Default): INKREMENTELL — Linien, deren oid schon auf RookHub liegt, werden NICHT erneut von
@@ -520,7 +522,7 @@
   //  • Buch: weiterhin VOLLSTÄNDIG holen + kapitelweise streamen (ingestChunk) — die Buch-LineId hängt an der
   //    Round-Nummer (Kapitel.Linie), daher braucht der Parser den ganzen Kurs am Stück (kein Skip).
   async function crawlAndImport(target) {
-    if (crawling) return; crawling = true;
+    if (crawling) return; crawling = true; crawlStartedAt = Date.now(); cancelRequested = false;
     const bid = currentCourseId();
     const sessionId = newSessionId();
     const incremental = target !== 'book';
@@ -543,6 +545,7 @@
       const lists = [];
       let total = 0, toFetch = 0;
       for (const lid of lids) {
+        if (cancelRequested) { setStatus('Abgebrochen.'); return; }
         const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
         const oids = Crawl.parseLineOids(listText);
         lists.push({ listText, oids });
@@ -563,6 +566,7 @@
       for (const { listText, oids } of lists) {
         const lines = [];
         for (const oid of oids) {
+          if (cancelRequested) { setStatus('Abgebrochen.'); return; }
           if (incremental && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
           let g = cap.games[oid];
           if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(CRAWL_INTER_MS); }
@@ -588,7 +592,7 @@
       ensureProgress(true);
     } catch (err) {
       setStatus('Fehler: ' + ((err && err.message) || err));
-    } finally { crawling = false; }
+    } finally { crawling = false; crawlStartedAt = null; }
   }
 
   // V1: nur den passiven Mitschnitt importieren (kein aktives Holen).
@@ -786,6 +790,7 @@
       captured: capturedLineCount(),
       autoImport,
       crawling,
+      crawlStartedAt,
       target: importTarget,
       status: lastStatus,
       progress: progressSummary(),
@@ -809,6 +814,10 @@
         if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;
         crawlAndImport(importTarget);
         sendResponse({ started: true });
+        break;
+      case 'cancel':
+        if (crawling) { cancelRequested = true; setStatus('Abbruch angefordert …'); }
+        sendResponse(importState());
         break;
       case 'importCaptured':
         if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;

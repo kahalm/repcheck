@@ -320,6 +320,24 @@ const CI_LIVE = document.getElementById('ci-live');
 const CI_PROGRESS = document.getElementById('ci-progress');
 const CI_STATUS = document.getElementById('ci-status');
 let ciTabId = null, ciPoll = null, ciTargetInit = false;
+// Mitlaufender Timer im Status („… · 1:23"): Basistext + Crawl-Startzeit getrennt halten,
+// damit ein 1-s-Ticker die verstrichene Zeit unabhängig vom 1,5-s-State-Poll aktualisiert.
+let ciStatusBase = '', ciStartedAt = null, ciTimerInt = null;
+// „Kurs holen"-Button wird während des Laufs zum Abbrechen-Knopf; Default-Label einmal merken.
+const CI_CRAWL_LABEL = CI_CRAWL ? CI_CRAWL.textContent : '';
+let ciCrawling = false;
+
+function ciElapsedLabel(ms) {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  const m = Math.floor(s / 60);
+  return m + ':' + String(s % 60).padStart(2, '0');
+}
+
+function paintCiStatus() {
+  CI_STATUS.textContent = ciStartedAt
+    ? (ciStatusBase ? `${ciStatusBase} · ${ciElapsedLabel(ciStartedAt)}` : ciElapsedLabel(ciStartedAt))
+    : ciStatusBase;
+}
 
 function ciSelectedTarget() {
   const r = document.querySelector('input[name="ci-target"]:checked');
@@ -345,7 +363,16 @@ function ciRender(st) {
   CI_COURSE.textContent = st.onCourse
     ? (st.courseName ? ('Kurs: ' + st.courseName) : ('Kurs-ID ' + st.bid))
     : 'Öffne einen Chessable-Kurs.';
-  CI_CRAWL.disabled = !st.onCourse || st.crawling;
+  ciCrawling = !!st.crawling;
+  if (ciCrawling) {
+    CI_CRAWL.textContent = 'Abbrechen';
+    CI_CRAWL.classList.add('ci-cancel');
+    CI_CRAWL.disabled = false;
+  } else {
+    CI_CRAWL.textContent = CI_CRAWL_LABEL;
+    CI_CRAWL.classList.remove('ci-cancel');
+    CI_CRAWL.disabled = !st.onCourse;
+  }
   // Ziel-Radios einmalig aus dem Zustand vorbelegen, danach nicht gegen den User kämpfen.
   if (!ciTargetInit && (st.target === 'book' || st.target === 'repertoire')) {
     const r = document.querySelector(`input[name="ci-target"][value="${st.target}"]`);
@@ -365,7 +392,11 @@ function ciRender(st) {
   } else {
     CI_PROGRESS.textContent = '';
   }
-  CI_STATUS.textContent = st.status || '';
+  ciStatusBase = st.status || '';
+  ciStartedAt = (st.crawling && st.crawlStartedAt) ? st.crawlStartedAt : null;
+  paintCiStatus();
+  if (ciStartedAt && !ciTimerInt) ciTimerInt = setInterval(paintCiStatus, 1000);
+  if (!ciStartedAt && ciTimerInt) { clearInterval(ciTimerInt); ciTimerInt = null; }
 }
 
 async function ciTick() { ciRender(await ciSend('state')); }
@@ -388,6 +419,12 @@ async function initChessableImport() {
   ciRender(st);
 
   CI_CRAWL.addEventListener('click', async () => {
+    // Läuft ein Crawl, ist derselbe Button der Abbrechen-Knopf.
+    if (ciCrawling) {
+      await ciSend('cancel');
+      ciTick();
+      return;
+    }
     // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
     const ok = window.confirm(
       'Bannrisiko\n\n' +
@@ -412,7 +449,7 @@ async function initChessableImport() {
     r.addEventListener('change', () => ciSend('setTarget', { target: ciSelectedTarget() })));
 
   ciPoll = setInterval(ciTick, 1500);
-  window.addEventListener('unload', () => { if (ciPoll) clearInterval(ciPoll); });
+  window.addEventListener('unload', () => { if (ciPoll) clearInterval(ciPoll); if (ciTimerInt) clearInterval(ciTimerInt); });
 }
 
 initChessableImport();
