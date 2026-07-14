@@ -63,7 +63,43 @@
     return out;
   }
 
-  const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters };
+  // Kapitel→oids aus einer getCourse?includeVariations=true-Antwort (course.data[].variations[].oid).
+  // Für die Fortschritts-Overlays: liefert je Kapitel (lid) die Linien-oids + die Gesamtliste. EIN
+  // getCourse-Call genügt für Kurs-/Kapitel-Nenner + alle oids (kein getList je Kapitel nötig).
+  function parseCourseVariations(courseJson) {
+    let obj;
+    try { obj = typeof courseJson === 'string' ? JSON.parse(courseJson) : courseJson; } catch (e) { return { chapters: [], allOids: [] }; }
+    const course = obj && (obj.course || obj.Course);
+    const data = course && (course.data || course.Data);
+    const chapters = []; const allOids = [];
+    if (Array.isArray(data)) {
+      for (const c of data) {
+        const lid = c && (c.id != null ? c.id : c.Id);
+        const vars = c && (c.variations || c.Variations);
+        const oids = Array.isArray(vars)
+          ? vars.map(v => v && (v.oid != null ? v.oid : v.Oid)).filter(x => x != null).map(String)
+          : [];
+        chapters.push({ lid: lid != null ? String(lid) : null, oids });
+        for (const o of oids) allOids.push(o);
+      }
+    }
+    return { chapters, allOids };
+  }
+
+  // Kurs-/Kapitel-Fortschrittszahlen aus Struktur + importierter oid-Menge (rein, für Anzeige/Tests).
+  function progressCounts(chapters, importedOids) {
+    const set = importedOids instanceof Set ? importedOids : new Set(importedOids || []);
+    const perChapter = (chapters || []).map(ch => ({
+      lid: ch.lid,
+      total: ch.oids.length,
+      done: ch.oids.reduce((n, o) => n + (set.has(String(o)) ? 1 : 0), 0),
+    }));
+    const total = perChapter.reduce((n, c) => n + c.total, 0);
+    const done = perChapter.reduce((n, c) => n + c.done, 0);
+    return { total, done, perChapter };
+  }
+
+  const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;
 })(typeof self !== 'undefined' ? self : this);

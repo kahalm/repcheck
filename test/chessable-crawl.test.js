@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters } =
+const { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts } =
   require('../extension/lib/chessable-crawl.js');
 
 test('classifyChessableApi recognizes getCourse/getList/getGame with params', () => {
@@ -46,4 +46,25 @@ test('buildIngestChapters keeps getList order, drops missing/empty games and emp
   assert.equal(out.length, 1);
   assert.match(out[0].chapterJson, /Ch1/);
   assert.deepEqual(out[0].lines, ['{"game":{"data":[]}}']); // only oid 1 (order preserved, 3 was "{}")
+});
+
+test('parseCourseVariations extracts chapter->oids from getCourse includeVariations', () => {
+  const json = '{"course":{"data":[' +
+    '{"id":10,"total":2,"variations":[{"oid":101,"type":"x"},{"oid":102}]},' +
+    '{"id":20,"variations":[{"oid":201}]}]}}';
+  const r = parseCourseVariations(json);
+  assert.deepEqual(r.chapters, [{ lid: '10', oids: ['101','102'] }, { lid: '20', oids: ['201'] }]);
+  assert.deepEqual(r.allOids, ['101','102','201']);
+  assert.deepEqual(parseCourseVariations('garbage'), { chapters: [], allOids: [] });
+});
+
+test('progressCounts computes course + per-chapter done/total against imported set', () => {
+  const chapters = [{ lid: '10', oids: ['101','102'] }, { lid: '20', oids: ['201'] }];
+  const r = progressCounts(chapters, new Set(['101','201','999']));
+  assert.equal(r.total, 3);
+  assert.equal(r.done, 2);
+  assert.deepEqual(r.perChapter, [
+    { lid: '10', total: 2, done: 1 },
+    { lid: '20', total: 1, done: 1 },
+  ]);
 });

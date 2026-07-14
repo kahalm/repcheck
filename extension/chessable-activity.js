@@ -527,6 +527,7 @@
       setStatus('Importiere in RookHub …');
       const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
       setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+      ensureProgress(true);
     } catch (err) {
       setStatus('Fehler: ' + ((err && err.message) || err));
     } finally { crawling = false; updatePanel(); }
@@ -541,6 +542,7 @@
       setStatus('Importiere Mitschnitt …');
       const res = await ingest(bid, chapters, target, bestCourseName(bid));
       setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+      ensureProgress(true);
     } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
   }
 
@@ -604,6 +606,7 @@
     try {
       const res = await ingestLive(bid, currentTarget(), bestCourseName(bid), chapters);
       setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`);
+      ensureProgress(true);   // Overlay live nachziehen
     } catch (err) {
       picked.forEach(o => sentOids.delete(o));
       setStatus('Live-Fehler: ' + ((err && err.message) || err));
@@ -614,8 +617,108 @@
     updatePanel();
   }
 
+  // ======================================================================================
+  // Fortschritts-Overlay: zeigt auf chessable.com, wieviel des Kurses schon auf RookHub ist —
+  // Kurs- + Kapitel-Zusammenfassung im Panel (robust) UND Best-Effort-Marker (✓/○) direkt an
+  // Chessables eigenen Linien-Elementen (per oid im href/data-Attribut; fragil ggü. DOM-Änderungen).
+  // Struktur via getCourse?includeVariations (1 Call, oids je Kapitel), importierte oids via RookHub.
+  // ======================================================================================
+  let progressBid = null, progressStruct = null, importedOids = new Set(), progressAt = 0;
+  const PROGRESS_TTL = 60000;
+  let progressFetching = false;
+
+  async function fetchImportedOids(bid) {
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) return null;
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/chessable/progress?bid=' + encodeURIComponent(bid),
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' },
+        expect: 'json',
+      }, (resp) => {
+        if (chrome.runtime.lastError || !resp || !resp.ok || !resp.body) return resolve(null);
+        resolve(resp.body);   // { book, repertoire, oids: [] }
+      });
+    });
+  }
+
+  async function ensureProgress(force) {
+    if (!Crawl) return;
+    const bid = currentCourseId();
+    if (!bid) return;
+    if (!force && bid === progressBid && (now() - progressAt) < PROGRESS_TTL) return;
+    if (progressFetching) return;
+    progressFetching = true;
+    try {
+      // Struktur (oids je Kapitel) — 1 getCourse-Call, je bid gecacht. Aus dem Mitschnitt, falls schon da.
+      if (bid !== progressBid || !progressStruct) {
+        const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}&includeVariations=true`);
+        progressStruct = Crawl.parseCourseVariations(courseText);
+      }
+      const prog = await fetchImportedOids(bid);
+      importedOids = new Set((prog && prog.oids) || []);
+      progressBid = bid; progressAt = now();
+      renderProgress();
+      annotateDom();
+    } catch (e) { /* still */ }
+    finally { progressFetching = false; }
+  }
+
+  function renderProgress() {
+    if (!progressEl || !progressStruct) return;
+    const c = Crawl.progressCounts(progressStruct.chapters, importedOids);
+    if (c.total === 0) { progressEl.textContent = ''; return; }
+    const pct = Math.round((c.done / c.total) * 100);
+    const chapterLines = c.perChapter
+      .map((ch, i) => `Kapitel ${i + 1}: ${ch.done}/${ch.total}`)
+      .join(' · ');
+    progressEl.innerHTML =
+      `<div style="font-weight:600;color:#e8eaed">Auf RookHub: ${c.done}/${c.total} Linien (${pct}%)</div>` +
+      `<div style="margin-top:2px;font-size:11px;color:#9aa4b2;max-height:80px;overflow:auto">${chapterLines}</div>`;
+  }
+
+  // Best-Effort: an Chessables eigene Linien-Elemente ein ✓/○ heften. Wir suchen Elemente, deren
+  // href/data-Attribut die oid als eigenes Segment enthält (robust ggü. Layout, fragil nur, falls
+  // Chessable die oid gar nicht im DOM ausweist). Idempotent über ein data-Flag.
+  function annotateDom() {
+    if (!progressStruct) return;
+    for (const oid of progressStruct.allOids) {
+      const done = importedOids.has(String(oid));
+      let el = document.querySelector(`a[href*="/${oid}"], a[href$="/${oid}"], [data-oid="${oid}"], [data-variation-id="${oid}"], [data-id="${oid}"]`);
+      if (!el) continue;
+      const row = el.closest('li, tr, [role="row"], div') || el;
+      if (row.querySelector(':scope > .rc-prog-badge')) {
+        const b = row.querySelector(':scope > .rc-prog-badge');
+        b.textContent = done ? '✓' : '○';
+        b.style.color = done ? '#4caf50' : '#9aa4b2';
+        continue;
+      }
+      const badge = document.createElement('span');
+      badge.className = 'rc-prog-badge';
+      badge.textContent = done ? '✓' : '○';
+      badge.title = done ? 'Auf RookHub' : 'Noch nicht auf RookHub';
+      badge.style.cssText = `margin-right:6px;font-weight:700;color:${done ? '#4caf50' : '#9aa4b2'}`;
+      row.insertBefore(badge, row.firstChild);
+    }
+  }
+
+  // Chessable ist eine SPA → bei DOM-Änderungen die Marker (nicht die Fetches) neu anwenden.
+  let domObserver = null;
+  function startDomObserver() {
+    if (domObserver || !document.body) return;
+    let t = null;
+    domObserver = new MutationObserver(() => {
+      if (t) return;
+      t = setTimeout(() => { t = null; try { annotateDom(); } catch (e) {} }, 500);
+    });
+    domObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   // ---- UI-Panel (isolierte Welt darf DOM manipulieren) ----
-  let panel = null, statusEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+  let panel = null, statusEl = null, progressEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
 
   function currentTarget() {
     const r = panel && panel.querySelector('input[name="rc-target"]:checked');
@@ -639,9 +742,11 @@
       '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
       '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
       '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Linien beim Durchklicken live anhängen</label>' +
+      '<div id="rc-progress" style="margin-bottom:6px;color:#c7cfda;border-top:1px solid #3a4250;padding-top:6px"></div>' +
       '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
     document.body.appendChild(panel);
     statusEl = panel.querySelector('#rc-status');
+    progressEl = panel.querySelector('#rc-progress');
     capInfoEl = panel.querySelector('#rc-capinfo');
     importCapBtn = panel.querySelector('#rc-importcap');
     crawlBtn = panel.querySelector('#rc-crawl');
@@ -665,8 +770,8 @@
     if (crawlBtn) crawlBtn.disabled = crawling;
   }
 
-  setInterval(ensurePanel, TICK_MS);
-  ensurePanel();
+  setInterval(() => { ensurePanel(); startDomObserver(); ensureProgress(false); }, TICK_MS);
+  ensurePanel(); startDomObserver(); ensureProgress(false);
 
   console.log('[RepCheck Chessable] Activity-Tracking aktiv');
 })();

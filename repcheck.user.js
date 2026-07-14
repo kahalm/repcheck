@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.28.0
+// @version      1.29.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1521,6 +1521,25 @@
       }
       return out;
     }
+    // Kapitel→oids aus getCourse?includeVariations (Spiegel von lib/chessable-crawl.js).
+    function parseCourseVariations(t) {
+      let o; try { o = typeof t === 'string' ? JSON.parse(t) : t; } catch (e) { return { chapters: [], allOids: [] }; }
+      const course = o && (o.course || o.Course); const data = course && (course.data || course.Data);
+      const chapters = []; const allOids = [];
+      if (Array.isArray(data)) for (const c of data) {
+        const lid = c && (c.id != null ? c.id : c.Id);
+        const vars = c && (c.variations || c.Variations);
+        const oids = Array.isArray(vars) ? vars.map(v => v && (v.oid != null ? v.oid : v.Oid)).filter(x => x != null).map(String) : [];
+        chapters.push({ lid: lid != null ? String(lid) : null, oids });
+        for (const x of oids) allOids.push(x);
+      }
+      return { chapters, allOids };
+    }
+    function progressCounts(chapters, importedOids) {
+      const set = importedOids instanceof Set ? importedOids : new Set(importedOids || []);
+      const perChapter = (chapters || []).map(ch => ({ lid: ch.lid, total: ch.oids.length, done: ch.oids.reduce((n, o) => n + (set.has(String(o)) ? 1 : 0), 0) }));
+      return { total: perChapter.reduce((n, c) => n + c.total, 0), done: perChapter.reduce((n, c) => n + c.done, 0), perChapter };
+    }
 
     // --- Config/Token/Kurs-ID ---
     function getCfg() { try { if (typeof GM_getValue !== 'undefined') return GM_getValue('rookhubConfig', null); } catch (e) {} return null; }
@@ -1638,14 +1657,14 @@
         if (!sent) throw new Error('Keine Linien geholt');
         setStatus('Importiere in RookHub …');
         const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
-        setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+        setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); ensureProgress(true);
       } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
       finally { crawling = false; updatePanel(); }
     }
     async function importCaptured(target) {
       const bid = cap.bid || currentCourseId(); const chapters = capturedChapters();
       if (!bid || !chapters.length) { setStatus('Nichts mitgeschnitten.'); return; }
-      try { setStatus('Importiere Mitschnitt …'); const res = await ingest(bid, chapters, target); setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); }
+      try { setStatus('Importiere Mitschnitt …'); const res = await ingest(bid, chapters, target); setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); ensureProgress(true); }
       catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
     }
 
@@ -1692,7 +1711,7 @@
       try {
         const cn = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
         const res = await ingestLive(bid, currentTarget(), cn, chapters);
-        setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`);
+        setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`); ensureProgress(true);
       } catch (err) {
         picked.forEach(o => sentOids.delete(o));
         setStatus('Live-Fehler: ' + ((err && err.message) || err));
@@ -1705,7 +1724,69 @@
     function scheduleAutoImport() { if (autoImportTimer) return; autoImportTimer = setTimeout(() => { autoImportTimer = null; flushLive(); }, 1500); }
 
     // --- UI-Panel ---
-    let panel = null, statusEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+    let panel = null, statusEl = null, progressEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+    // --- Fortschritts-Overlay (Kurs/Kapitel im Panel + ✓/○ an Chessables Linien) ---
+    let progressBid = null, progressStruct = null, importedOids = new Set(), progressAt = 0, progressFetching = false;
+    const PROGRESS_TTL = 60000;
+    async function fetchImportedOids(bid) {
+      const cfg = getCfg(); if (!cfg || !cfg.url || !cfg.token) return null;
+      const baseUrl = String(cfg.url).replace(/\/$/, '');
+      try {
+        const resp = await fetch(baseUrl + '/api/extension/chessable/progress?bid=' + encodeURIComponent(bid),
+          { headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' } });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (e) { return null; }
+    }
+    async function ensureProgress(force) {
+      const bid = currentCourseId(); if (!bid) return;
+      if (!force && bid === progressBid && (Date.now() - progressAt) < PROGRESS_TTL) return;
+      if (progressFetching) return; progressFetching = true;
+      try {
+        if (bid !== progressBid || !progressStruct) {
+          const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}&includeVariations=true`);
+          progressStruct = parseCourseVariations(courseText);
+        }
+        const prog = await fetchImportedOids(bid);
+        importedOids = new Set((prog && prog.oids) || []);
+        progressBid = bid; progressAt = Date.now();
+        renderProgress(); annotateDom();
+      } catch (e) {} finally { progressFetching = false; }
+    }
+    function renderProgress() {
+      if (!progressEl || !progressStruct) return;
+      const c = progressCounts(progressStruct.chapters, importedOids);
+      if (c.total === 0) { progressEl.textContent = ''; return; }
+      const pct = Math.round((c.done / c.total) * 100);
+      const lines = c.perChapter.map((ch, i) => `Kapitel ${i + 1}: ${ch.done}/${ch.total}`).join(' · ');
+      progressEl.innerHTML = `<div style="font-weight:600;color:#e8eaed">Auf RookHub: ${c.done}/${c.total} Linien (${pct}%)</div>` +
+        `<div style="margin-top:2px;font-size:11px;color:#9aa4b2;max-height:80px;overflow:auto">${lines}</div>`;
+    }
+    function annotateDom() {
+      if (!progressStruct) return;
+      for (const oid of progressStruct.allOids) {
+        const done = importedOids.has(String(oid));
+        const el = document.querySelector(`a[href*="/${oid}"], a[href$="/${oid}"], [data-oid="${oid}"], [data-variation-id="${oid}"], [data-id="${oid}"]`);
+        if (!el) continue;
+        const row = el.closest('li, tr, [role="row"], div') || el;
+        let b = row.querySelector(':scope > .rc-prog-badge');
+        if (b) { b.textContent = done ? '✓' : '○'; b.style.color = done ? '#4caf50' : '#9aa4b2'; continue; }
+        b = document.createElement('span');
+        b.className = 'rc-prog-badge';
+        b.textContent = done ? '✓' : '○';
+        b.title = done ? 'Auf RookHub' : 'Noch nicht auf RookHub';
+        b.style.cssText = `margin-right:6px;font-weight:700;color:${done ? '#4caf50' : '#9aa4b2'}`;
+        row.insertBefore(b, row.firstChild);
+      }
+    }
+    let domObserver = null;
+    function startDomObserver() {
+      if (domObserver || !document.body) return;
+      let t = null;
+      domObserver = new MutationObserver(() => { if (t) return; t = setTimeout(() => { t = null; try { annotateDom(); } catch (e) {} }, 500); });
+      domObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
     function currentTarget() { const r = panel && panel.querySelector('input[name="rc-target"]:checked'); return r ? r.value : 'repertoire'; }
     function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
     function ensurePanel() {
@@ -1720,9 +1801,10 @@
         '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
         '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
         '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Linien beim Durchklicken live anhängen</label>' +
+        '<div id="rc-progress" style="margin-bottom:6px;color:#c7cfda;border-top:1px solid #3a4250;padding-top:6px"></div>' +
         '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
       document.body.appendChild(panel);
-      statusEl = panel.querySelector('#rc-status'); capInfoEl = panel.querySelector('#rc-capinfo');
+      statusEl = panel.querySelector('#rc-status'); progressEl = panel.querySelector('#rc-progress'); capInfoEl = panel.querySelector('#rc-capinfo');
       importCapBtn = panel.querySelector('#rc-importcap'); crawlBtn = panel.querySelector('#rc-crawl'); autoChk = panel.querySelector('#rc-auto');
       crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
       importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
@@ -1737,7 +1819,7 @@
       if (autoChk) autoChk.checked = autoImport;
       if (crawlBtn) crawlBtn.disabled = crawling;
     }
-    setInterval(ensurePanel, 5000); ensurePanel();
+    setInterval(() => { ensurePanel(); startDomObserver(); ensureProgress(false); }, 5000); ensurePanel(); startDomObserver(); ensureProgress(false);
   }
 
   // Misst AKTIVE Chessable-Trainingszeit und meldet sie an RookHub (Kategorie
