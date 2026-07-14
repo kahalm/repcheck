@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.31.0
+// @version      1.32.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1660,29 +1660,46 @@
     const newSessionId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
     let crawling = false;
     // V2: kompletten Kurs aktiv holen und KAPITELWEISE streamen (kein Riesen-Body; Import beim finalen Chunk).
+    // Repertoire (Default): INKREMENTELL — schon auf RookHub liegende oids werden NICHT erneut von Chessable
+    // geholt, nur neue via ingestLive angehängt (spart Abrufe + Ban-Risiko). Buch: voll holen + Chunk-Stream
+    // (Round-basierte LineId braucht den ganzen Kurs am Stück).
     async function crawlAndImport(target) {
       if (crawling) return; crawling = true; updatePanel();
       const bid = currentCourseId();
       const sessionId = newSessionId();
+      const incremental = target !== 'book';
       const courseName = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
       try {
         if (!bid) throw new Error('Kein Kurs erkannt');
+        let already = new Set();
+        if (incremental) { const prog = await fetchImportedOids(bid); already = new Set((prog && prog.oids) || []); }
         setStatus('Hole Kursstruktur …');
         const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}`);
         const lids = parseChapterLids(courseText);
         if (!lids.length) throw new Error('Keine Kapitel gefunden');
-        const lists = []; let total = 0;
-        for (const lid of lids) { const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; await sleep(INTER_MS); }
-        let done = 0, sent = 0;
+        const lists = []; let total = 0, toFetch = 0;
+        for (const lid of lids) { const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; await sleep(INTER_MS); }
+        if (incremental && toFetch === 0) { setStatus(`Nichts Neues — alle ${total} Linien schon auf RookHub.`); ensureProgress(true); return; }
+        let done = 0, sent = 0, skipped = 0;
+        const newChapters = [];
         for (const { listText, oids } of lists) {
           const lines = [];
-          for (const oid of oids) { let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(`Hole Linien … ${done}/${total}`); }
-          if (lines.length) { await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false); sent++; }
+          for (const oid of oids) { if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(`Hole neue Linien … ${done}/${toFetch}`); }
+          if (!lines.length) continue;
+          if (incremental) newChapters.push({ chapterJson: listText, lines });
+          else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);
+          sent++;
         }
         if (!sent) throw new Error('Keine Linien geholt');
-        setStatus('Importiere in RookHub …');
-        const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
-        setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); ensureProgress(true);
+        if (incremental) {
+          setStatus('Hänge neue Linien an …');
+          const res = await ingestLive(bid, target, courseName, newChapters);
+          setStatus(`Fertig: ${res.imported} neue Linien angehängt${skipped ? ` (${skipped} schon vorhanden)` : ''}.`); ensureProgress(true);
+        } else {
+          setStatus('Importiere in RookHub …');
+          const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
+          setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`); ensureProgress(true);
+        }
       } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
       finally { crawling = false; updatePanel(); }
     }

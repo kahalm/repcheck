@@ -513,44 +513,78 @@
   const newSessionId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
   let crawling = false;
 
-  // V2: kompletten Kurs aktiv holen (getCourse→getList→getGame) und KAPITELWEISE streamen — der Server
-  // sammelt die Kapitel je Session und importiert erst beim finalen Chunk (kein Riesen-Body).
+  // V2: Kurs aktiv holen (getCourse→getList→getGame).
+  //  • Repertoire (Default): INKREMENTELL — Linien, deren oid schon auf RookHub liegt, werden NICHT erneut von
+  //    Chessable geholt; nur die neuen werden per ingestLive angehängt (AppendLiveAsync dedupt per Zugtext).
+  //    Spart Chessable-Abrufe (Tempo + Ban-Risiko) beim erneuten „Kurs holen".
+  //  • Buch: weiterhin VOLLSTÄNDIG holen + kapitelweise streamen (ingestChunk) — die Buch-LineId hängt an der
+  //    Round-Nummer (Kapitel.Linie), daher braucht der Parser den ganzen Kurs am Stück (kein Skip).
   async function crawlAndImport(target) {
     if (crawling) return; crawling = true;
     const bid = currentCourseId();
     const sessionId = newSessionId();
+    const incremental = target !== 'book';
     try {
       if (!bid) throw new Error('Kein Kurs erkannt');
       if (!Crawl) throw new Error('Interne lib fehlt');
+
+      // Schon importierte oids (nur fürs inkrementelle Repertoire-Anhängen). Fehlt der Endpoint (alte
+      // RookHub-Version) → leere Menge → es wird alles geholt (via Append, weiterhin dedupt).
+      let already = new Set();
+      if (incremental) {
+        const prog = await fetchImportedOids(bid);
+        already = new Set((prog && prog.oids) || []);
+      }
+
       setStatus('Hole Kursstruktur …');
       const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}`);
       const lids = Crawl.parseChapterLids(courseText);
       if (!lids.length) throw new Error('Keine Kapitel gefunden');
       const lists = [];
-      let total = 0;
+      let total = 0, toFetch = 0;
       for (const lid of lids) {
         const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
         const oids = Crawl.parseLineOids(listText);
         lists.push({ listText, oids });
         total += oids.length;
+        toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length;
         await sleep(CRAWL_INTER_MS);
       }
       const courseName = bestCourseName(bid);
-      let done = 0, sent = 0;
+
+      if (incremental && toFetch === 0) {
+        setStatus(`Nichts Neues — alle ${total} Linien schon auf RookHub.`);
+        ensureProgress(true);
+        return;
+      }
+
+      let done = 0, sent = 0, skipped = 0;
+      const newChapters = [];   // nur fürs inkrementelle Anhängen gesammelt
       for (const { listText, oids } of lists) {
         const lines = [];
         for (const oid of oids) {
+          if (incremental && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
           let g = cap.games[oid];
           if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(CRAWL_INTER_MS); }
           if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; }
-          done++; setStatus(`Hole Linien … ${done}/${total}`);
+          done++; setStatus(`Hole neue Linien … ${done}/${toFetch}`);
         }
-        if (lines.length) { await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false); sent++; }
+        if (!lines.length) continue;
+        if (incremental) newChapters.push({ chapterJson: listText, lines });
+        else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);
+        sent++;
       }
       if (!sent) throw new Error('Keine Linien geholt');
-      setStatus('Importiere in RookHub …');
-      const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
-      setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+
+      if (incremental) {
+        setStatus('Hänge neue Linien an …');
+        const res = await ingestLive(bid, target, courseName, newChapters);
+        setStatus(`Fertig: ${res.imported} neue Linien angehängt${skipped ? ` (${skipped} schon vorhanden)` : ''}.`);
+      } else {
+        setStatus('Importiere in RookHub …');
+        const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
+        setStatus(`Fertig: ${res.imported} ${target === 'book' ? 'Puzzles' : 'Linien'} importiert.`);
+      }
       ensureProgress(true);
     } catch (err) {
       setStatus('Fehler: ' + ((err && err.message) || err));
