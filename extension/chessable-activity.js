@@ -388,7 +388,7 @@
   let autoImport = false;                   // V1: Mitschnitt beim Training automatisch senden
   let autoImportTimer = null;
 
-  try { chrome.storage.local.get('rookhubChessableAutoImport', (r) => { autoImport = !!(r && r.rookhubChessableAutoImport); updatePanel(); }); } catch (e) {}
+  try { chrome.storage.local.get('rookhubChessableAutoImport', (r) => { autoImport = !!(r && r.rookhubChessableAutoImport); }); } catch (e) {}
 
   function resetCap(bid) { cap.bid = bid; cap.courseText = null; cap.lists = {}; cap.oidToLid = {}; cap.games = {}; cap.bytes = 0; }
 
@@ -415,7 +415,6 @@
     } else if (info.kind === 'game') {
       if (info.oid != null && !cap.games[info.oid]) { cap.games[info.oid] = body; cap.bytes += body.length; }
     }
-    updatePanel();
     if (autoImport) scheduleAutoImport();
   });
 
@@ -492,7 +491,7 @@
   // V2: kompletten Kurs aktiv holen (getCourse→getList→getGame) und KAPITELWEISE streamen — der Server
   // sammelt die Kapitel je Session und importiert erst beim finalen Chunk (kein Riesen-Body).
   async function crawlAndImport(target) {
-    if (crawling) return; crawling = true; updatePanel();
+    if (crawling) return; crawling = true;
     const bid = currentCourseId();
     const sessionId = newSessionId();
     try {
@@ -530,7 +529,7 @@
       ensureProgress(true);
     } catch (err) {
       setStatus('Fehler: ' + ((err && err.message) || err));
-    } finally { crawling = false; updatePanel(); }
+    } finally { crawling = false; }
   }
 
   // V1: nur den passiven Mitschnitt importieren (kein aktives Holen).
@@ -604,7 +603,7 @@
     liveFlushing = true;
     picked.forEach(o => sentOids.add(o));   // optimistisch; bei Fehler zurücknehmen
     try {
-      const res = await ingestLive(bid, currentTarget(), bestCourseName(bid), chapters);
+      const res = await ingestLive(bid, importTarget, bestCourseName(bid), chapters);
       setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`);
       ensureProgress(true);   // Overlay live nachziehen
     } catch (err) {
@@ -614,7 +613,6 @@
       liveFlushing = false;
       if (autoImport && hasUnsentLine()) scheduleAutoImport();   // während des Flushs kam Neues
     }
-    updatePanel();
   }
 
   // ======================================================================================
@@ -661,23 +659,9 @@
       const prog = await fetchImportedOids(bid);
       importedOids = new Set((prog && prog.oids) || []);
       progressBid = bid; progressAt = now();
-      renderProgress();
       annotateDom();
     } catch (e) { /* still */ }
     finally { progressFetching = false; }
-  }
-
-  function renderProgress() {
-    if (!progressEl || !progressStruct) return;
-    const c = Crawl.progressCounts(progressStruct.chapters, importedOids);
-    if (c.total === 0) { progressEl.textContent = ''; return; }
-    const pct = Math.round((c.done / c.total) * 100);
-    const chapterLines = c.perChapter
-      .map((ch, i) => `Kapitel ${i + 1}: ${ch.done}/${ch.total}`)
-      .join(' · ');
-    progressEl.innerHTML =
-      `<div style="font-weight:600;color:#e8eaed">Auf RookHub: ${c.done}/${c.total} Linien (${pct}%)</div>` +
-      `<div style="margin-top:2px;font-size:11px;color:#9aa4b2;max-height:80px;overflow:auto">${chapterLines}</div>`;
   }
 
   // Best-Effort: an Chessables eigene Linien-Elemente ein ✓/○ heften. Wir suchen Elemente, deren
@@ -717,61 +701,78 @@
     domObserver.observe(document.body, { childList: true, subtree: true });
   }
 
-  // ---- UI-Panel (isolierte Welt darf DOM manipulieren) ----
-  let panel = null, statusEl = null, progressEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
+  // ---- Zustand + Popup-Bridge (das UI liegt jetzt im Extension-Popup) ----
+  // Das früher eingeblendete On-Page-Panel (links unten) ist entfernt; das Popup fragt den
+  // Zustand per chrome.tabs.sendMessage ab und löst Crawl / Mitschnitt-Import / Live-Toggle /
+  // Ziel-Umschaltung aus. Die In-Page-Marker (✓/○ an Chessables Linien) bleiben (annotateDom).
+  let importTarget = 'repertoire';   // vom Popup gesetzt (repertoire|book)
+  let lastStatus = '';
 
-  function currentTarget() {
-    const r = panel && panel.querySelector('input[name="rc-target"]:checked');
-    return r ? r.value : 'repertoire';
-  }
-  function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
+  function setStatus(t) { lastStatus = t || ''; }
 
-  function ensurePanel() {
-    if (panel || !document.body) return;
-    if (!currentCourseId()) return;   // nur auf Kurs-/Practice-Seiten
-    panel = document.createElement('div');
-    panel.id = 'repcheck-import-panel';
-    panel.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483000;background:#1f2530;color:#e8eaed;font:12px/1.4 system-ui,sans-serif;border:1px solid #3a4250;border-radius:8px;padding:10px 12px;max-width:260px;box-shadow:0 4px 16px rgba(0,0,0,.4)';
-    panel.innerHTML =
-      '<div style="font-weight:600;margin-bottom:6px">RookHub-Import (Browser)</div>' +
-      '<div style="margin-bottom:6px">' +
-        '<label style="margin-right:10px"><input type="radio" name="rc-target" value="repertoire" checked> Repertoire</label>' +
-        '<label><input type="radio" name="rc-target" value="book"> Kurs/Buch</label>' +
-      '</div>' +
-      '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
-      '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
-      '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
-      '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Linien beim Durchklicken live anhängen</label>' +
-      '<div id="rc-progress" style="margin-bottom:6px;color:#c7cfda;border-top:1px solid #3a4250;padding-top:6px"></div>' +
-      '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
-    document.body.appendChild(panel);
-    statusEl = panel.querySelector('#rc-status');
-    progressEl = panel.querySelector('#rc-progress');
-    capInfoEl = panel.querySelector('#rc-capinfo');
-    importCapBtn = panel.querySelector('#rc-importcap');
-    crawlBtn = panel.querySelector('#rc-crawl');
-    autoChk = panel.querySelector('#rc-auto');
-    crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
-    importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
-    autoChk.addEventListener('change', () => {
-      autoImport = autoChk.checked;
-      try { chrome.storage.local.set({ rookhubChessableAutoImport: autoImport }); } catch (e) {}
-      if (autoImport && hasUnsentLine()) scheduleAutoImport();   // bereits Erfasstes gleich anhängen
-    });
-    updatePanel();
+  // Kurs-/Kapitel-Fortschritt fürs Popup (null, solange keine Struktur da).
+  function progressSummary() {
+    if (!Crawl || !progressStruct) return null;
+    const c = Crawl.progressCounts(progressStruct.chapters, importedOids);
+    if (!c.total) return null;
+    return { done: c.done, total: c.total, pct: Math.round((c.done / c.total) * 100), perChapter: c.perChapter };
   }
 
-  function updatePanel() {
-    if (!panel) return;
-    const n = capturedLineCount();
-    if (capInfoEl) capInfoEl.textContent = n > 0 ? `${n} Linien mitgeschnitten` : 'Noch nichts mitgeschnitten';
-    if (importCapBtn) importCapBtn.style.display = n > 0 ? 'block' : 'none';
-    if (autoChk) autoChk.checked = autoImport;
-    if (crawlBtn) crawlBtn.disabled = crawling;
+  function importState() {
+    const bid = currentCourseId();
+    return {
+      onCourse: !!bid,
+      bid: bid || null,
+      courseName: bid ? bestCourseName(bid) : null,
+      captured: capturedLineCount(),
+      autoImport,
+      crawling,
+      target: importTarget,
+      status: lastStatus,
+      progress: progressSummary(),
+    };
   }
 
-  setInterval(() => { ensurePanel(); startDomObserver(); ensureProgress(false); }, TICK_MS);
-  ensurePanel(); startDomObserver(); ensureProgress(false);
+  // Popup → Content-Script. `state` antwortet synchron mit dem Momentzustand; die Aktionen
+  // stoßen an und der Fortschritt wird über wiederholtes `state`-Polling im Popup sichtbar.
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || msg.type !== 'rc-import') return;
+    switch (msg.action) {
+      case 'state':
+        ensureProgress(false);            // opportunistisch frisch halten
+        sendResponse(importState());
+        break;
+      case 'setTarget':
+        if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;
+        sendResponse(importState());
+        break;
+      case 'crawl':
+        if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;
+        crawlAndImport(importTarget);
+        sendResponse({ started: true });
+        break;
+      case 'importCaptured':
+        if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;
+        importCaptured(importTarget);
+        sendResponse({ started: true });
+        break;
+      case 'setLive':
+        autoImport = !!msg.enabled;
+        try { chrome.storage.local.set({ rookhubChessableAutoImport: autoImport }); } catch (e) {}
+        if (autoImport && hasUnsentLine()) scheduleAutoImport();
+        sendResponse(importState());
+        break;
+      case 'refreshProgress':
+        ensureProgress(true);
+        sendResponse({ ok: true });
+        break;
+      default:
+        sendResponse(null);
+    }
+  });
+
+  setInterval(() => { startDomObserver(); ensureProgress(false); }, TICK_MS);
+  startDomObserver(); ensureProgress(false);
 
   console.log('[RepCheck Chessable] Activity-Tracking aktiv');
 })();

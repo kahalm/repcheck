@@ -48,6 +48,19 @@
     <span id="chessable-state" style="font-size:11px;color:#7a8a9a;"></span>
   </div>
 </div>
+<div id="chessable-import" class="repertoires" style="display:none;">
+  <div class="heading">RookHub-Import (Browser)</div>
+  <div id="ci-course" style="font-size:11px;color:#7a8a9a;margin-bottom:6px;"></div>
+  <div class="row" style="margin:0 0 6px 0;align-items:center;gap:14px;">
+    <label style="font-weight:normal;"><input type="radio" name="ci-target" value="repertoire" checked> Repertoire</label>
+    <label style="font-weight:normal;"><input type="radio" name="ci-target" value="book"> Kurs/Buch</label>
+  </div>
+  <button id="ci-crawl" class="primary" style="width:100%;margin-bottom:6px;">⚡ Kurs über meinen Browser holen</button>
+  <button id="ci-importcap" class="secondary" style="width:100%;margin-bottom:6px;display:none;">Mitschnitt importieren</button>
+  <label style="display:block;margin-bottom:6px;font-size:12px;"><input type="checkbox" id="ci-live"> Linien beim Durchklicken live anhängen</label>
+  <div id="ci-progress" style="font-size:12px;color:#2c3e50;margin-bottom:4px;"></div>
+  <div id="ci-status" style="font-size:11px;color:#2a8c4a;min-height:1.1em;"></div>
+</div>
 <div class="hint" id="error-hint" style="display:none;color:#b71c1c;"></div>
 <div class="hint">
   <a href="https://github.com/kahalm/repcheck" target="_blank" rel="noopener">GitHub</a>

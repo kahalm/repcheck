@@ -32,6 +32,7 @@ Wenn du an der übrigen Hauptlogik etwas änderst:
 - **Chessable-FEN-Tools** — `chessable-fen.js` (Extension) bzw. `initChessableFenTools` (Userscript) blenden ihre Buttons seit v1.14.0 NUR im **Practice-Mode** ein (`isPracticeMode()` = `location.pathname` beginnt mit `/practice`); bei SPA-Navigation aus dem Practice-Mode raus wird die UI per `removeUi()` wieder entfernt.
 - **Button-Styling** — seit v1.14.0 KEINE site-spezifischen Farben mehr; chess.com nutzt dasselbe dezente Dark/Light-Styling wie Lichess (die `[data-site="chesscom"]`-CSS-Overrides sind raus).
 - **„Partie speichern" (💾)** — bei Erfolg wird der öffentliche Teilen-Link `{RookHub-URL}/g/{shareToken}` (aus der Server-Antwort) in die Zwischenablage gelegt (`buildShareLink`); Button quittiert mit 🔗. Egress wie gehabt: Userscript `fetch`, Extension `rookhubProxy`.
+- **RookHub-Import (Browser) auf chessable.com** — seit v1.30.0 lebt die Import-UI (Ziel Repertoire/Buch, „⚡ Kurs holen", Mitschnitt importieren, „live anhängen", Fortschritt) im **Extension-Popup**, NICHT mehr als On-Page-Panel. Das Popup pollt/steuert `chessable-activity.js` (isolierte Welt) per `chrome.runtime.onMessage` `{type:'rc-import', action}` (`state`/`setTarget`/`crawl`/`importCaptured`/`setLive`/`refreshProgress`). Die In-Page-Marker (✓/○ an den Linien) + die ganze Import-/Crawl-/Live-Logik bleiben im Content-Script. **Userscript**: hat kein Popup → behält sein eingeblendetes On-Page-Import-Panel (unverändert). Also bewusst getrennt, nicht 1:1 syncen.
 
 Ein einziger Build-Schritt, der die Userscript-Quelle als Basis nimmt und nur die Fetch-Funktionen patcht, wäre eine Option für die Zukunft — aktuell ist die Diff klein genug, um manuell synchron gehalten zu werden.
 
@@ -231,11 +232,11 @@ extension/
 ├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com (chessable hat ZWEI: token=isoliert, fen=world:MAIN); permissions: scripting/activeTab/storage
 ├── content.js          # Hauptlogik (port vom Userscript)
 ├── chessable-token.js    # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
-├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub
+├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub; hält zudem den Browser-Kurs-Import-Zustand (Crawl/Mitschnitt/Live/Fortschritt) + chrome.runtime.onMessage-Bridge (`{type:'rc-import'}`), gesteuert vom Popup (kein On-Page-Panel mehr; ✓/○-Marker an den Linien bleiben)
 ├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
 ├── lib/chessable-course-names.js # reine Spiegel-Logik (uid-Decode + getHomeData-Parsing) für Node-Tests
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei)
-├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren"
+├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren" + Sharebar + RookHub-Import (Browser) auf chessable.com [Ziel/Crawl/Mitschnitt/Live/Fortschritt, pollt chessable-activity.js per rc-import; Extension-only]
 ├── icons/              # 16/48/128 PNG
 ├── generate-icons.py   # Placeholder-Generator (Pillow)
 └── web-ext-config.cjs  # web-ext-CLI-Konfig (Firefox/Chromium-Test)

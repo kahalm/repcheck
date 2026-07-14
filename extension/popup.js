@@ -307,6 +307,106 @@ COPY_SHARE.addEventListener('click', async () => {
 
 initShareBar();
 
+// ─── RookHub-Import (Browser) auf chessable.com ────────────────────────
+// Das früher on-page (links unten) eingeblendete Import-Panel lebt jetzt hier im Popup.
+// Das Content-Script chessable-activity.js (isolierte Welt, per manifest auto-injiziert)
+// hält den Zustand + die Import-Logik; das Popup fragt ihn per chrome.tabs.sendMessage ab
+// (`{type:'rc-import', action}`) und pollt `state`, solange es offen ist.
+const CI_BOX = document.getElementById('chessable-import');
+const CI_COURSE = document.getElementById('ci-course');
+const CI_CRAWL = document.getElementById('ci-crawl');
+const CI_IMPORTCAP = document.getElementById('ci-importcap');
+const CI_LIVE = document.getElementById('ci-live');
+const CI_PROGRESS = document.getElementById('ci-progress');
+const CI_STATUS = document.getElementById('ci-status');
+let ciTabId = null, ciPoll = null, ciTargetInit = false;
+
+function ciSelectedTarget() {
+  const r = document.querySelector('input[name="ci-target"]:checked');
+  return r ? r.value : 'repertoire';
+}
+
+function ciSend(action, extra) {
+  return new Promise((resolve) => {
+    if (ciTabId == null) { resolve(null); return; }
+    chrome.tabs.sendMessage(ciTabId, Object.assign({ type: 'rc-import', action }, extra || {}), (resp) => {
+      if (chrome.runtime.lastError) { resolve(null); return; }
+      resolve(resp || null);
+    });
+  });
+}
+
+function ciRender(st) {
+  if (!st) {
+    CI_COURSE.textContent = 'Content-Script nicht bereit — Seite neu laden.';
+    CI_CRAWL.disabled = true;
+    return;
+  }
+  CI_COURSE.textContent = st.onCourse
+    ? (st.courseName ? ('Kurs: ' + st.courseName) : ('Kurs-ID ' + st.bid))
+    : 'Öffne einen Chessable-Kurs.';
+  CI_CRAWL.disabled = !st.onCourse || st.crawling;
+  // Ziel-Radios einmalig aus dem Zustand vorbelegen, danach nicht gegen den User kämpfen.
+  if (!ciTargetInit && (st.target === 'book' || st.target === 'repertoire')) {
+    const r = document.querySelector(`input[name="ci-target"][value="${st.target}"]`);
+    if (r) r.checked = true;
+    ciTargetInit = true;
+  }
+  if (st.captured > 0) {
+    CI_IMPORTCAP.style.display = 'block';
+    CI_IMPORTCAP.textContent = `Mitschnitt importieren (${st.captured} Linien)`;
+  } else {
+    CI_IMPORTCAP.style.display = 'none';
+  }
+  if (document.activeElement !== CI_LIVE) CI_LIVE.checked = !!st.autoImport;
+  if (st.progress) {
+    const p = st.progress;
+    CI_PROGRESS.innerHTML = `<b>Auf RookHub: ${p.done}/${p.total} Linien (${p.pct}%)</b>`;
+  } else {
+    CI_PROGRESS.textContent = '';
+  }
+  CI_STATUS.textContent = st.status || '';
+}
+
+async function ciTick() { ciRender(await ciSend('state')); }
+
+async function initChessableImport() {
+  const tab = await getActiveTab();
+  if (!tab || !tab.url || !/^https:\/\/(www\.)?chessable\.com\//.test(tab.url)) return;
+  ciTabId = tab.id;
+  CI_BOX.style.display = 'block';
+
+  // Falls das Content-Script (noch) nicht antwortet (Tab vor dem Extension-Update geladen),
+  // einmal nachinjizieren (Guard in chessable-activity.js verhindert Doppel-Init).
+  let st = await ciSend('state');
+  if (!st) {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['lib/chessable-crawl.js', 'chessable-activity.js'] });
+    } catch (e) { /* ignore */ }
+    st = await ciSend('state');
+  }
+  ciRender(st);
+
+  CI_CRAWL.addEventListener('click', async () => {
+    CI_STATUS.textContent = 'Starte …';
+    await ciSend('crawl', { target: ciSelectedTarget() });
+    ciTick();
+  });
+  CI_IMPORTCAP.addEventListener('click', async () => {
+    CI_STATUS.textContent = 'Importiere …';
+    await ciSend('importCaptured', { target: ciSelectedTarget() });
+    ciTick();
+  });
+  CI_LIVE.addEventListener('change', () => ciSend('setLive', { enabled: CI_LIVE.checked }));
+  document.querySelectorAll('input[name="ci-target"]').forEach((r) =>
+    r.addEventListener('change', () => ciSend('setTarget', { target: ciSelectedTarget() })));
+
+  ciPoll = setInterval(ciTick, 1500);
+  window.addEventListener('unload', () => { if (ciPoll) clearInterval(ciPoll); });
+}
+
+initChessableImport();
+
 // Triggert die angegebene Aktion im Content-Script. Laedt chess.min.js +
 // content.js nur dann, wenn der Tab sie noch nicht hat (Idempotency-Guard
 // in content.js).
