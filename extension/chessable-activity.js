@@ -448,6 +448,20 @@
     });
   }
 
+  // Chessable drosselt (HTTP 429) bei zu schnellem Holen. Nur retrybare Codes wiederholen; dabei
+  // `Retry-After` honorieren (Sekunden ODER HTTP-Datum), sonst exponentielles Backoff mit Jitter.
+  // 401/403/404 bleiben harte Fehler (kein Retry). Basis-Takt s. CRAWL_INTER_MS.
+  const CHESSABLE_RETRYABLE = new Set([429, 500, 502, 503, 504]);
+  const CHESSABLE_MAX_ATTEMPTS = 5;
+  function parseRetryAfterMs(header) {
+    if (!header) return null;
+    const secs = Number(header);
+    if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+    const when = Date.parse(header);
+    if (!Number.isNaN(when)) return Math.max(0, when - Date.now());
+    return null;
+  }
+
   // same-origin Chessable-Fetch (V2 aktiv) — gleiche Rezeptur wie fetchCourseNameMap (Bearer, credentials).
   async function chessableGet(path) {
     const token = await readChessableToken();
@@ -455,10 +469,21 @@
     const uid = decodeUid(token);
     if (!uid) throw new Error('Chessable-Token ohne uid');
     const sep = path.includes('?') ? '&' : '?';
-    const resp = await fetch(`https://www.chessable.com/api/v1/${path}${sep}uid=${uid}`,
-      { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' });
-    if (!resp.ok) throw new Error('Chessable HTTP ' + resp.status);
-    return resp.text();
+    const url = `https://www.chessable.com/api/v1/${path}${sep}uid=${uid}`;
+    const init = { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' };
+    let lastStatus = 0;
+    for (let attempt = 1; attempt <= CHESSABLE_MAX_ATTEMPTS; attempt++) {
+      const resp = await fetch(url, init);
+      if (resp.ok) return resp.text();
+      lastStatus = resp.status;
+      if (!CHESSABLE_RETRYABLE.has(resp.status) || attempt === CHESSABLE_MAX_ATTEMPTS) break;
+      const retryAfter = parseRetryAfterMs(resp.headers.get('Retry-After'));
+      const backoff = (retryAfter != null ? retryAfter : Math.min(30000, CRAWL_INTER_MS * Math.pow(2, attempt)))
+        + Math.floor(Math.random() * 400);
+      setStatus(`Chessable drosselt (HTTP ${resp.status}) — warte ${Math.round(backoff / 1000)} s (Versuch ${attempt}/${CHESSABLE_MAX_ATTEMPTS - 1}) …`);
+      await sleep(backoff);
+    }
+    throw new Error('Chessable HTTP ' + lastStatus);
   }
 
   // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). final=true schließt die
@@ -483,7 +508,7 @@
     });
   }
 
-  const CRAWL_INTER_MS = 350;   // schonender Takt gegen das eigene Chessable-Konto
+  const CRAWL_INTER_MS = 3000;   // schonender Takt gegen das eigene Chessable-Konto (~1 Request / 3 s); Backoff s. chessableGet
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const newSessionId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
   let crawling = false;
