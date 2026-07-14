@@ -544,12 +544,74 @@
     } catch (err) { setStatus('Fehler: ' + ((err && err.message) || err)); }
   }
 
+  // Live-Append (V1 „beim Durchklicken"): jede NEU erfasste Linie wird kurz gebündelt SOFORT ans
+  // Repertoire angehängt (POST .../ingest/live), statt am Ende alles auf einmal zu senden. sentOids
+  // verhindert Doppel-Sends in dieser Sitzung; der Server dedupliziert zusätzlich per Zugtext.
+  const sentOids = new Set();
+  let liveFlushing = false;
+
+  function hasUnsentLine() {
+    for (const oid of Object.keys(cap.games)) {
+      if (sentOids.has(oid)) continue;
+      const lid = cap.oidToLid[oid];
+      if (lid && cap.lists[lid]) return true;
+    }
+    return false;
+  }
+
   function scheduleAutoImport() {
     if (autoImportTimer) return;
-    autoImportTimer = setTimeout(() => {
-      autoImportTimer = null;
-      if (capturedLineCount() > 0) importCaptured(currentTarget());
-    }, 8000);
+    autoImportTimer = setTimeout(() => { autoImportTimer = null; flushLive(); }, 1500);
+  }
+
+  async function ingestLive(bid, target, courseName, chapters) {
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: baseUrl + '/api/extension/chessable/ingest/live',
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ bid, target, courseName, chapters }),
+        expect: 'json',
+      }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || ('HTTP ' + (resp && resp.status))));
+        resolve(resp.body);
+      });
+    });
+  }
+
+  async function flushLive() {
+    if (liveFlushing || !Crawl) return;
+    const bid = cap.bid || currentCourseId();
+    if (!bid) return;
+    // Neue Linien je Kapitel bündeln — nur solche, deren getList (Kapitel-Kontext) schon bekannt ist.
+    const byLid = {}; const picked = [];
+    for (const oid of Object.keys(cap.games)) {
+      if (sentOids.has(oid)) continue;
+      const lid = cap.oidToLid[oid];
+      if (!lid || !cap.lists[lid]) continue;
+      (byLid[lid] = byLid[lid] || []).push(oid);
+      picked.push(oid);
+    }
+    if (!picked.length) return;
+    const chapters = Object.keys(byLid).map(lid => ({ chapterJson: cap.lists[lid], lines: byLid[lid].map(o => cap.games[o]) }));
+    liveFlushing = true;
+    picked.forEach(o => sentOids.add(o));   // optimistisch; bei Fehler zurücknehmen
+    try {
+      const res = await ingestLive(bid, currentTarget(), bestCourseName(bid), chapters);
+      setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`);
+    } catch (err) {
+      picked.forEach(o => sentOids.delete(o));
+      setStatus('Live-Fehler: ' + ((err && err.message) || err));
+    } finally {
+      liveFlushing = false;
+      if (autoImport && hasUnsentLine()) scheduleAutoImport();   // während des Flushs kam Neues
+    }
+    updatePanel();
   }
 
   // ---- UI-Panel (isolierte Welt darf DOM manipulieren) ----
@@ -576,7 +638,7 @@
       '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
       '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
       '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
-      '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Beim Training automatisch importieren</label>' +
+      '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Linien beim Durchklicken live anhängen</label>' +
       '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
     document.body.appendChild(panel);
     statusEl = panel.querySelector('#rc-status');
@@ -589,6 +651,7 @@
     autoChk.addEventListener('change', () => {
       autoImport = autoChk.checked;
       try { chrome.storage.local.set({ rookhubChessableAutoImport: autoImport }); } catch (e) {}
+      if (autoImport && hasUnsentLine()) scheduleAutoImport();   // bereits Erfasstes gleich anhängen
     });
     updatePanel();
   }

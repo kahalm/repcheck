@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.27.0
+// @version      1.28.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -1538,15 +1538,15 @@
     }
 
     // --- V1: passiver Mitschnitt (fetch + XHR im Page-Kontext direkt patchen) ---
-    const cap = { bid: null, courseText: null, lists: {}, games: {}, bytes: 0 };
+    const cap = { bid: null, courseText: null, lists: {}, oidToLid: {}, games: {}, bytes: 0 };
     const CAP_MAX = 40 * 1024 * 1024;
-    function resetCap(bid) { cap.bid = bid; cap.courseText = null; cap.lists = {}; cap.games = {}; cap.bytes = 0; }
+    function resetCap(bid) { cap.bid = bid; cap.courseText = null; cap.lists = {}; cap.oidToLid = {}; cap.games = {}; cap.bytes = 0; }
     function absorb(url, body) {
       if (typeof body !== 'string' || !body || body.trim() === '' || body.trim() === '{}') return;
       const info = classifyApi(url);
       if (!info || cap.bytes + body.length > CAP_MAX) return;
       if (info.kind === 'course') { const bid = info.bid || currentCourseId(); if (bid && bid !== cap.bid) resetCap(bid); if (!cap.bid) cap.bid = bid || null; cap.courseText = body; cap.bytes += body.length; }
-      else if (info.kind === 'list') { if (info.bid && info.bid !== cap.bid) resetCap(info.bid); if (!cap.bid && info.bid) cap.bid = info.bid; if (info.lid != null) { cap.lists[info.lid] = body; cap.bytes += body.length; } }
+      else if (info.kind === 'list') { if (info.bid && info.bid !== cap.bid) resetCap(info.bid); if (!cap.bid && info.bid) cap.bid = info.bid; if (info.lid != null) { cap.lists[info.lid] = body; cap.bytes += body.length; for (const oid of parseLineOids(body)) cap.oidToLid[oid] = info.lid; } }
       else if (info.kind === 'game') { if (info.oid != null && !cap.games[info.oid]) { cap.games[info.oid] = body; cap.bytes += body.length; } }
       updatePanel();
       if (autoImport) scheduleAutoImport();
@@ -1651,7 +1651,58 @@
 
     let autoImport = false, autoImportTimer = null;
     try { if (typeof GM_getValue !== 'undefined') autoImport = !!GM_getValue('rookhubChessableAutoImport', false); } catch (e) {}
-    function scheduleAutoImport() { if (autoImportTimer) return; autoImportTimer = setTimeout(() => { autoImportTimer = null; if (capturedLineCount() > 0) importCaptured(currentTarget()); }, 8000); }
+
+    // Live-Append (V1 „beim Durchklicken"): jede NEU erfasste Linie kurz gebündelt SOFORT ans
+    // Repertoire anhängen (POST .../ingest/live). sentOids = Session-Dedup; Server dedupliziert per Zugtext.
+    const sentOids = new Set();
+    let liveFlushing = false;
+    function hasUnsentLine() {
+      for (const oid of Object.keys(cap.games)) { if (sentOids.has(oid)) continue; const lid = cap.oidToLid && cap.oidToLid[oid]; if (lid && cap.lists[lid]) return true; }
+      return false;
+    }
+    async function ingestLive(bid, target, courseName, chapters) {
+      const cfg = getCfg();
+      if (!cfg || !cfg.url || !cfg.token) throw new Error('Nicht mit RookHub verbunden');
+      const baseUrl = String(cfg.url).replace(/\/$/, '');
+      const resp = await fetch(baseUrl + '/api/extension/chessable/ingest/live', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ bid, target, courseName, chapters }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error((data && data.message) || ('HTTP ' + resp.status));
+      return data;
+    }
+    async function flushLive() {
+      if (liveFlushing) return;
+      const bid = cap.bid || currentCourseId();
+      if (!bid) return;
+      const byLid = {}; const picked = [];
+      for (const oid of Object.keys(cap.games)) {
+        if (sentOids.has(oid)) continue;
+        const lid = cap.oidToLid && cap.oidToLid[oid];
+        if (!lid || !cap.lists[lid]) continue;
+        (byLid[lid] = byLid[lid] || []).push(oid);
+        picked.push(oid);
+      }
+      if (!picked.length) return;
+      const chapters = Object.keys(byLid).map(lid => ({ chapterJson: cap.lists[lid], lines: byLid[lid].map(o => cap.games[o]) }));
+      liveFlushing = true;
+      picked.forEach(o => sentOids.add(o));
+      try {
+        const cn = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
+        const res = await ingestLive(bid, currentTarget(), cn, chapters);
+        setStatus(`Live: ${res.imported} neu angehängt (${sentOids.size} gesendet).`);
+      } catch (err) {
+        picked.forEach(o => sentOids.delete(o));
+        setStatus('Live-Fehler: ' + ((err && err.message) || err));
+      } finally {
+        liveFlushing = false;
+        if (autoImport && hasUnsentLine()) scheduleAutoImport();
+      }
+      updatePanel();
+    }
+    function scheduleAutoImport() { if (autoImportTimer) return; autoImportTimer = setTimeout(() => { autoImportTimer = null; flushLive(); }, 1500); }
 
     // --- UI-Panel ---
     let panel = null, statusEl = null, capInfoEl = null, importCapBtn = null, crawlBtn = null, autoChk = null;
@@ -1668,14 +1719,14 @@
         '<button id="rc-crawl" style="width:100%;margin-bottom:6px;padding:6px;background:#2d6cdf;color:#fff;border:0;border-radius:5px;cursor:pointer">⚡ Kurs über meinen Browser holen</button>' +
         '<div id="rc-capinfo" style="margin-bottom:4px;color:#9aa4b2"></div>' +
         '<button id="rc-importcap" style="width:100%;margin-bottom:6px;padding:5px;background:#3a4250;color:#e8eaed;border:0;border-radius:5px;cursor:pointer;display:none">Mitschnitt importieren</button>' +
-        '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Beim Training automatisch importieren</label>' +
+        '<label style="display:block;margin-bottom:6px;color:#9aa4b2"><input type="checkbox" id="rc-auto"> Linien beim Durchklicken live anhängen</label>' +
         '<div id="rc-status" style="color:#8fd08f;min-height:1.2em"></div>';
       document.body.appendChild(panel);
       statusEl = panel.querySelector('#rc-status'); capInfoEl = panel.querySelector('#rc-capinfo');
       importCapBtn = panel.querySelector('#rc-importcap'); crawlBtn = panel.querySelector('#rc-crawl'); autoChk = panel.querySelector('#rc-auto');
       crawlBtn.addEventListener('click', () => crawlAndImport(currentTarget()));
       importCapBtn.addEventListener('click', () => importCaptured(currentTarget()));
-      autoChk.addEventListener('change', () => { autoImport = autoChk.checked; try { if (typeof GM_setValue !== 'undefined') GM_setValue('rookhubChessableAutoImport', autoImport); } catch (e) {} });
+      autoChk.addEventListener('change', () => { autoImport = autoChk.checked; try { if (typeof GM_setValue !== 'undefined') GM_setValue('rookhubChessableAutoImport', autoImport); } catch (e) {} if (autoImport && hasUnsentLine()) scheduleAutoImport(); });
       updatePanel();
     }
     function updatePanel() {
