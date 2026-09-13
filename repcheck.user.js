@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.55.0
+// @version      1.57.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -271,6 +271,14 @@
       'popup.buttons.intro': 'Choose which buttons appear in the bottom right on chessable.com (practice mode).',
       'popup.buttons.fullscreen': 'Fullscreen',
 
+      // — Popup: Kurs holen, Pause zwischen Chessable-Abrufen —
+      'popup.crawl.heading': 'Fetch course: pause between requests',
+      'popup.crawl.intro': 'Between two Chessable requests RepCheck waits a random time in this range. It can only be made slower — the minimum is {min}–{max} s.',
+      'popup.crawl.from': 'from',
+      'popup.crawl.to': 'to',
+      'popup.crawl.saved': 'Saved: {min}–{max} s',
+      'popup.crawl.adjusted': 'Adjusted to the allowed range: {min}–{max} s',
+
       // — Popup: Fußzeile —
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
@@ -313,6 +321,7 @@
         other: 'Nothing new — all {count} lines are already on RookHub.',
       },
       'import.fetchingLines': 'Fetching new lines… {done}/{total}',
+      'import.fetchingLinesShared': 'Fetching new lines… {done}/{total} ({shared} from the RookHub cache)',
       'import.appending': 'Appending new lines…',
       'import.doneAppended': {
         one: 'Done: {count} new line appended.',
@@ -504,6 +513,13 @@
       'popup.buttons.intro': 'Welche Buttons unten rechts auf chessable.com (Practice-Modus) erscheinen.',
       'popup.buttons.fullscreen': 'Vollbild',
 
+      'popup.crawl.heading': 'Kurs holen: Pause zwischen Abrufen',
+      'popup.crawl.intro': 'Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist {min}–{max} s.',
+      'popup.crawl.from': 'von',
+      'popup.crawl.to': 'bis',
+      'popup.crawl.saved': 'Gespeichert: {min}–{max} s',
+      'popup.crawl.adjusted': 'Auf den erlaubten Bereich angepasst: {min}–{max} s',
+
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Bitte zuerst chess.com oder lichess.org im aktiven Tab öffnen.',
@@ -544,6 +560,7 @@
         other: 'Nichts Neues — alle {count} Linien sind schon auf RookHub.',
       },
       'import.fetchingLines': 'Hole neue Linien … {done}/{total}',
+      'import.fetchingLinesShared': 'Hole neue Linien … {done}/{total} ({shared} aus dem RookHub-Cache)',
       'import.appending': 'Hänge neue Linien an …',
       'import.doneAppended': {
         one: 'Fertig: {count} neue Linie angehängt.',
@@ -727,6 +744,12 @@
       'popup.buttons.heading': 'Chessable gumbi',
       'popup.buttons.intro': 'Koji se gumbi prikazuju dolje desno na chessable.com (Practice način).',
       'popup.buttons.fullscreen': 'Cijeli zaslon',
+      'popup.crawl.heading': 'Dohvati tečaj: pauza između zahtjeva',
+      'popup.crawl.intro': 'Između dva Chessable zahtjeva RepCheck čeka nasumično vrijeme u ovom rasponu. Može samo sporije — minimum je {min}–{max} s.',
+      'popup.crawl.from': 'od',
+      'popup.crawl.to': 'do',
+      'popup.crawl.saved': 'Spremljeno: {min}–{max} s',
+      'popup.crawl.adjusted': 'Prilagođeno dopuštenom rasponu: {min}–{max} s',
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Najprije otvori chess.com ili lichess.org u aktivnoj kartici.',
@@ -769,6 +792,7 @@
         other: 'Ništa novo — svih {count} linija već je na RookHubu.',
       },
       'import.fetchingLines': 'Dohvaćam nove linije … {done}/{total}',
+      'import.fetchingLinesShared': 'Dohvaćam nove linije … {done}/{total} ({shared} iz RookHub predmemorije)',
       'import.appending': 'Dodajem nove linije …',
       'import.doneAppended': {
         one: 'Gotovo: dodana {count} nova linija.',
@@ -2718,7 +2742,7 @@
     }
     // Chessable drosselt (HTTP 429) bei zu schnellem Holen. Nur retrybare Codes wiederholen; dabei
     // `Retry-After` honorieren (Sekunden ODER HTTP-Datum), sonst exponentielles Backoff mit Jitter.
-    // 401/403/404 bleiben harte Fehler (kein Retry). Basis-Takt s. INTER_MS.
+    // 401/403/404 bleiben harte Fehler (kein Retry). Normaler Takt s. crawlPauseMs.
     const CHESSABLE_RETRYABLE = new Set([429, 500, 502, 503, 504]);
     const CHESSABLE_MAX_ATTEMPTS = 5;
     function parseRetryAfterMs(header) {
@@ -2742,7 +2766,7 @@
         lastStatus = resp.status;
         if (!CHESSABLE_RETRYABLE.has(resp.status) || attempt === CHESSABLE_MAX_ATTEMPTS) break;
         const retryAfter = parseRetryAfterMs(resp.headers.get('Retry-After'));
-        const backoff = (retryAfter != null ? retryAfter : Math.min(30000, INTER_MS * Math.pow(2, attempt)))
+        const backoff = (retryAfter != null ? retryAfter : Math.min(30000, CRAWL_BACKOFF_BASE_MS * Math.pow(2, attempt)))
           + Math.floor(Math.random() * 400);
         setStatus(`Chessable drosselt (HTTP ${resp.status}) — warte ${Math.round(backoff / 1000)} s (Versuch ${attempt}/${CHESSABLE_MAX_ATTEMPTS - 1}) …`);
         await sleep(backoff);
@@ -2765,7 +2789,10 @@
       return data;
     }
 
-    const INTER_MS = 3000; const sleep = (ms) => new Promise(r => setTimeout(r, ms));  // ~1 Request / 3 s; Backoff s. chessableGet
+    const CRAWL_BACKOFF_BASE_MS = 3000; const sleep = (ms) => new Promise(r => setTimeout(r, ms));  // Backoff-Basis s. chessableGet
+    // Zufällige Pause 2,5–3,5 s zwischen zwei Chessable-Abrufen. Userscript: fester Bereich ohne Regler —
+    // einstellbar (nur nach oben) ist er nur im Extension-Popup.
+    const crawlPauseMs = () => 2500 + Math.floor(Math.random() * 1001);
     const newSessionId = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
     let crawling = false;
     let cancelRequested = false;          // Abbrechen-Button während des Laufs
@@ -2793,13 +2820,13 @@
         const lids = parseChapterLids(courseText);
         if (!lids.length) throw new Error(t('err.noChapters'));
         const lists = []; let total = 0, toFetch = 0;
-        for (const lid of lids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; await sleep(INTER_MS); }
+        for (const lid of lids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } const fromCapture = !!(cap.lists[lid] && cap.bid === bid); const listText = fromCapture ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; if (!fromCapture) await sleep(crawlPauseMs()); }
         if (incremental && toFetch === 0) { setStatus(t('import.nothingNew', { count: total })); ensureProgress(true); return; }
         let done = 0, sent = 0, skipped = 0;
         const newChapters = [];
         for (const { listText, oids } of lists) {
           const lines = [];
-          for (const oid of oids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(INTER_MS); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(t('import.fetchingLines', { done, total: toFetch })); }
+          for (const oid of oids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(crawlPauseMs()); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(t('import.fetchingLines', { done, total: toFetch })); }
           if (!lines.length) continue;
           if (incremental) newChapters.push({ chapterJson: listText, lines });
           else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);

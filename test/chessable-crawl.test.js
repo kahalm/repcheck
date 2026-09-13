@@ -49,6 +49,7 @@ test('buildIngestChapters keeps getList order, drops missing/empty games and emp
   assert.equal(out.length, 1);
   assert.match(out[0].chapterJson, /Ch1/);
   assert.deepEqual(out[0].lines, ['{"game":{"data":[]}}']); // only oid 1 (order preserved, 3 was "{}")
+  assert.deepEqual(out[0].lineOids, ['1']);                  // oid per line → server aligns by oid, not position
 });
 
 test('parseCourseVariations extracts chapter->oids from getCourse includeVariations', () => {
@@ -70,4 +71,74 @@ test('progressCounts computes course + per-chapter done/total against imported s
     { lid: '10', total: 2, done: 1 },
     { lid: '20', total: 1, done: 1 },
   ]);
+});
+
+// ─── Pause zwischen Chessable-Abrufen (v1.56.0) ───────────────────────────────
+// Zufällig 2,5–3,5 s; der Bereich darf nur nach oben verschoben werden (Popup-Einstellung `crawlDelay`).
+const { CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs } = require('../extension/lib/chessable-crawl.js');
+const fsCrawl = require('node:fs');
+const pathCrawl = require('node:path');
+
+test('normalizeCrawlDelay: ohne/kaputte Einstellung gilt der Standard 2,5–3,5 s', () => {
+  assert.deepEqual(CRAWL_DELAY_DEFAULT, { minMs: 2500, maxMs: 3500 });
+  for (const raw of [null, undefined, {}, { minMs: 'x', maxMs: NaN }, { minMs: Infinity }]) {
+    assert.deepEqual(normalizeCrawlDelay(raw), { minMs: 2500, maxMs: 3500 }, JSON.stringify(raw));
+  }
+});
+
+test('normalizeCrawlDelay: schneller als der Standard geht nicht — Werte werden angehoben', () => {
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 500, maxMs: 1000 }), { minMs: 2500, maxMs: 3500 });
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 2400, maxMs: 5000 }), { minMs: 2500, maxMs: 5000 });
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 3000, maxMs: 3000 }), { minMs: 3000, maxMs: 3500 });
+});
+
+test('normalizeCrawlDelay: langsamer ist erlaubt', () => {
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 4000, maxMs: 7000 }), { minMs: 4000, maxMs: 7000 });
+});
+
+test('normalizeCrawlDelay: „von" über „bis" zieht „bis" mit hoch', () => {
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 6000, maxMs: 4000 }), { minMs: 6000, maxMs: 6000 });
+});
+
+test('normalizeCrawlDelay: Tippfehler-Deckel 120 s und ganze Millisekunden', () => {
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 3e6, maxMs: 9e9 }), { minMs: 120000, maxMs: 120000 });
+  assert.deepEqual(normalizeCrawlDelay({ minMs: 2600.4, maxMs: 3700.6 }), { minMs: 2600, maxMs: 3701 });
+});
+
+test('pickCrawlDelayMs: beide Grenzen erreichbar, nie außerhalb', () => {
+  const cfg = { minMs: 2500, maxMs: 3500 };
+  assert.equal(pickCrawlDelayMs(cfg, () => 0), 2500);
+  assert.equal(pickCrawlDelayMs(cfg, () => 0.9999999), 3500);
+  assert.equal(pickCrawlDelayMs(cfg, () => 1), 3500);          // defensiv: nie max+1
+  assert.equal(pickCrawlDelayMs(cfg, () => -5), 2500);
+  assert.equal(pickCrawlDelayMs(cfg, () => NaN), 2500);
+});
+
+test('pickCrawlDelayMs: echte Zufallswerte streuen über den Bereich', () => {
+  const werte = Array.from({ length: 2000 }, () => pickCrawlDelayMs(null));
+  assert.ok(werte.every((v) => Number.isInteger(v) && v >= 2500 && v <= 3500));
+  assert.ok(werte.some((v) => v < 2700) && werte.some((v) => v > 3300), 'kein fester Takt mehr');
+});
+
+test('pickCrawlDelayMs: eine zu schnelle Einstellung wird auch beim Würfeln nicht unterschritten', () => {
+  for (let i = 0; i < 200; i++) assert.ok(pickCrawlDelayMs({ minMs: 10, maxMs: 20 }) >= 2500);
+});
+
+test('Crawl-Schleifen: keine feste 3-s-Pause mehr, und keine Pause für Mitgeschnittenes', () => {
+  for (const datei of ['extension/chessable-activity.js', 'repcheck.user.js']) {
+    const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', datei), 'utf8');
+    assert.ok(!/sleep\((CRAWL_)?INTER_MS\)/.test(src), `${datei}: feste Pause gefunden`);
+    assert.ok(src.includes('if (!fromCapture) await sleep(crawlPauseMs())'), `${datei}: Kapitel-Pause nicht an echten Abruf gebunden`);
+    assert.ok(src.includes('await sleep(crawlPauseMs()); }'), `${datei}: Linien-Pause nicht zufällig`);
+  }
+});
+
+test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
+  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  assert.ok(src.includes("'/api/extension/chessable/cached-lines'"), 'Cache-Endpoint fehlt');
+  assert.ok(src.includes('await fetchSharedCachedOids(wanted)'), 'Crawl fragt den geteilten Cache nicht ab');
+  assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); fromShared++;'), 'gecachte Linie wird nicht übersprungen');
+  assert.ok(src.includes('{ chapterJson: listText, lines, lineOids }'), 'Crawl schickt keine lineOids');
+  assert.ok(src.includes('{ courseJson: courseText, complete: true }'), 'finaler Chunk nicht als komplett markiert');
+  assert.ok(src.includes('lineOids: byLid[lid].map(String)'), 'Live-Anhängen schickt keine lineOids');
 });

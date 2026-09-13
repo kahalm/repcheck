@@ -99,6 +99,14 @@ const RC_MESSAGES = {
     'popup.buttons.intro': 'Choose which buttons appear in the bottom right on chessable.com (practice mode).',
     'popup.buttons.fullscreen': 'Fullscreen',
 
+    // — Popup: Kurs holen, Pause zwischen Chessable-Abrufen —
+    'popup.crawl.heading': 'Fetch course: pause between requests',
+    'popup.crawl.intro': 'Between two Chessable requests RepCheck waits a random time in this range. It can only be made slower — the minimum is {min}–{max} s.',
+    'popup.crawl.from': 'from',
+    'popup.crawl.to': 'to',
+    'popup.crawl.saved': 'Saved: {min}–{max} s',
+    'popup.crawl.adjusted': 'Adjusted to the allowed range: {min}–{max} s',
+
     // — Popup: Fußzeile —
     'popup.open.chesscom': 'chess.com',
     'popup.open.lichess': 'lichess.org',
@@ -141,6 +149,7 @@ const RC_MESSAGES = {
       other: 'Nothing new — all {count} lines are already on RookHub.',
     },
     'import.fetchingLines': 'Fetching new lines… {done}/{total}',
+    'import.fetchingLinesShared': 'Fetching new lines… {done}/{total} ({shared} from the RookHub cache)',
     'import.appending': 'Appending new lines…',
     'import.doneAppended': {
       one: 'Done: {count} new line appended.',
@@ -332,6 +341,13 @@ const RC_MESSAGES = {
     'popup.buttons.intro': 'Welche Buttons unten rechts auf chessable.com (Practice-Modus) erscheinen.',
     'popup.buttons.fullscreen': 'Vollbild',
 
+    'popup.crawl.heading': 'Kurs holen: Pause zwischen Abrufen',
+    'popup.crawl.intro': 'Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist {min}–{max} s.',
+    'popup.crawl.from': 'von',
+    'popup.crawl.to': 'bis',
+    'popup.crawl.saved': 'Gespeichert: {min}–{max} s',
+    'popup.crawl.adjusted': 'Auf den erlaubten Bereich angepasst: {min}–{max} s',
+
     'popup.open.chesscom': 'chess.com',
     'popup.open.lichess': 'lichess.org',
     'popup.needTab': 'Bitte zuerst chess.com oder lichess.org im aktiven Tab öffnen.',
@@ -372,6 +388,7 @@ const RC_MESSAGES = {
       other: 'Nichts Neues — alle {count} Linien sind schon auf RookHub.',
     },
     'import.fetchingLines': 'Hole neue Linien … {done}/{total}',
+    'import.fetchingLinesShared': 'Hole neue Linien … {done}/{total} ({shared} aus dem RookHub-Cache)',
     'import.appending': 'Hänge neue Linien an …',
     'import.doneAppended': {
       one: 'Fertig: {count} neue Linie angehängt.',
@@ -555,6 +572,12 @@ const RC_MESSAGES = {
     'popup.buttons.heading': 'Chessable gumbi',
     'popup.buttons.intro': 'Koji se gumbi prikazuju dolje desno na chessable.com (Practice način).',
     'popup.buttons.fullscreen': 'Cijeli zaslon',
+    'popup.crawl.heading': 'Dohvati tečaj: pauza između zahtjeva',
+    'popup.crawl.intro': 'Između dva Chessable zahtjeva RepCheck čeka nasumično vrijeme u ovom rasponu. Može samo sporije — minimum je {min}–{max} s.',
+    'popup.crawl.from': 'od',
+    'popup.crawl.to': 'do',
+    'popup.crawl.saved': 'Spremljeno: {min}–{max} s',
+    'popup.crawl.adjusted': 'Prilagođeno dopuštenom rasponu: {min}–{max} s',
     'popup.open.chesscom': 'chess.com',
     'popup.open.lichess': 'lichess.org',
     'popup.needTab': 'Najprije otvori chess.com ili lichess.org u aktivnoj kartici.',
@@ -597,6 +620,7 @@ const RC_MESSAGES = {
       other: 'Ništa novo — svih {count} linija već je na RookHubu.',
     },
     'import.fetchingLines': 'Dohvaćam nove linije … {done}/{total}',
+    'import.fetchingLinesShared': 'Dohvaćam nove linije … {done}/{total} ({shared} iz RookHub predmemorije)',
     'import.appending': 'Dodajem nove linije …',
     'import.doneAppended': {
       one: 'Gotovo: dodana {count} nova linija.',

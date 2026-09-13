@@ -58,12 +58,15 @@
     for (const ch of (chapters || [])) {
       if (!ch || typeof ch.listText !== 'string') continue;
       const oids = parseLineOids(ch.listText);
+      // lineOids parallel zu lines: der Server ordnet die Linien über ihre oid zu. Ohne sie las der Parser
+      // positionsbasiert, und ein Teil der Linien eines Kapitels landete unter fremder oid.
       const lines = [];
+      const lineOids = [];
       for (const oid of oids) {
         const g = ch.games && ch.games[oid];
-        if (typeof g === 'string' && g.trim() && g.trim() !== '{}') lines.push(g);
+        if (typeof g === 'string' && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); }
       }
-      if (lines.length > 0) out.push({ chapterJson: ch.listText, lines });
+      if (lines.length > 0) out.push({ chapterJson: ch.listText, lines, lineOids });
     }
     return out;
   }
@@ -104,7 +107,35 @@
     return { total, done, perChapter };
   }
 
-  const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts };
+  // Pause zwischen zwei Chessable-Abrufen beim aktiven Kurs-Holen — zufällig in [minMs, maxMs], damit
+  // der Takt nicht maschinell gleichmäßig ist. Der Standard ist zugleich die UNTERGRENZE: der Bereich
+  // lässt sich nur nach oben verschieben (langsamer schont das eigene Chessable-Konto), nie schneller.
+  const CRAWL_DELAY_DEFAULT = Object.freeze({ minMs: 2500, maxMs: 3500 });
+  const CRAWL_DELAY_CEILING_MS = 120000;   // Tippfehler-Deckel („3000" statt „3" Sekunden)
+
+  // Macht aus einer gespeicherten/getippten Einstellung einen gültigen Bereich: fehlende oder
+  // unbrauchbare Werte → Standard, zu kleine → auf die Untergrenze angehoben, max ≥ min.
+  function normalizeCrawlDelay(raw) {
+    const zahl = (v) => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v) : null;
+    let min = zahl(raw && raw.minMs);
+    let max = zahl(raw && raw.maxMs);
+    if (min == null) min = CRAWL_DELAY_DEFAULT.minMs;
+    if (max == null) max = CRAWL_DELAY_DEFAULT.maxMs;
+    min = Math.min(CRAWL_DELAY_CEILING_MS, Math.max(CRAWL_DELAY_DEFAULT.minMs, min));
+    max = Math.min(CRAWL_DELAY_CEILING_MS, Math.max(CRAWL_DELAY_DEFAULT.maxMs, min, max));
+    return { minMs: min, maxMs: max };
+  }
+
+  // Würfelt eine Pause (ganze ms, beide Grenzen eingeschlossen). `rnd` nur für Tests.
+  function pickCrawlDelayMs(cfg, rnd) {
+    const { minMs, maxMs } = normalizeCrawlDelay(cfg);
+    const r = typeof rnd === 'function' ? rnd() : Math.random();
+    const anteil = Math.min(1, Math.max(0, Number.isFinite(r) ? r : 0));
+    return Math.min(maxMs, minMs + Math.floor(anteil * (maxMs - minMs + 1)));
+  }
+
+  const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts,
+    CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -31,6 +31,9 @@
   .conn-wide { width: 100%; }
   #rookhub-conn { max-height: none; }
   #conn-manual { margin-top: 8px; }
+  .crawl-fields { display: flex; gap: 14px; align-items: center; margin: 2px 0 4px 0; }
+  .crawl-fields label { display: flex; gap: 5px; align-items: center; font-size: 12px; color: #2c3e50; }
+  .crawl-fields input { width: 4.2em; font-size: 12px; padding: 3px 4px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #222; font-variant-numeric: tabular-nums; }
   #conn-manual summary { font-size: 11px; color: #1976d2; cursor: pointer; margin-bottom: 6px; }
 </style>
 </head>
@@ -96,6 +99,15 @@
   <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-remember" checked> Remember line</label>
   <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-fullscreen" checked> <span data-i18n="popup.buttons.fullscreen">Vollbild</span></label>
 </div>
+<div id="crawl-settings" class="repertoires">
+  <div class="heading" data-i18n="popup.crawl.heading">Kurs holen: Pause zwischen Abrufen</div>
+  <div id="crawl-intro" style="font-size:11px;color:#7a8a9a;margin-bottom:6px;"></div>
+  <div class="crawl-fields">
+    <label><span data-i18n="popup.crawl.from">von</span> <input id="crawl-min" type="number" min="2.5" max="120" step="0.5" inputmode="decimal"> s</label>
+    <label><span data-i18n="popup.crawl.to">bis</span> <input id="crawl-max" type="number" min="3.5" max="120" step="0.5" inputmode="decimal"> s</label>
+  </div>
+  <div id="crawl-state" class="conn-hint"></div>
+</div>
 <div class="row" id="page-panel-row" style="display:none;">
   <button id="open-page-panel" class="secondary" style="flex:1;" data-i18n="popup.conn.pagePanel">Ordner / PGN auf der Seite…</button>
 </div>
@@ -119,6 +131,7 @@
   </select>
 </div>
 <script src="lib/i18n.js"></script>
+<script src="lib/chessable-crawl.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>

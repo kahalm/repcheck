@@ -654,6 +654,22 @@
   // ======================================================================================
   const Crawl = self.RepCheckCrawl || null;
 
+  // Pause zwischen zwei Chessable-Abrufen beim aktiven Kurs-Holen: zufällig in [minMs, maxMs]. Standard
+  // 2,5–3,5 s ist zugleich die Untergrenze; das Popup (`crawlDelay` in chrome.storage.local) verschiebt den
+  // Bereich nur nach oben. Live nachgeführt, damit eine Änderung auch einen laufenden Crawl sofort bremst.
+  let crawlDelay = Crawl ? Crawl.normalizeCrawlDelay(null) : { minMs: 2500, maxMs: 3500 };
+  try {
+    chrome.storage.local.get('crawlDelay', (r) => {
+      if (Crawl) crawlDelay = Crawl.normalizeCrawlDelay(r && r.crawlDelay);
+    });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.crawlDelay && Crawl) crawlDelay = Crawl.normalizeCrawlDelay(changes.crawlDelay.newValue);
+    });
+  } catch (e) { /* Speicher nicht erreichbar — Standardbereich gilt */ }
+  function crawlPauseMs() {
+    return Crawl ? Crawl.pickCrawlDelayMs(crawlDelay) : 2500 + Math.floor(Math.random() * 1001);
+  }
+
   // Per-bid-Mitschnitt-Puffer (Session, in-memory). getGame trägt nur die oid → oid→lid via getList.
   const cap = { bid: null, courseText: null, lists: {}, oidToLid: {}, games: {}, bytes: 0 };
   const CAP_MAX_BYTES = 40 * 1024 * 1024;   // Speicher-Deckel (großer Kurs)
@@ -1017,7 +1033,7 @@
 
   // Chessable drosselt (HTTP 429) bei zu schnellem Holen. Nur retrybare Codes wiederholen; dabei
   // `Retry-After` honorieren (Sekunden ODER HTTP-Datum), sonst exponentielles Backoff mit Jitter.
-  // 401/403/404 bleiben harte Fehler (kein Retry). Basis-Takt s. CRAWL_INTER_MS.
+  // 401/403/404 bleiben harte Fehler (kein Retry). Normaler Takt s. crawlPauseMs().
   const CHESSABLE_RETRYABLE = new Set([429, 500, 502, 503, 504]);
   const CHESSABLE_MAX_ATTEMPTS = 5;
   function parseRetryAfterMs(header) {
@@ -1046,7 +1062,7 @@
       lastStatus = resp.status;
       if (!CHESSABLE_RETRYABLE.has(resp.status) || attempt === CHESSABLE_MAX_ATTEMPTS) break;
       const retryAfter = parseRetryAfterMs(resp.headers.get('Retry-After'));
-      const backoff = (retryAfter != null ? retryAfter : Math.min(30000, CRAWL_INTER_MS * Math.pow(2, attempt)))
+      const backoff = (retryAfter != null ? retryAfter : Math.min(30000, CRAWL_BACKOFF_BASE_MS * Math.pow(2, attempt)))
         + Math.floor(Math.random() * 400);
       setStatus(t('import.throttled', {
         status: resp.status,
@@ -1061,7 +1077,8 @@
 
   // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). final=true schließt die
   // Session ab → Server parst+importiert den GANZEN Kurs (korrekte Kapitel-/Round-Reihenfolge).
-  async function ingestChunk(sessionId, bid, target, courseName, chapter, final) {
+  // extra: nur beim finalen Chunk eines vollständig geholten Kurses { courseJson, complete }.
+  async function ingestChunk(sessionId, bid, target, courseName, chapter, final, extra) {
     const cfg = await readConfig();
     if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
     const baseUrl = String(cfg.url).replace(/\/$/, '');
@@ -1071,7 +1088,7 @@
         url: baseUrl + '/api/extension/chessable/ingest/chunk',
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ sessionId, bid, target, courseName, chapter, final }),
+        body: JSON.stringify(Object.assign({ sessionId, bid, target, courseName, chapter, final }, extra || {})),
         expect: 'json',
       }, (resp) => {
         if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
@@ -1081,12 +1098,41 @@
     });
   }
 
-  const CRAWL_INTER_MS = 3000;   // schonender Takt gegen das eigene Chessable-Konto (~1 Request / 3 s); Backoff s. chessableGet
+  const CRAWL_BACKOFF_BASE_MS = 3000;   // Basis des Backoffs bei Drosselung (6/12/24/30 s, s. chessableGet); der normale Takt kommt aus crawlPauseMs()
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const newSessionId = () => (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.round(Math.random() * 1e9));
   let crawling = false;
   let crawlStartedAt = null;   // ms-Zeitstempel des laufenden Crawls (fürs Popup: mitlaufender Timer)
   let cancelRequested = false; // vom Popup gesetzt (Aktion 'cancel'); die Crawl-Schleifen brechen dann sauber ab
+
+  // Welche Linien liegen schon im geteilten RookHub-Cache (piratechess)? Für diese fragt der Crawl kein getGame
+  // bei Chessable ab; der Import schickt nur die oid, der Server setzt den Inhalt ein. Jede Störung (RookHub zu
+  // alt → 404, piratechess nicht erreichbar) heißt schlicht: nichts (weiter) gecacht → selbst holen.
+  const SHARED_CACHE_BATCH = 5000;
+  async function fetchSharedCachedOids(oids) {
+    const result = new Set();
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token || !oids.length) return result;
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    for (let i = 0; i < oids.length; i += SHARED_CACHE_BATCH) {
+      const batch = oids.slice(i, i + SHARED_CACHE_BATCH);
+      const resp = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'rookhub-fetch',
+            url: baseUrl + '/api/extension/chessable/cached-lines',
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ oids: batch }),
+            expect: 'json',
+          }, (r) => resolve(chrome.runtime.lastError ? null : r));
+        } catch (e) { resolve(null); }
+      });
+      if (!resp || !resp.ok || !resp.body || !Array.isArray(resp.body.oids)) break;
+      resp.body.oids.forEach((o) => result.add(String(o)));
+    }
+    return result;
+  }
 
   // V2: Kurs aktiv holen (getCourse→getList→getGame).
   //  • Repertoire (Default): INKREMENTELL — Linien, deren oid schon auf RookHub liegt, werden NICHT erneut von
@@ -1119,13 +1165,14 @@
       let total = 0, toFetch = 0;
       for (const lid of lids) {
         if (cancelRequested) { setStatus(t('import.aborted')); return; }
-        const listText = (cap.lists[lid] && cap.bid === bid) ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
+        const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
+        const listText = fromCapture ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
         harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
         const oids = Crawl.parseLineOids(listText);
         lists.push({ listText, oids });
         total += oids.length;
         toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length;
-        await sleep(CRAWL_INTER_MS);
+        if (!fromCapture) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf, nicht für Mitgeschnittenes
       }
       const courseName = bestCourseName(bid);
 
@@ -1135,21 +1182,44 @@
         return;
       }
 
-      let done = 0, sent = 0, skipped = 0;
+      // Linien, die schon im geteilten RookHub-Cache liegen, setzt der Server beim Import selbst ein — dafür
+      // weder getGame bei Chessable noch eine Pause. Mitgeschnittene (cap.games) brauchen die Abfrage nicht.
+      const wanted = [];
+      for (const { oids } of lists) {
+        for (const oid of oids) {
+          if (incremental && already.has(String(oid))) continue;
+          if (cap.games[oid]) continue;
+          wanted.push(String(oid));
+        }
+      }
+      const shared = wanted.length ? await fetchSharedCachedOids(wanted) : new Set();
+
+      let done = 0, sent = 0, skipped = 0, fromShared = 0;
+      const fortschritt = () => (fromShared
+        ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
+        : t('import.fetchingLines', { done, total: toFetch }));
       const newChapters = [];   // nur fürs inkrementelle Anhängen gesammelt
       for (const { listText, oids } of lists) {
-        const lines = [];
+        // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
+        // Inhalt (null) aus dem geteilten Cache.
+        const lines = [], lineOids = [];
         for (const oid of oids) {
           if (cancelRequested) { setStatus(t('import.aborted')); return; }
           if (incremental && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
           let g = cap.games[oid];
-          if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(CRAWL_INTER_MS); }
-          if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
-          done++; setStatus(t('import.fetchingLines', { done, total: toFetch }));
+          if (!g && shared.has(String(oid))) {
+            lines.push(null); lineOids.push(String(oid)); fromShared++;
+            done++; setStatus(fortschritt());
+            continue;
+          }
+          if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(crawlPauseMs()); }
+          if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
+          done++; setStatus(fortschritt());
         }
         if (!lines.length) continue;
-        if (incremental) newChapters.push({ chapterJson: listText, lines });
-        else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);
+        const chapter = { chapterJson: listText, lines, lineOids };
+        if (incremental) newChapters.push(chapter);
+        else await ingestChunk(sessionId, bid, target, courseName, chapter, false);
         sent++;
       }
       if (!sent) throw new Error(t('err.noLines'));
@@ -1162,7 +1232,9 @@
           : t('import.doneAppended', { count: res.imported }));
       } else {
         setStatus(t('import.importing'));
-        const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
+        // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
+        // dann als Ganzes im geteilten Cache ab (und prüft selbst Kapitelzahl und Lücken).
+        const res = await ingestChunk(sessionId, bid, target, courseName, null, true, { courseJson: courseText, complete: true });
         setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));
       }
       ensureProgress(true);
@@ -1238,7 +1310,7 @@
       picked.push(oid);
     }
     if (!picked.length) return;
-    const chapters = Object.keys(byLid).map(lid => ({ chapterJson: cap.lists[lid], lines: byLid[lid].map(o => cap.games[o]) }));
+    const chapters = Object.keys(byLid).map(lid => ({ chapterJson: cap.lists[lid], lines: byLid[lid].map(o => cap.games[o]), lineOids: byLid[lid].map(String) }));
     liveFlushing = true;
     picked.forEach(o => sentOids.add(o));   // optimistisch; bei Fehler zurücknehmen
     try {
