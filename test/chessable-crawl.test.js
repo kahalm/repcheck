@@ -142,3 +142,25 @@ test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
   assert.ok(src.includes('{ courseJson: courseText, complete: true }'), 'finaler Chunk nicht als komplett markiert');
   assert.ok(src.includes('lineOids: byLid[lid].map(String)'), 'Live-Anhängen schickt keine lineOids');
 });
+
+// ─── Zähler auf Kursübersicht und Startseite (v1.58.0) ─────────────────────────
+const { pruneStructures } = require('../extension/lib/chessable-crawl.js');
+
+test('pruneStructures behält die zuletzt aktualisierten Kurse und wirft kaputte Einträge weg', () => {
+  const map = {
+    a: { at: 1, chapters: [] }, b: { at: 3, chapters: [] }, c: { at: 2, chapters: [] }, kaputt: { at: 9 },
+  };
+  assert.deepEqual(Object.keys(pruneStructures(map, 2)).sort(), ['b', 'c']);
+  assert.deepEqual(Object.keys(pruneStructures(map, 10)).sort(), ['a', 'b', 'c']);
+  assert.deepEqual(pruneStructures(null, 3), {});
+});
+
+test('Zähler hängen an den echten Chessable-Ankern (Dumps 13.09.), nicht an geratenen Containern', () => {
+  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  assert.ok(src.includes("'#chapterBoxes a.levelBox[href]'"), 'Kapitel-Anker fehlt');
+  assert.ok(src.includes("'.progressVisuals'"), 'Kapitel-Zähler nicht neben Chessables Zähler');
+  assert.ok(src.includes("'h1.courseUI-bookChapter'"), 'Kurs-Summe fehlt');
+  assert.ok(src.includes("'#mainBooksList .bookHome[data-bid]'"), 'Startseite zählt nicht über die Kurskarten');
+  assert.ok(src.includes('if (!COURSE_PAGE_RE.test(location.pathname)) return;'), 'getCourse auf der Startseite nicht verhindert');
+  assert.ok(src.includes('annotateDom(); annotateHome();'), 'Startseiten-Zähler nicht an den DOM-Observer gehängt');
+});

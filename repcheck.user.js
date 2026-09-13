@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.57.0
+// @version      1.58.0
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -412,6 +412,7 @@
       // — ✓/○-Marker an Chessables eigener Linienliste —
       'progress.onRookhub': 'On RookHub',
       'progress.notOnRookhub': 'Not on RookHub yet',
+      'progress.countTitle': 'On RookHub: {done} of {total}',
 
       // — Fehlertexte —
       'err.noBackground': 'no response from the background worker',
@@ -645,6 +646,7 @@
       'tools.savedWithLink': 'Gespeichert · Teilen-Link kopiert',
       'progress.onRookhub': 'Auf RookHub',
       'progress.notOnRookhub': 'Noch nicht auf RookHub',
+      'progress.countTitle': 'Auf RookHub: {done} von {total}',
 
       'err.noBackground': 'keine Antwort vom Background-Worker',
       'err.tokenInvalid': 'Token ungültig oder abgelaufen.',
@@ -903,6 +905,7 @@
       'menu.chessableTokenCopied': 'RepCheck: Chessable token kopiran u međuspremnik.',
       'progress.onRookhub': 'Na RookHubu',
       'progress.notOnRookhub': 'Još nije na RookHubu',
+      'progress.countTitle': 'Na RookHubu: {done} od {total}',
     },
   };
 

@@ -134,7 +134,16 @@
     return Math.min(maxMs, minMs + Math.floor(anteil * (maxMs - minMs + 1)));
   }
 
+  // Gemerkte Kursstrukturen (bid → { at, chapters }) deckeln: nur die `max` zuletzt aktualisierten behalten.
+  function pruneStructures(map, max) {
+    const entries = Object.entries(map || {}).filter(([, v]) => v && Array.isArray(v.chapters));
+    if (entries.length <= max) return Object.fromEntries(entries);
+    entries.sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+    return Object.fromEntries(entries.slice(0, max));
+  }
+
   const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts,
+    pruneStructures,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;
