@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.6.1
+// @version      0.7.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
@@ -164,6 +164,7 @@
       rect: rectOf(el), zIndex: getComputedStyle(el).zIndex, position: getComputedStyle(el).position,
     })));
     sammle('pageHtml', () => collectPageHtml());
+    sammle('repcheckAnzeigen', () => collectRepcheckAnzeigen());
     return data;
   }
 
@@ -173,6 +174,63 @@
    *  RepChecks EIGENE Overlays (`#repcheck-*`, `.rc-*`) raus, inline-`style` + `data:`-URIs raus —
    *  die Struktur bleibt (Tags, `class`, `id`, `href`, `data-*`, `oid`/`lid`), also genau die Anker
    *  fürs Overlay. JWTs zensiert. Kopf+Ende gedeckelt (Dev-Dump). */
+  /** RepChecks EIGENE Anzeigen (✓/○-Marker, Zähler, Buttons) auf der echten, gestylten Seite vermessen. pageHtml
+   *  entfernt sie bewusst (Ankersuche) und trägt kein CSS — sieht also weder sie noch ihr Aussehen. Hier je
+   *  Element: Rechteck, sichtbar oder warum nicht, welcher Vorfahr mit overflow≠visible es abschneidet und wie viel
+   *  davon übrig bleibt, tatsächliche Farbe/Schrift, Pfad. Dazu eine Zusammenfassung je rc-Klasse. */
+  function collectRepcheckAnzeigen() {
+    const alle = [...document.querySelectorAll('[class^="rc-"], [class*=" rc-"], [id^="repcheck-"]')]
+      .filter((el) => !el.closest('#' + PANEL_ID));
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const flaecheVon = (b) => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
+    const proKlasse = {};
+    const elemente = alle.slice(0, 300).map((el) => {
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const klasse = String(el.className || '').split(/\s+/).find((c) => c.startsWith('rc-')) || el.id || el.tagName;
+      // Sichtfläche schrittweise mit jedem abschneidenden Vorfahren schneiden.
+      let sicht = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      let abgeschnittenVon = null;
+      for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+        const pcs = getComputedStyle(p);
+        if (pcs.overflowX === 'visible' && pcs.overflowY === 'visible') continue;
+        const pr = p.getBoundingClientRect();
+        const vorher = flaecheVon(sicht);
+        sicht = { left: Math.max(sicht.left, pr.left), top: Math.max(sicht.top, pr.top),
+          right: Math.min(sicht.right, pr.right), bottom: Math.min(sicht.bottom, pr.bottom) };
+        if (flaecheVon(sicht) < vorher && !abgeschnittenVon)
+          abgeschnittenVon = kurzPfad(p, 1) + ' (overflow ' + pcs.overflowX + '/' + pcs.overflowY + ')';
+      }
+      const flaeche = r.width * r.height;
+      const sichtFlaeche = flaecheVon(sicht);
+      const unsichtbarWeil = cs.display === 'none' ? 'display:none'
+        : cs.visibility !== 'visible' ? 'visibility:' + cs.visibility
+        : Number(cs.opacity) === 0 ? 'opacity:0'
+        : flaeche === 0 ? 'Größe 0'
+        : sichtFlaeche === 0 ? 'vollständig abgeschnitten' : null;
+      const eintrag = {
+        klasse,
+        text: (el.textContent || '').trim().slice(0, 60),
+        title: el.title || null,
+        rect: rectOf(el),
+        sichtbar: !unsichtbarWeil,
+        unsichtbarWeil,
+        sichtAnteil: flaeche ? +(sichtFlaeche / flaeche).toFixed(2) : 0,
+        abgeschnittenVon,
+        imViewport: r.bottom > 0 && r.right > 0 && r.top < vh && r.left < vw,
+        stil: { color: cs.color, fontSize: cs.fontSize, fontWeight: cs.fontWeight, display: cs.display,
+          whiteSpace: cs.whiteSpace, lineHeight: cs.lineHeight },
+        pfad: kurzPfad(el, 5),
+      };
+      const k = proKlasse[klasse] || (proKlasse[klasse] = { anzahl: 0, sichtbar: 0, teilweiseAbgeschnitten: 0 });
+      k.anzahl++;
+      if (eintrag.sichtbar) k.sichtbar++;
+      if (flaeche && eintrag.sichtAnteil < 1) k.teilweiseAbgeschnitten++;
+      return eintrag;
+    });
+    return { gesamt: alle.length, proKlasse, elemente };
+  }
+
   function collectPageHtml() {
     const body = document.body;
     if (!body) return { gefunden: false };

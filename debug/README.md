@@ -37,6 +37,16 @@ Die **Aufnahme** protokolliert zusätzlich `notifications`: jede Textänderung d
 Zug-Rückmeldung über die Zeit — die Meldung erscheint nach dem Zug und
 verschwindet wieder, ein Snapshot erwischt sie fast nie.
 
+## Was v0.7.0 zusätzlich erfasst
+
+- **`repcheckAnzeigen`** — RepChecks EIGENE Elemente (`.rc-*`, `#repcheck-*`: ✓/○-Linienmarker, Zähler auf
+  Kursübersicht und Startseite, FEN-Tool-Buttons) auf der echten, gestylten Seite. Je Element: Rechteck,
+  `sichtbar` bzw. `unsichtbarWeil` (display/visibility/opacity/Größe 0/abgeschnitten), `sichtAnteil` nach allen
+  Vorfahren mit `overflow` ≠ `visible` und welcher davon abschneidet (`abgeschnittenVon`), `imViewport`,
+  tatsächliche Farbe/Schrift, Pfad; dazu `proKlasse` (Anzahl, sichtbar, teilweise abgeschnitten).
+  Hintergrund: `pageHtml` entfernt diese Elemente bewusst (Ankersuche) und enthält kein CSS — ob ein Zähler
+  live abgeschnitten oder unsichtbar ist, war aus den Dumps nicht erkennbar.
+
 ## Was ich für die offenen Features brauche
 
 1. **Snapshot normal** (Practice-Seite, kein Vollbild) — am besten in einer
