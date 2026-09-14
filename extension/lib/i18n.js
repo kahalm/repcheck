@@ -189,6 +189,7 @@ const RC_MESSAGES = {
     'import.fetchingLines': 'Fetching new lines… {done}/{total}',
     'import.fetchingLinesShared': 'Fetching new lines… {done}/{total} ({shared} from the RookHub cache)',
     'import.appending': 'Appending new lines…',
+    'import.appendingPart': 'Appending new lines… part {part} of {parts}',
     'import.doneAppended': {
       one: 'Done: {count} new line appended.',
       other: 'Done: {count} new lines appended.',
@@ -207,6 +208,7 @@ const RC_MESSAGES = {
     },
     'import.nothingCaptured': 'Nothing recorded.',
     'import.importingCapture': 'Importing recorded lines…',
+    'import.importingCapturePart': 'Importing recorded lines… part {part} of {parts}',
     'import.liveAppended': {
       one: 'Live: {count} line appended ({sent} sent).',
       other: 'Live: {count} lines appended ({sent} sent).',
@@ -465,6 +467,7 @@ const RC_MESSAGES = {
     'import.fetchingLines': 'Hole neue Linien … {done}/{total}',
     'import.fetchingLinesShared': 'Hole neue Linien … {done}/{total} ({shared} aus dem RookHub-Cache)',
     'import.appending': 'Hänge neue Linien an …',
+    'import.appendingPart': 'Hänge neue Linien an … Teil {part} von {parts}',
     'import.doneAppended': {
       one: 'Fertig: {count} neue Linie angehängt.',
       other: 'Fertig: {count} neue Linien angehängt.',
@@ -483,6 +486,7 @@ const RC_MESSAGES = {
     },
     'import.nothingCaptured': 'Nichts mitgeschnitten.',
     'import.importingCapture': 'Importiere Mitschnitt …',
+    'import.importingCapturePart': 'Importiere Mitschnitt … Teil {part} von {parts}',
     'import.liveAppended': {
       one: 'Live: {count} Linie angehängt ({sent} gesendet).',
       other: 'Live: {count} Linien angehängt ({sent} gesendet).',
@@ -732,6 +736,7 @@ const RC_MESSAGES = {
     'import.fetchingLines': 'Dohvaćam nove linije … {done}/{total}',
     'import.fetchingLinesShared': 'Dohvaćam nove linije … {done}/{total} ({shared} iz RookHub predmemorije)',
     'import.appending': 'Dodajem nove linije …',
+    'import.appendingPart': 'Dodajem nove linije … dio {part} od {parts}',
     'import.doneAppended': {
       one: 'Gotovo: dodana {count} nova linija.',
       few: 'Gotovo: dodane {count} nove linije.',
@@ -754,6 +759,7 @@ const RC_MESSAGES = {
     },
     'import.nothingCaptured': 'Ništa nije snimljeno.',
     'import.importingCapture': 'Uvozim snimku …',
+    'import.importingCapturePart': 'Uvozim snimku … dio {part} od {parts}',
     'import.liveAppended': {
       one: 'Uživo: dodana {count} linija ({sent} poslano).',
       few: 'Uživo: dodane {count} linije ({sent} poslano).',

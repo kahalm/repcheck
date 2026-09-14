@@ -1354,7 +1354,9 @@
 
       if (incremental) {
         setStatus(t('import.appending'));
-        const res = await ingestLive(bid, target, courseName, newChapters);
+        const res = await ingestLiveInParts(bid, target, courseName, newChapters, (part, parts) => {
+          if (parts > 1) setStatus(t('import.appendingPart', { part, parts }));
+        });
         markCourseFetched();
         setStatus(skipped
           ? t('import.doneAppendedSkipped', { count: res.imported, skipped })
@@ -1380,9 +1382,20 @@
     if (!bid || !chapters.length) { setStatus(t('import.nothingCaptured')); return; }
     try {
       setStatus(t('import.importingCapture'));
-      const res = await ingest(bid, chapters, target, bestCourseName(bid));
+      // Erste Portion über /ingest (Import-Eintrag + Benachrichtigung, legt das Ziel bei Bedarf an), den Rest
+      // anhängen — ein großer Mitschnitt in EINER Anfrage bekam am Proxy 413.
+      const parts = Crawl.splitIngestChapters(chapters);
+      const courseName = bestCourseName(bid);
+      if (parts.length > 1) setStatus(t('import.importingCapturePart', { part: 1, parts: parts.length }));
+      const res = await ingest(bid, parts[0], target, courseName);
+      let imported = (res && res.imported) || 0;
+      for (let i = 1; i < parts.length; i++) {
+        setStatus(t('import.importingCapturePart', { part: i + 1, parts: parts.length }));
+        const more = await ingestLive(bid, target, courseName, parts[i]);
+        imported += (more && more.imported) || 0;
+      }
       markCourseFetched();
-      setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));
+      setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: imported }));
       ensureProgress(true);
     } catch (err) { setStatus(t('import.error', { error: (err && err.message) || err })); }
   }
@@ -1427,6 +1440,20 @@
     });
   }
 
+  // Anhängen in Portionen (Crawl.splitIngestChapters): eine einzelne Anfrage je Import lief am Proxy in 413, siehe
+  // lib/chessable-crawl.js. Liefert die Summe der neu angehängten Linien; scheitert eine Portion, bleiben die davor
+  // angehängten stehen (ein erneuter Versuch überspringt sie serverseitig über die oid).
+  async function ingestLiveInParts(bid, target, courseName, chapters, onPart) {
+    const parts = Crawl.splitIngestChapters(chapters);
+    let imported = 0;
+    for (let i = 0; i < parts.length; i++) {
+      if (onPart) onPart(i + 1, parts.length);
+      const res = await ingestLive(bid, target, courseName, parts[i]);
+      imported += (res && res.imported) || 0;
+    }
+    return { imported, parts: parts.length };
+  }
+
   async function flushLive() {
     if (liveFlushing || !Crawl) return;
     const bid = cap.bid || currentCourseId();
@@ -1445,7 +1472,7 @@
     liveFlushing = true;
     picked.forEach(o => sentOids.add(o));   // optimistisch; bei Fehler zurücknehmen
     try {
-      const res = await ingestLive(bid, importTarget, bestCourseName(bid), chapters);
+      const res = await ingestLiveInParts(bid, importTarget, bestCourseName(bid), chapters);
       markCourseFetched();
       setStatus(t('import.liveAppended', { count: res.imported, sent: sentOids.size }));
       ensureProgress(true);   // Overlay live nachziehen

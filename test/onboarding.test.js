@@ -135,15 +135,16 @@ test('jeder Text-Schlüssel in Popup und Willkommensseite existiert', () => {
 test('jeder erfolgreiche Chessable-Import hakt „Kurs geholt" ab', () => {
   const zeilen = lies('extension/chessable-activity.js').split('\n');
   const aufrufe = [
-    'await ingestLive(bid, target, courseName, newChapters);',
+    'await ingestLiveInParts(bid, target, courseName, newChapters',
     'await ingestChunk(sessionId, bid, target, courseName, null, true,',
-    'await ingest(bid, chapters, target, bestCourseName(bid));',
-    'await ingestLive(bid, importTarget, bestCourseName(bid), chapters);',
+    'await ingest(bid, parts[0], target, courseName);',
+    'await ingestLiveInParts(bid, importTarget, bestCourseName(bid), chapters);',
   ];
   for (const aufruf of aufrufe) {
     const i = zeilen.findIndex((z) => z.includes(aufruf));
     assert.ok(i >= 0, `Aufruf nicht gefunden: ${aufruf}`);
-    assert.strictEqual(zeilen[i + 1].trim(), 'markCourseFetched();', `nach „${aufruf}" fehlt markCourseFetched()`);
+    const danach = zeilen.slice(i + 1, i + 10).map((z) => z.trim());
+    assert.ok(danach.includes('markCourseFetched();'), `nach „${aufruf}" fehlt markCourseFetched()`);
   }
 });
 

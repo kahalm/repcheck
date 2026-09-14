@@ -71,6 +71,60 @@
     return out;
   }
 
+  // Ingest-Anfragen in Portionen schneiden (v1.59.1). Eine Anfrage je Import konnte am Proxy scheitern: RookHubs
+  // Frontend-nginx deckelte /api/ auf 15 MB, und Linien kommentierter Kurse sind entpackt ~0,5 MB groß — ein
+  // Mitschnitt von 30 Linien bekam 413 (gemeldet 2026-09-14). Geschnitten wird nach UTF-8-Bytes der späteren
+  // JSON-Payload; ein zu großes Kapitel wird auf mehrere Teile mit derselben chapterJson verteilt. Das geht nur mit
+  // lineOids (der Server ordnet die Linien über ihre oid zu) — ohne sie bleibt ein Kapitel ganz. Eine einzelne Linie
+  // über dem Deckel wandert allein, kleiner lässt sie sich nicht machen.
+  const INGEST_BATCH_BYTES = 8 * 1024 * 1024;
+  const INGEST_ENVELOPE_BYTES = 2048;   // bid, target, courseName, Klammern
+
+  function utf8Bytes(s) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(s).length;
+    return unescape(encodeURIComponent(s)).length;
+  }
+
+  function splitIngestChapters(chapters, maxBytes) {
+    const limit = maxBytes > 0 ? maxBytes : INGEST_BATCH_BYTES;
+    const batches = [];
+    let cur = [];
+    let curBytes = INGEST_ENVELOPE_BYTES;
+    const flush = () => {
+      if (cur.length) batches.push(cur);
+      cur = [];
+      curBytes = INGEST_ENVELOPE_BYTES;
+    };
+    for (const ch of (chapters || [])) {
+      if (!ch) continue;
+      const lines = Array.isArray(ch.lines) ? ch.lines : [];
+      const lineOids = Array.isArray(ch.lineOids) && ch.lineOids.length === lines.length ? ch.lineOids : null;
+      if (!lineOids) {
+        const whole = utf8Bytes(JSON.stringify(ch)) + 8;
+        if (cur.length && curBytes + whole > limit) flush();
+        cur.push(ch);
+        curBytes += whole;
+        continue;
+      }
+      const headBytes = utf8Bytes(JSON.stringify(ch.chapterJson == null ? null : ch.chapterJson)) + 64;
+      let part = null;
+      for (let i = 0; i < lines.length; i++) {
+        const lineBytes = utf8Bytes(JSON.stringify(lines[i] == null ? null : lines[i])) + utf8Bytes(JSON.stringify(lineOids[i])) + 4;
+        if (!part || curBytes + lineBytes > limit) {
+          if (part || (cur.length && curBytes + headBytes + lineBytes > limit)) flush();
+          part = { chapterJson: ch.chapterJson, lines: [], lineOids: [] };
+          cur.push(part);
+          curBytes += headBytes;
+        }
+        part.lines.push(lines[i]);
+        part.lineOids.push(lineOids[i]);
+        curBytes += lineBytes;
+      }
+    }
+    flush();
+    return batches;
+  }
+
   // Kapitel→oids aus einer getCourse?includeVariations=true-Antwort (course.data[].variations[].oid).
   // Für die Fortschritts-Overlays: liefert je Kapitel (lid) die Linien-oids + die Gesamtliste. EIN
   // getCourse-Call genügt für Kurs-/Kapitel-Nenner + alle oids (kein getList je Kapitel nötig).
@@ -143,7 +197,7 @@
   }
 
   const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts,
-    pruneStructures,
+    pruneStructures, splitIngestChapters, INGEST_BATCH_BYTES,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;
