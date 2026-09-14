@@ -21,6 +21,7 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
   - PGN paste
   - RookHub-Server (Eröffnungs-Repertoires gefiltert, mit Auth-Token)
 - **RookHub-Verbindung im Popup** (ab v1.55.0, Extension): „Einstellungen" → „🔗 Mit RookHub verbinden" — auf jedem Tab erreichbar, holt sich den Zugriffs-Token über die RookHub-Anmeldung selbst; „Token von Hand eintragen" bleibt als Rückfall. Userscript: Settings-Panel im Repertoire-Banner (⚙-Icon) für URL/Token/Refresh
+- **Einführung** (ab v1.59.0, Extension): nach der Installation öffnet sich eine Willkommensseite — verbinden, was RepCheck wo tut, Chessable-Buttons auswählen; das Popup zeigt „Erste Schritte", bis alles erledigt ist. Wieder erreichbar über „Einstellungen" → „Einführung öffnen". Solange RookHub nicht verbunden ist, erinnert eine Karte auf jeder chessable.com-Seite daran
 - **Cache** in IndexedDB — Re-Open der chess.com-Seite zeigt sofort den letzten Stand, Refresh läuft im Hintergrund
 - **Soft-Limit-Warnung** bei > 5 MB Gesamtgröße der Repertoires
 - **Chessable-FEN-Tools** (ab v1.9.0): auf `chessable.com` zwei Knöpfe unten rechts — **Copy FEN** (aktuelle Brettstellung in die Zwischenablage) und **Search FEN** (öffnet die Chessable-FEN-Suche der Stellung) — plus Anzeige der zuletzt erspielten **XP**
@@ -29,7 +30,7 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 
 ## Chessable-FEN-Tools
 
-Auf einer Chessable-Trainer-/Lern-Seite mit Brett erscheinen unten rechts:
+Auf einer Chessable-Practice-Seite mit Brett können unten rechts diese Knöpfe und Anzeigen erscheinen. In der **Extension** ist seit v1.59.0 standardmäßig keiner davon eingeschaltet — einzeln aktivieren im Popup unter „Einstellungen" → „Chessable-Buttons". Das Userscript hat keine Einstellungen und zeigt sie weiterhin.
 
 - **Copy FEN** (grün) — kopiert die aktuelle Stellung als FEN in die Zwischenablage (z.B. zum Einfügen in lichess.org/analysis oder chess.com/analysis).
 - **Search FEN** (blau) — öffnet die Chessable-FEN-Suche für die Stellung in einem neuen Tab (innerhalb des aktuellen Kurses, sonst global).

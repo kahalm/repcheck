@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="welcome.title">Willkommen bei RepCheck</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f4f6f9; --card: #fff; --text: #1f2933; --muted: #62707f; --line: #e1e6ec; --accent: #2a8c4a; --accent-hover: #36a85a; --link: #1976d2; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16191d; --card: #20242a; --text: #e6e9ed; --muted: #9aa5b1; --line: #323841; --accent: #3aa35c; --accent-hover: #48b86b; --link: #64b0f5; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px 48px; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 0 auto; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  header img { width: 48px; height: 48px; }
+  h1 { font-size: 26px; margin: 0; flex: 1; }
+  .lang { font-size: 13px; color: var(--muted); }
+  .lang select { font-size: 13px; margin-left: 4px; }
+  .intro { color: var(--muted); margin: 0 0 24px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; transition: box-shadow .3s; }
+  .step h2 { display: flex; align-items: center; gap: 12px; font-size: 18px; margin: 0 0 8px; }
+  .num { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; background: var(--line); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; }
+  .step.done .num { background: var(--accent); color: #fff; }
+  .step.done .num::before { content: '✓'; }
+  .step.done .num span { display: none; }
+  .step p { margin: 0 0 12px; }
+  .step.flash { box-shadow: 0 0 0 3px var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text] { flex: 1 1 240px; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  button { font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; font-weight: 500; }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .6; cursor: default; }
+  .state { min-height: 1.4em; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .state.ok { color: var(--accent); font-weight: 500; }
+  ul.where { list-style: none; margin: 0; padding: 0; }
+  ul.where li { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  ul.where li:first-child { border-top: none; padding-top: 0; }
+  ul.where .ico { flex: 0 0 28px; font-size: 20px; line-height: 1.3; text-align: center; }
+  ul.where strong { display: block; }
+  .buttons { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2px 18px; }
+  .buttons label { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+  .buttons input { margin-top: 4px; width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--accent); }
+  .buttons .name { font-weight: 600; }
+  .buttons .desc { display: block; color: var(--muted); font-size: 13px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+  footer p { margin: 0 0 6px; }
+  a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <img src="icons/icon128.png" alt="">
+  <h1 data-i18n="welcome.title">Willkommen bei RepCheck</h1>
+  <label class="lang"><span data-i18n="lang.label">Sprache</span>
+    <select id="lang-select">
+      <!-- Leerer Wert = automatisch nach Browsersprache; die Sprachnamen bleiben in ihrer eigenen Sprache. -->
+      <option value=""></option>
+      <option value="en">English</option>
+      <option value="de">Deutsch</option>
+      <option value="hr">Hrvatski</option>
+    </select>
+  </label>
+</header>
+<p class="intro" data-i18n="welcome.intro">RepCheck verbindet chess.com, lichess und Chessable mit deinem RookHub.</p>
+
+<section class="step" id="connect">
+  <h2><span class="num"><span>1</span></span><span data-i18n="popup.onb.connect">Mit RookHub verbinden</span></h2>
+  <p data-i18n="welcome.connect.text"></p>
+  <div class="row">
+    <input id="conn-url" type="text" placeholder="https://rookhub.example.com" spellcheck="false" autocomplete="off" aria-label="RookHub">
+    <button id="conn-pair" type="button" data-i18n="popup.conn.pair">🔗 Mit RookHub verbinden</button>
+  </div>
+  <div id="conn-state" class="state" aria-live="polite"></div>
+</section>
+
+<section class="step" id="usage">
+  <h2><span class="num"><span>2</span></span><span data-i18n="welcome.usage.title">Was RepCheck wo macht</span></h2>
+  <ul class="where">
+    <li><span class="ico">♟</span><div><strong>chess.com · lichess</strong><span data-i18n="welcome.usage.games"></span></div></li>
+    <li><span class="ico">♞</span><div><strong>chessable.com</strong><span data-i18n="welcome.usage.chessable"></span></div></li>
+    <li><span class="ico">♜</span><div><strong>RookHub</strong><span data-i18n="welcome.usage.rookhub"></span></div></li>
+  </ul>
+</section>
+
+<section class="step" id="buttons">
+  <h2><span class="num"><span>3</span></span><span data-i18n="popup.onb.buttons">Chessable-Buttons auswählen</span></h2>
+  <p data-i18n="welcome.buttons.text"></p>
+  <div class="buttons">
+    <label><input type="checkbox" id="cb-copyFen"><span><span class="name">Copy FEN</span><span class="desc" data-i18n="welcome.btn.copyFen"></span></span></label>
+    <label><input type="checkbox" id="cb-analyse"><span><span class="name">Analyse</span><span class="desc" data-i18n="welcome.btn.analyse"></span></span></label>
+    <label><input type="checkbox" id="cb-searchFen"><span><span class="name">Search FEN</span><span class="desc" data-i18n="welcome.btn.searchFen"></span></span></label>
+    <label><input type="checkbox" id="cb-refresh"><span><span class="name">Refresh</span><span class="desc" data-i18n="welcome.btn.refresh"></span></span></label>
+    <label><input type="checkbox" id="cb-remember"><span><span class="name">Remember line</span><span class="desc" data-i18n="welcome.btn.remember"></span></span></label>
+    <label><input type="checkbox" id="cb-fullscreen"><span><span class="name">⛶ <span data-i18n="popup.buttons.fullscreen">Vollbild</span></span><span class="desc" data-i18n="welcome.btn.fullscreen"></span></span></label>
+    <label><input type="checkbox" id="cb-pool"><span><span class="name" data-i18n="popup.buttons.pool">⏳ Noch offen im Trainingspool</span><span class="desc" data-i18n="welcome.btn.pool"></span></span></label>
+    <label><input type="checkbox" id="cb-feedback"><span><span class="name" data-i18n="popup.buttons.feedback">Zug-Rückmeldung (+XP)</span><span class="desc" data-i18n="welcome.btn.feedback"></span></span></label>
+  </div>
+  <div id="buttons-state" class="state" aria-live="polite"></div>
+</section>
+
+<footer>
+  <p data-i18n="welcome.footer"></p>
+  <p><a href="https://github.com/kahalm/repcheck" target="_blank" rel="noopener">GitHub</a> · <a href="https://discord.gg/wczc4BJtMf" target="_blank" rel="noopener">Discord</a></p>
+</footer>
+</main>
+<script src="lib/i18n.js"></script>
+<script src="welcome.js"></script>
+</body>
+</html>

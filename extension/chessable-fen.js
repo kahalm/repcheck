@@ -451,7 +451,7 @@
     const badge = document.getElementById(FEEDBACK_ID);
     if (!badge) return;
     const last = lineFeedback[lineFeedback.length - 1];
-    if (!last) { badge.style.display = 'none'; hideFeedbackList(); return; }
+    if (!last || !buttonEnabled('feedback')) { badge.style.display = 'none'; hideFeedbackList(); return; }
     const sum = feedbackSum();
     // JEDER Zug bekommt einen Betrag — auch „Overstudied" (dann +0), damit die Anzeige nicht
     // zwischen Zahl und Wort springt. Dahinter die laufende Summe dieser Linie. Der
@@ -697,7 +697,7 @@
     const el = document.getElementById(POOL_ID);
     if (!el) return;
     const rest = trainingPoolRest();
-    if (rest == null) { el.style.display = 'none'; hidePoolPanel(); return; }
+    if (rest == null || !buttonEnabled('pool')) { el.style.display = 'none'; hidePoolPanel(); return; }
     el.textContent = '\u23F3 ' + rest;
     el.title = 'Noch offen im aktuellen Trainingspool — klicken fuer Tagesbilanz und Hochrechnung';
     el.style.display = 'inline-flex';
@@ -1149,13 +1149,16 @@
     }
     if (zenActive()) {
       for (const child of wrap.children) {
-        // Die Zug-Rueckmeldung bleibt im Zen sichtbar - sie ist dort der einzige Weg,
-        // Overstudied/+XP zu sehen (Chessables eigene Anzeige liegt hinterm Backdrop).
+        // Zug-Rueckmeldung und Pool-Zaehler schalten sich selbst (Daten + Popup-Einstellung). Im Zen sind
+        // sie der einzige Weg, Overstudied/+XP bzw. den Rest zu sehen (Chessables eigene Anzeige liegt
+        // hinterm Backdrop) — aber nur, wenn sie eingeschaltet sind.
+        if (child.id === FEEDBACK_ID || child.id === POOL_ID) continue;
         const keep = child === btn || child === btnRefs.refresh || child === zenNextBtn
-          || child === zenPanelBtn || child === zenAnalyseBtn || child === zenHintBtn
-          || child.id === FEEDBACK_ID || child.id === POOL_ID;
+          || child === zenPanelBtn || child === zenAnalyseBtn || child === zenHintBtn;
         child.style.display = keep ? '' : 'none';
       }
+      renderFeedback();
+      renderPool();
     } else {
       if (zenNextBtn) zenNextBtn.style.display = 'none';
       if (zenPanelBtn) zenPanelBtn.style.display = 'none';
@@ -1347,17 +1350,25 @@
   }
 
   // ---- Pro-Button-Sichtbarkeit (im Popup einstellbar) ----
-  // Welche der FEN-Tool-Buttons erscheinen, ist im Extension-Popup pro Button umschaltbar
-  // (chrome.storage.local `chessableButtons`). chessable-fen.js läuft in der MAIN-World ohne
-  // chrome.*-Zugriff → chessable-activity.js (isoliert) spiegelt die Einstellung per postMessage
-  // hierher (Same-Window + Same-Origin geprüft; kein Secret).
+  // Welche Buttons und Anzeigen der Leiste unten rechts erscheinen, ist im Extension-Popup einzeln
+  // umschaltbar (chrome.storage.local `chessableButtons`). Seit v1.59.0 ist ALLES aus, bis es dort
+  // jemand einschaltet: nur ein ausdrückliches `true` zeigt ein Element, ein fehlender Schlüssel heißt aus
+  // — auch solange die Einstellung noch nicht angekommen ist, damit nichts kurz aufblitzt.
+  // chessable-fen.js läuft in der MAIN-World ohne chrome.*-Zugriff → chessable-activity.js (isoliert)
+  // spiegelt die Einstellung per postMessage hierher (Same-Window + Same-Origin geprüft; kein Secret).
   let btnRefs = {};
-  let buttonSettings = { copyFen: true, analyse: true, searchFen: true, refresh: true, remember: true, fullscreen: true };
+  let buttonSettings = {};
+  function buttonEnabled(key) {
+    return buttonSettings[key] === true;
+  }
   function applyButtonSettings() {
     for (const key of Object.keys(btnRefs)) {
       const btn = btnRefs[key];
-      if (btn) btn.style.display = (buttonSettings[key] === false) ? 'none' : '';
+      if (btn) btn.style.display = buttonEnabled(key) ? '' : 'none';
     }
+    // ⏳-Zaehler und Zug-Rueckmeldung haben eigene Daten und schalten sich selbst (fragen buttonEnabled).
+    renderFeedback();
+    renderPool();
   }
   function requestButtonSettings() {
     window.postMessage({ __repcheck: 'request-chessable-buttons' }, location.origin);
@@ -1365,7 +1376,7 @@
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'chessable-buttons') return;
     const s = e.data.settings;
-    if (s && typeof s === 'object') { buttonSettings = Object.assign({ copyFen: true, analyse: true, searchFen: true, refresh: true, remember: true, fullscreen: true }, s); applyButtonSettings(); }
+    if (s && typeof s === 'object') { buttonSettings = Object.assign({}, s); applyButtonSettings(); }
   });
 
   // Die RookHub-URL liegt extension-privat in chrome.storage.local (nur isolierte Welt lesbar);

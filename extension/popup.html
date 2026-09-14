@@ -35,10 +35,37 @@
   .crawl-fields label { display: flex; gap: 5px; align-items: center; font-size: 12px; color: #2c3e50; }
   .crawl-fields input { width: 4.2em; font-size: 12px; padding: 3px 4px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #222; font-variant-numeric: tabular-nums; }
   #conn-manual summary { font-size: 11px; color: #1976d2; cursor: pointer; margin-bottom: 6px; }
+  .onb-head { display: flex; justify-content: space-between; align-items: center; }
+  .onb-close { border: none; background: transparent; font-size: 16px; line-height: 1; padding: 0 2px; color: #7a8a9a; cursor: pointer; }
+  .repertoires .onb-list { margin: 2px 0 4px 0; }
+  .repertoires .onb-list li { justify-content: flex-start; gap: 6px; }
+  .onb-list .onb-mark::before { content: '○'; color: #7a8a9a; }
+  .onb-list li.done .onb-mark::before { content: '✓'; color: #2a8c4a; font-weight: 600; }
+  .onb-list li.done a { color: #7a8a9a; text-decoration: line-through; }
+  .notice { background: #fff8e1; border-color: #ffe082; font-size: 12px; color: #5d4200; }
 </style>
 </head>
 <body>
 <h1>♟ RepCheck</h1>
+<div id="onboarding" class="repertoires" style="display:none;">
+  <div class="onb-head">
+    <span class="heading" data-i18n="popup.onb.heading">Erste Schritte</span>
+    <button id="onb-close" class="onb-close" type="button" data-i18n-title="popup.onb.close" title="Ausblenden">×</button>
+  </div>
+  <ul class="onb-list">
+    <li id="onb-connect"><span class="onb-mark"></span><a href="#" id="onb-connect-link" data-i18n="popup.onb.connect">Mit RookHub verbinden</a></li>
+    <li id="onb-course"><span class="onb-mark"></span><a href="#" id="onb-course-link" data-i18n="popup.onb.course">Einen Chessable-Kurs zu RookHub holen</a></li>
+    <li id="onb-buttons"><span class="onb-mark"></span><a href="#" id="onb-buttons-link" data-i18n="popup.onb.buttons">Chessable-Buttons auswählen</a></li>
+  </ul>
+  <a href="#" id="onb-welcome" class="conn-hint" data-i18n="popup.onb.welcome">Einführung öffnen ↗</a>
+</div>
+<div id="buttons-notice" class="repertoires notice" style="display:none;">
+  <div data-i18n="notice.buttons.body">Neu in RepCheck: Die Buttons unten rechts auf chessable.com lassen sich jetzt einzeln einschalten und sind standardmäßig aus.</div>
+  <div class="row" style="margin:6px 0 0 0;">
+    <button id="notice-choose" class="primary" type="button" data-i18n="notice.buttons.choose">Buttons auswählen</button>
+    <button id="notice-ok" class="secondary" type="button" data-i18n="notice.buttons.ok">OK</button>
+  </div>
+</div>
 <div id="sharebar" class="repertoires" style="display:none;margin-top:0;">
   <div class="heading" data-i18n="popup.share.heading">Link zur aktuellen Line</div>
   <div class="row" style="margin:4px 0 0 0;align-items:center;">
@@ -91,13 +118,15 @@
 </div>
 <div id="chessable-settings" class="repertoires">
   <div class="heading" data-i18n="popup.buttons.heading">Chessable-Buttons</div>
-  <div style="font-size:11px;color:#7a8a9a;margin-bottom:6px;" data-i18n="popup.buttons.intro">Welche Buttons unten rechts auf chessable.com (Practice-Modus) erscheinen.</div>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-copyFen" checked> Copy FEN</label>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-analyse" checked> Analyse (RookHub)</label>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-searchFen" checked> Search FEN</label>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-refresh" checked> Refresh</label>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-remember" checked> Remember line</label>
-  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-fullscreen" checked> <span data-i18n="popup.buttons.fullscreen">Vollbild</span></label>
+  <div style="font-size:11px;color:#7a8a9a;margin-bottom:6px;" data-i18n="popup.buttons.intro">Welche Buttons und Anzeigen unten rechts auf chessable.com (Practice-Modus) erscheinen. Standardmäßig ist alles aus.</div>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-copyFen"> Copy FEN</label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-analyse"> Analyse (RookHub)</label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-searchFen"> Search FEN</label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-refresh"> Refresh</label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-remember"> Remember line</label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-fullscreen"> <span data-i18n="popup.buttons.fullscreen">Vollbild</span></label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-pool"> <span data-i18n="popup.buttons.pool">⏳ Noch offen im Trainingspool</span></label>
+  <label style="display:block;margin-bottom:3px;"><input type="checkbox" id="cb-feedback"> <span data-i18n="popup.buttons.feedback">Zug-Rückmeldung (+XP)</span></label>
 </div>
 <div id="crawl-settings" class="repertoires">
   <div class="heading" data-i18n="popup.crawl.heading">Kurs holen: Pause zwischen Abrufen</div>
@@ -108,6 +137,7 @@
   </div>
   <div id="crawl-state" class="conn-hint"></div>
 </div>
+<div class="hint" style="margin:-4px 0 10px 0;"><a href="#" id="open-welcome" data-i18n="popup.onb.welcome">Einführung öffnen ↗</a></div>
 <div class="row" id="page-panel-row" style="display:none;">
   <button id="open-page-panel" class="secondary" style="flex:1;" data-i18n="popup.conn.pagePanel">Ordner / PGN auf der Seite…</button>
 </div>

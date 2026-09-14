@@ -326,3 +326,61 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   })();
   return true;
 });
+
+// ─── Einführung für neue Nutzer (v1.59.0) ──────────────────────────────────
+//
+// Nach einer FRISCHEN Installation öffnet sich einmal die Willkommensseite (welcome.html), und das Popup
+// zeigt die „Erste Schritte"-Checkliste (`rcOnboarding: 'active'`). Bestehende Nutzer brauchen keine
+// Einführung — sie bekommen nach dem Update von einer Version vor 1.59.0 einmal den Hinweis, dass die
+// Chessable-Buttons jetzt standardmäßig aus sind (`rcButtonsNotice: 'pending'`; Popup und Practice-Seite
+// zeigen ihn, bis er bestätigt oder eine Button-Auswahl gespeichert wird).
+const BUTTONS_DEFAULT_OFF_SINCE = '1.59.0';
+
+// „1.9.0" < „1.59.0": Teile als Zahlen vergleichen, nicht als Text.
+function versionLess(a, b) {
+  const pa = String(a || '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = String(b || '').split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d < 0;
+  }
+  return false;
+}
+
+// Was nach runtime.onInstalled zu tun ist — rein, damit testbar (test/onboarding.test.js).
+function onboardingPlan(details) {
+  if (!details) return {};
+  if (details.reason === 'install') return { openWelcome: true, onboarding: 'active' };
+  if (details.reason === 'update' && details.previousVersion
+      && versionLess(details.previousVersion, BUTTONS_DEFAULT_OFF_SINCE)) {
+    return { buttonsNotice: 'pending' };
+  }
+  return {};
+}
+
+function openWelcome(section) {
+  const hash = ['connect', 'usage', 'buttons'].indexOf(section) >= 0 ? '#' + section : '';
+  try { chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') + hash }); } catch (e) { /* Kür */ }
+}
+
+async function applyInstallDetails(details) {
+  const plan = onboardingPlan(details);
+  const patch = {};
+  if (plan.onboarding) patch.rcOnboarding = plan.onboarding;
+  if (plan.buttonsNotice) patch.rcButtonsNotice = plan.buttonsNotice;
+  if (Object.keys(patch).length) await storeSet(patch);
+  if (plan.openWelcome) openWelcome();
+  return plan;
+}
+
+chrome.runtime.onInstalled.addListener((details) => { applyInstallDetails(details); });
+
+// Der Hinweis auf chessable.com öffnet die Willkommensseite über den Worker — ein Content-Script darf
+// chrome.tabs nicht selbst benutzen.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'rc-open-welcome') return false;
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  openWelcome(msg.section);
+  sendResponse({ ok: true });
+  return false;
+});
