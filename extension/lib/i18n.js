@@ -180,6 +180,11 @@ const RC_MESSAGES = {
     'import.warn.confirm': 'Continue anyway?',
     'import.throttled': 'Chessable is throttling (HTTP {status}) — waiting {seconds} s (attempt {attempt}/{max})…',
     'import.fetchingStructure': 'Fetching course structure…',
+    'import.fetchingChapters': 'Fetching chapter lists… {done}/{total}',
+    'import.linkedNote': {
+      one: '{count} existing line got its Chessable ID.',
+      other: '{count} existing lines got their Chessable ID.',
+    },
     'import.aborted': 'Cancelled.',
     'import.abortRequested': 'Cancelling…',
     'import.nothingNew': {
@@ -458,6 +463,11 @@ const RC_MESSAGES = {
     'import.warn.confirm': 'Wirklich fortfahren?',
     'import.throttled': 'Chessable drosselt (HTTP {status}) — warte {seconds} s (Versuch {attempt}/{max}) …',
     'import.fetchingStructure': 'Hole Kursstruktur …',
+    'import.fetchingChapters': 'Hole Kapitellisten … {done}/{total}',
+    'import.linkedNote': {
+      one: 'Bei {count} vorhandenen Linie wurde die Chessable-ID ergänzt.',
+      other: 'Bei {count} vorhandenen Linien wurde die Chessable-ID ergänzt.',
+    },
     'import.aborted': 'Abgebrochen.',
     'import.abortRequested': 'Abbruch angefordert …',
     'import.nothingNew': {
@@ -726,6 +736,12 @@ const RC_MESSAGES = {
     'import.warn.confirm': 'Stvarno nastaviti?',
     'import.throttled': 'Chessable usporava promet (HTTP {status}) — čekam {seconds} s (pokušaj {attempt}/{max}) …',
     'import.fetchingStructure': 'Dohvaćam strukturu tečaja …',
+    'import.fetchingChapters': 'Dohvaćam popise poglavlja … {done}/{total}',
+    'import.linkedNote': {
+      one: '{count} postojećoj liniji dodan je Chessable ID.',
+      few: '{count} postojećim linijama dodan je Chessable ID.',
+      other: '{count} postojećih linija dobilo je Chessable ID.',
+    },
     'import.aborted': 'Prekinuto.',
     'import.abortRequested': 'Zatražen prekid …',
     'import.nothingNew': {

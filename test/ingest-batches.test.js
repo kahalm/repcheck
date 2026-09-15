@@ -94,3 +94,36 @@ test('Extension: Mitschnitt, „Kurs holen" und Live-Anhängen schicken über di
   assert.doesNotMatch(src, /await ingest\(bid, chapters, target/, 'Mitschnitt geht noch in einer Anfrage raus');
   assert.doesNotMatch(src, /await ingestLive\(bid, target, courseName, newChapters\)/, '„Kurs holen" geht noch in einer Anfrage raus');
 });
+
+// ─── v1.59.2: Rückmeldung beim „Kurs holen" ─────────────────────────────
+
+function ladeIngestLiveInParts(antworten) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
+  const von = src.indexOf('  async function ingestLiveInParts(');
+  const bis = src.indexOf('  async function flushLive() {', von);
+  assert.ok(von >= 0 && bis > von, 'ingestLiveInParts nicht gefunden');
+  const aufrufe = [];
+  const Crawl = { splitIngestChapters: (ch) => ch.map((c) => [c]) };   // je Kapitel eine Portion
+  const ingestLive = async (bid, target, name, part) => { aufrufe.push(part); return antworten[aufrufe.length - 1]; };
+  const fn = new Function('Crawl', 'ingestLive', src.slice(von, bis) + '\nreturn ingestLiveInParts;')(Crawl, ingestLive);
+  return { fn, aufrufe };
+}
+
+test('ingestLiveInParts zählt neu angehängte UND verknüpfte Linien über alle Portionen', async () => {
+  // Kurs 207313 am 2026-09-15: drei Portionen, 0 angehängt, 641 Alt-Linien bekamen ihre oid — die Meldung sagte „0".
+  const { fn, aufrufe } = ladeIngestLiveInParts([{ imported: 0, linked: 200 }, { imported: 1, linked: 241 }, { imported: 0, linked: 200 }]);
+  const res = await fn('207313', 'repertoire', 'Kurs', [{}, {}, {}]);
+  assert.strictEqual(aufrufe.length, 3);
+  assert.deepStrictEqual(res, { imported: 1, linked: 641, parts: 3 });
+});
+
+test('ingestLiveInParts: ältere RookHub-Versionen ohne linked-Feld zählen als 0', async () => {
+  const { fn } = ladeIngestLiveInParts([{ imported: 2 }, null]);
+  assert.deepStrictEqual(await fn('1', 'repertoire', 'K', [{}, {}]), { imported: 2, linked: 0, parts: 2 });
+});
+
+test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien in der Abschlussmeldung', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
+  assert.match(src, /setStatus\(t\('import\.fetchingChapters', \{ done: li \+ 1, total: lids\.length \}\)\)/);
+  assert.match(src, /res\.linked \? fertig \+ ' ' \+ t\('import\.linkedNote', \{ count: res\.linked \}\) : fertig/);
+});

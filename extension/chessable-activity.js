@@ -1291,8 +1291,11 @@
       if (!lids.length) throw new Error(t('err.noChapters'));
       const lists = [];
       let total = 0, toFetch = 0;
-      for (const lid of lids) {
+      for (let li = 0; li < lids.length; li++) {
+        const lid = lids[li];
         if (cancelRequested) { setStatus(t('import.aborted')); return; }
+        // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
+        setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
         const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
         const listText = fromCapture ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
         harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
@@ -1358,9 +1361,11 @@
           if (parts > 1) setStatus(t('import.appendingPart', { part, parts }));
         });
         markCourseFetched();
-        setStatus(skipped
+        const fertig = skipped
           ? t('import.doneAppendedSkipped', { count: res.imported, skipped })
-          : t('import.doneAppended', { count: res.imported }));
+          : t('import.doneAppended', { count: res.imported });
+        // Verknüpfte Alt-Linien nennen — sonst las sich ein Abruf mit hunderten nachgetragenen IDs als „0 angehängt".
+        setStatus(res.linked ? fertig + ' ' + t('import.linkedNote', { count: res.linked }) : fertig);
       } else {
         setStatus(t('import.importing'));
         // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
@@ -1445,13 +1450,14 @@
   // angehängten stehen (ein erneuter Versuch überspringt sie serverseitig über die oid).
   async function ingestLiveInParts(bid, target, courseName, chapters, onPart) {
     const parts = Crawl.splitIngestChapters(chapters);
-    let imported = 0;
+    let imported = 0, linked = 0;
     for (let i = 0; i < parts.length; i++) {
       if (onPart) onPart(i + 1, parts.length);
       const res = await ingestLive(bid, target, courseName, parts[i]);
       imported += (res && res.imported) || 0;
+      linked += (res && res.linked) || 0;   // RookHub ≥ 0.478.7; ältere liefern das Feld nicht → 0
     }
-    return { imported, parts: parts.length };
+    return { imported, linked, parts: parts.length };
   }
 
   async function flushLive() {
