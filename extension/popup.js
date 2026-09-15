@@ -798,6 +798,57 @@ function ciSelectedTarget() {
   return r ? r.value : 'repertoire';
 }
 
+// ---- Gestoppter Kurs-Abruf (v1.60.0) ----
+// Stoppt „Kurs holen" wegen einer unerwarteten Chessable-Antwort, legt chessable-activity.js den Hinweis in
+// rcCrawlAlert ab. Das Popup zeigt ihn, bis er ausgeblendet wird, und fragt vor dem nächsten Holen nach.
+const CI_ALERT = document.getElementById('ci-alert');
+const DISCORD_URL = 'https://discord.gg/wczc4BJtMf';
+let ciAlert = null;
+
+function paintCiAlert() {
+  if (!CI_ALERT) return;
+  if (!ciAlert) { CI_ALERT.style.display = 'none'; CI_ALERT.replaceChildren(); return; }
+  const teile = [];
+  const titel = document.createElement('b');
+  titel.textContent = t('import.unexpected.title');
+  teile.push(titel);
+  const absatz = (text, cls) => {
+    const d = document.createElement('div');
+    d.textContent = text;
+    if (cls) d.className = cls;
+    teile.push(d);
+  };
+  absatz(t('import.unexpected.body'));
+  if (ciAlert.banned) {
+    absatz((ciAlert.message ? t('import.unexpected.bannedMessage', { message: ciAlert.message }) : t('import.unexpected.bannedPage'))
+      + (ciAlert.adminNotified ? ' ' + t('import.unexpected.adminsNotified') : ''));
+  }
+  if (ciAlert.saved) absatz(t('import.unexpected.saved', { count: ciAlert.saved }));
+  let wann = '';
+  try { wann = ciAlert.at ? new Date(ciAlert.at).toLocaleString(rcLang) : ''; } catch (e) { /* ohne Zeit */ }
+  absatz([ciAlert.courseName || ciAlert.bid, ciAlert.detail, wann].filter(Boolean).join(' · '), 'ci-alert-detail');
+  const zeile = document.createElement('div');
+  zeile.className = 'ci-alert-row';
+  const ausblenden = document.createElement('button');
+  ausblenden.type = 'button';
+  ausblenden.textContent = t('import.unexpected.dismiss');
+  ausblenden.addEventListener('click', () => { try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ } });
+  const discord = document.createElement('a');
+  discord.href = DISCORD_URL; discord.target = '_blank'; discord.rel = 'noopener';
+  discord.textContent = t('import.unexpected.discord');
+  zeile.append(ausblenden, discord);
+  teile.push(zeile);
+  CI_ALERT.replaceChildren(...teile);
+  CI_ALERT.style.display = 'block';
+}
+
+try {
+  chrome.storage.local.get('rcCrawlAlert', (r) => { ciAlert = (r && r.rcCrawlAlert) || null; paintCiAlert(); });
+  chrome.storage.onChanged.addListener((ch, area) => {
+    if (area === 'local' && ch.rcCrawlAlert) { ciAlert = ch.rcCrawlAlert.newValue || null; paintCiAlert(); }
+  });
+} catch (e) { /* ohne storage kein Hinweis */ }
+
 function ciSend(action, extra) {
   return new Promise((resolve) => {
     if (ciTabId == null) { resolve(null); return; }
@@ -882,6 +933,8 @@ async function initChessableImport() {
       ciTick();
       return;
     }
+    // Der letzte Lauf wurde wegen einer unerwarteten Chessable-Antwort gestoppt → erst fragen, ob der Entwickler Bescheid weiß.
+    if (ciAlert && !window.confirm(t('import.unexpected.rerunConfirm', { detail: ciAlert.detail || '' }))) return;
     // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
     const ok = window.confirm(
       t('import.warn.title') + '\n\n' +
@@ -890,6 +943,7 @@ async function initChessableImport() {
       t('import.warn.confirm')
     );
     if (!ok) return;
+    if (ciAlert) { try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ } }
     CI_STATUS.textContent = t('import.starting');
     await ciSend('crawl', { target: ciSelectedTarget() });
     ciTick();

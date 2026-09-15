@@ -196,8 +196,85 @@
     return Object.fromEntries(entries.slice(0, max));
   }
 
+  // ---- Unerwartete Chessable-Antworten beim „Kurs holen" (v1.60.0) ----
+  // Liefert Chessable nicht die erwartete Form, bricht der Crawl ab statt weiterzuholen: dahinter kann eine
+  // Anti-Crawling-Maßnahme stecken, und die soll sich der Entwickler ansehen, bevor jemand erneut holt. Anlass: zu
+  // 31 Linien kam am 30.06.2026 nur {"error":{"message":"User is banned or deleted"}} zurück — der Server-Abruf hielt
+  // das für eine Linie, und sie lagen monatelang als „gecacht" im geteilten Linien-Cache.
+  const UNEXPECTED_SNIPPET_CHARS = 1000;
+  const UNEXPECTED_MESSAGE_CHARS = 300;
+  // Dieselbe Wortliste prüft RookHub (ChessableResponseAlertService.LooksBanned) — dort entscheidet sie über die
+  // Admin-Nachricht, hier nur über den Hinweis im Browser. Nur gemeinsam ändern.
+  const BAN_PATTERN = /\b(banned|suspended|blocked|deleted)\b/i;
+
+  // Sieht die Antwort nach einer Sperre aus? In einer JSON-Antwort zählt allein die Fehlermeldung (Kursinhalte dürfen
+  // „deleted" enthalten); ohne Fehlermeldung nur ein Ausschnitt, der kein JSON ist — eine Sperrseite.
+  function looksBanned(message, snippet) {
+    if (message && String(message).trim()) return BAN_PATTERN.test(String(message));
+    const s = String(snippet == null ? '' : snippet);
+    return !/^\s*[[{]/.test(s) && BAN_PATTERN.test(s);
+  }
+
+  // Ausschnitt für die Meldung an RookHub: gekürzt, ohne E-Mail- und IP-Adressen (eine Cloudflare-Sperrseite nennt
+  // die IP des Nutzers). Uhrzeiten wie 08:56:57 bleiben stehen — die IPv6-Regel verlangt mindestens vier Gruppen.
+  function scrubSnippet(text) {
+    return String(text == null ? '' : text)
+      .slice(0, UNEXPECTED_SNIPPET_CHARS * 4)
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+      .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
+      .replace(/\b[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){3,7}\b/gi, '[ip]')
+      .slice(0, UNEXPECTED_SNIPPET_CHARS);
+  }
+
+  // Fehlermeldung einer JSON-Antwort: {"error":{"message":"…"}} oder {"error":"…"}; sonst null.
+  function chessableErrorMessage(obj) {
+    const err = obj.error != null ? obj.error : obj.Error;
+    if (err == null || err === false || err === '') return null;
+    if (typeof err === 'string') return err;
+    if (typeof err === 'object') {
+      const m = err.message != null ? err.message : err.Message;
+      if (m != null && m !== '') return String(m);
+    }
+    return JSON.stringify(err);
+  }
+
+  function hasExpectedShape(kind, obj) {
+    if (kind === 'course') { const c = obj.course || obj.Course; return !!c && Array.isArray(c.data || c.Data); }
+    if (kind === 'list') { const l = obj.list || obj.List; return !!l && Array.isArray(l.data || l.Data); }
+    if (kind === 'game') { const g = obj.game || obj.Game; return !!g && typeof g === 'object'; }
+    return true;
+  }
+
+  // Prüft eine Antwort beim „Kurs holen". kind: 'course' | 'list' | 'game'; status: HTTP-Status (fehlt = 200).
+  // null = in Ordnung. Sonst { reason, status, message, banned, snippet } mit reason
+  //   http  — kein 2xx (auch nach den Wiederholungen bei 429/5xx),
+  //   json  — kein JSON (z. B. eine HTML-Sperrseite),
+  //   error — Chessable meldet einen Fehler statt der Daten,
+  //   shape — JSON ohne das erwartete Feld (course.data / list.data / game), auch das leere {}.
+  // Eine Antwort MIT dem erwarteten Feld gilt als in Ordnung, auch wenn daneben ein error-Feld steht.
+  function checkChessableResponse(kind, text, status) {
+    const code = status == null ? 200 : Number(status);
+    const raw = text == null ? '' : String(text);
+    let obj = null, parsed = false;
+    try { obj = JSON.parse(raw); parsed = true; } catch (e) { /* kein JSON */ }
+    const isObj = parsed && obj !== null && typeof obj === 'object' && !Array.isArray(obj);
+    const ok2xx = code >= 200 && code < 300;
+    if (ok2xx && isObj && hasExpectedShape(kind, obj)) return null;
+    const found = isObj ? chessableErrorMessage(obj) : null;
+    const message = found ? found.slice(0, UNEXPECTED_MESSAGE_CHARS) : null;
+    const snippet = scrubSnippet(raw);
+    return {
+      reason: !ok2xx ? 'http' : !parsed ? 'json' : message ? 'error' : 'shape',
+      status: code,
+      message,
+      banned: looksBanned(message, snippet),
+      snippet,
+    };
+  }
+
   const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts,
     pruneStructures, splitIngestChapters, INGEST_BATCH_BYTES,
+    checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;

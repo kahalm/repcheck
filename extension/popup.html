@@ -10,6 +10,14 @@
   .status.loaded { background: #e8f5e9; color: #1b5e20; }
   .status.empty { background: #fff3e0; color: #e65100; }
   .status.error { background: #ffebee; color: #b71c1c; }
+  .ci-alert { padding: 8px; border-radius: 4px; background: #fff8e1; color: #5d4200; border-left: 4px solid #e0a800; font-size: 12px; margin-bottom: 8px; }
+  .ci-alert b { display: block; margin-bottom: 4px; }
+  .ci-alert div { margin-bottom: 6px; }
+  .ci-alert .ci-alert-detail { font-size: 11px; color: #7a6a3a; word-break: break-word; }
+  .ci-alert .ci-alert-row { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin: 0; }
+  /* Das Import-Panel teilt sich die Optik der Repertoire-Liste, aber nicht deren 180-px-Scrollbox: mit dem Hinweis
+     (v1.60.0) rutschte „Kurs holen" sonst in einen inneren Scrollbereich. */
+  #chessable-import { max-height: none; overflow: visible; }
   .repertoires { margin: -4px 0 10px 0; padding: 6px 10px; border-radius: 4px; background: #f7f9fc; border: 1px solid #e3e8ef; max-height: 180px; overflow-y: auto; }
   .repertoires ul { list-style: none; margin: 0; padding: 0; }
   .repertoires li { padding: 3px 0; font-size: 12px; color: #2c3e50; display: flex; justify-content: space-between; gap: 8px; }
@@ -94,6 +102,7 @@
     <label style="font-weight:normal;"><input type="radio" name="ci-target" value="repertoire" checked> <span data-i18n="import.target.repertoire">Repertoire</span></label>
     <label style="font-weight:normal;"><input type="radio" name="ci-target" value="book"> <span data-i18n="import.target.book">Kurs/Buch</span></label>
   </div>
+  <div id="ci-alert" class="ci-alert" style="display:none;"></div>
   <button id="ci-crawl" class="primary" style="width:100%;margin-bottom:6px;" data-i18n="import.crawl">⚡ Kurs über meinen Browser holen</button>
   <button id="ci-importcap" class="secondary" style="width:100%;margin-bottom:6px;display:none;" data-i18n="import.capturedPlain">Mitschnitt importieren</button>
   <div id="ci-progress" style="font-size:12px;color:#2c3e50;margin-bottom:4px;"></div>

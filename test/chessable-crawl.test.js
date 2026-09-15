@@ -129,7 +129,8 @@ test('Crawl-Schleifen: keine feste 3-s-Pause mehr, und keine Pause für Mitgesch
     const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', datei), 'utf8');
     assert.ok(!/sleep\((CRAWL_)?INTER_MS\)/.test(src), `${datei}: feste Pause gefunden`);
     assert.ok(src.includes('if (!fromCapture) await sleep(crawlPauseMs())'), `${datei}: Kapitel-Pause nicht an echten Abruf gebunden`);
-    assert.ok(src.includes('await sleep(crawlPauseMs()); }'), `${datei}: Linien-Pause nicht zufällig`);
+    // Seit 1.60.0 steht der getGame-Abruf der Extension in einem try (unerwartete Antwort) — die Pause danach mehrzeilig.
+    assert.ok(/await sleep\(crawlPauseMs\(\)\);\s*\}/.test(src), `${datei}: Linien-Pause nicht zufällig`);
   }
 });
 

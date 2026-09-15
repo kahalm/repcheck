@@ -1182,13 +1182,16 @@
     const sep = path.includes('?') ? '&' : '?';
     const url = `https://www.chessable.com/api/v1/${path}${sep}uid=${uid}`;
     const init = { headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }, credentials: 'include' };
-    let lastStatus = 0;
+    let lastStatus = 0, lastBody = '';
     for (let attempt = 1; attempt <= CHESSABLE_MAX_ATTEMPTS; attempt++) {
       const resp = await fetch(url, init);
       if (resp.ok) return resp.text();
       if (resp.status === 401) clearStoredChessableToken(); // Bearer tot — Kopie nicht weiterleben lassen
       lastStatus = resp.status;
-      if (!CHESSABLE_RETRYABLE.has(resp.status) || attempt === CHESSABLE_MAX_ATTEMPTS) break;
+      if (!CHESSABLE_RETRYABLE.has(resp.status) || attempt === CHESSABLE_MAX_ATTEMPTS) {
+        try { lastBody = await resp.text(); } catch (e) { lastBody = ''; }
+        break;
+      }
       const retryAfter = parseRetryAfterMs(resp.headers.get('Retry-After'));
       const backoff = (retryAfter != null ? retryAfter : Math.min(30000, CRAWL_BACKOFF_BASE_MS * Math.pow(2, attempt)))
         + Math.floor(Math.random() * 400);
@@ -1200,7 +1203,11 @@
       }));
       await sleep(backoff);
     }
-    throw new Error(t('err.chessableHttp', { status: lastStatus }));
+    const err = new Error(t('err.chessableHttp', { status: lastStatus }));
+    // Für „Kurs holen": Status + Antworttext, damit z. B. eine Sperrseite als unerwartete Antwort gemeldet werden kann.
+    err.chessableStatus = lastStatus;
+    err.chessableBody = lastBody;
+    throw err;
   }
 
   // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). final=true schließt die
@@ -1262,6 +1269,115 @@
     return result;
   }
 
+  // ---- Unerwartete Chessable-Antwort: Holen stoppen, warnen, melden (v1.60.0) ----
+  // Jede Antwort beim „Kurs holen" wird geprüft (Crawl.checkChessableResponse). Passt eine nicht, bricht der Lauf ab:
+  // dahinter kann eine Anti-Crawling-Maßnahme von Chessable stecken, und blindes Weiterholen würde sie nur bestätigen.
+  // Der Nutzer bekommt eine Karte mit Discord-Link (vor einem erneuten Versuch Bescheid geben), das Popup behält den
+  // Hinweis (rcCrawlAlert) und fragt vor dem nächsten Holen nach, und RookHub bekommt die Antwort zum Durchsehen —
+  // sieht sie nach einer Sperre aus, legt RookHub daraus eine Admin-Nachricht an.
+  const DISCORD_URL = 'https://discord.gg/wczc4BJtMf';
+  const CRAWL_ALERT_ID = 'repcheck-crawl-alert';
+
+  // Wie chessableGet, aber eine Antwort ohne die erwartete Form wirft einen Fehler mit `unexpected`. 401 bleibt der
+  // bekannte Fehler (Chessable-Anmeldung abgelaufen), ein Netzfehler ebenso.
+  async function chessableGetChecked(path, kind, where) {
+    let text, status;
+    try {
+      text = await chessableGet(path);
+    } catch (e) {
+      if (!e || !e.chessableStatus || e.chessableStatus === 401) throw e;
+      text = e.chessableBody; status = e.chessableStatus;
+    }
+    const bad = Crawl.checkChessableResponse(kind, text, status);
+    if (!bad) return text;
+    const err = new Error(t('import.unexpected.title'));
+    err.unexpected = Object.assign({ endpoint: path.split('?')[0] }, where || {}, bad);
+    throw err;
+  }
+
+  function unexpectedDetail(u) {
+    const wo = u.oid ? ` oid ${u.oid}` : u.lid ? ` lid ${u.lid}` : '';
+    const was = u.message || (u.reason === 'json' ? 'no JSON' : u.reason === 'shape' ? 'unexpected format' : '');
+    return u.endpoint + wo + (u.status !== 200 ? ` · HTTP ${u.status}` : '') + (was ? ` · ${was}` : '');
+  }
+
+  // Meldung an RookHub (best effort). Ergebnis: Antwort des Servers ({ banned, adminNotified }) oder null.
+  async function reportUnexpected(bid, courseName, u) {
+    const cfg = await readConfig();
+    if (!cfg || !cfg.url || !cfg.token) return null;
+    const baseUrl = String(cfg.url).replace(/\/$/, '');
+    let version = null;
+    try { version = chrome.runtime.getManifest().version; } catch (e) { /* ohne Version */ }
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({
+          type: 'rookhub-fetch',
+          url: baseUrl + '/api/extension/chessable/unexpected-response',
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            bid, courseName: courseName ? String(courseName).slice(0, 300) : null,
+            endpoint: u.endpoint, lid: u.lid || null, oid: u.oid || null, status: u.status,
+            reason: u.reason, message: u.message, snippet: u.snippet, extensionVersion: version,
+          }),
+          expect: 'json',
+        }, (r) => resolve(!chrome.runtime.lastError && r && r.ok && r.body ? r.body : null));
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  function showCrawlAlert(h) {
+    if (!document.body) return;
+    document.getElementById(CRAWL_ALERT_ID)?.remove();
+    const bar = bannerCard(CRAWL_ALERT_ID);
+    bar.style.borderLeft = '4px solid #e0a800';
+    const absatz = (text, style) => {
+      const d = document.createElement('div');
+      d.textContent = text;
+      Object.assign(d.style, { marginBottom: '8px' }, style || {});
+      bar.appendChild(d);
+    };
+    absatz(t('import.unexpected.title'), { fontWeight: '600', marginBottom: '4px' });
+    absatz(t('import.unexpected.body'));
+    if (h.banned) {
+      absatz((h.message ? t('import.unexpected.bannedMessage', { message: h.message }) : t('import.unexpected.bannedPage'))
+        + (h.adminNotified ? ' ' + t('import.unexpected.adminsNotified') : ''));
+    }
+    if (h.saved) absatz(t('import.unexpected.saved', { count: h.saved }));
+    absatz(h.detail, { color: '#9aa4b2', fontSize: '11px', wordBreak: 'break-word' });
+    const row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' });
+    const hide = document.createElement('button');
+    hide.type = 'button'; hide.textContent = t('import.unexpected.dismiss'); styleConsentBtn(hide, 'transparent', '#bbb', true);
+    hide.addEventListener('click', () => bar.remove());
+    const discord = document.createElement('a');
+    discord.href = DISCORD_URL; discord.target = '_blank'; discord.rel = 'noopener';
+    discord.textContent = t('import.unexpected.discord');
+    styleConsentBtn(discord, '#5865f2', '#fff', false);
+    discord.style.textDecoration = 'none';
+    row.appendChild(hide); row.appendChild(discord);
+    bar.appendChild(row);
+    bannerHost().prepend(bar);   // ganz oben: wichtiger als jeder andere Hinweis
+  }
+
+  async function handleUnexpected(bid, u, saved) {
+    const courseName = bestCourseName(bid);
+    const hinweis = {
+      at: Date.now(), bid, courseName: courseName || null, detail: unexpectedDetail(u),
+      banned: !!u.banned, message: u.message || null, saved: saved || 0, adminNotified: false,
+    };
+    const merken = () => { try { chrome.storage.local.set({ rcCrawlAlert: hinweis }); } catch (e) { /* egal */ } };
+    setStatus(t('import.unexpected.status', { detail: hinweis.detail }));
+    showCrawlAlert(hinweis);
+    merken();
+    const res = await reportUnexpected(bid, courseName, u);
+    if (!res) return;
+    hinweis.banned = hinweis.banned || !!res.banned;
+    hinweis.adminNotified = !!res.adminNotified;
+    merken();
+    if (document.getElementById(CRAWL_ALERT_ID)) showCrawlAlert(hinweis);   // schon weggeklickt → nicht wieder aufdrängen
+  }
+
   // V2: Kurs aktiv holen (getCourse→getList→getGame).
   //  • Repertoire (Default): INKREMENTELL — Linien, deren oid schon auf RookHub liegt, werden NICHT erneut von
   //    Chessable geholt; nur die neuen werden per ingestLive angehängt (AppendLiveAsync dedupt per Zugtext).
@@ -1273,6 +1389,9 @@
     const bid = currentCourseId();
     const sessionId = newSessionId();
     const incremental = target !== 'book';
+    // Nur fürs inkrementelle Anhängen gesammelt. Außerhalb des try, damit ein Abbruch wegen einer unerwarteten
+    // Chessable-Antwort die bis dahin geholten (geprüften) Linien noch speichern kann.
+    const newChapters = [];
     try {
       if (!bid) throw new Error(t('err.noCourse'));
       if (!Crawl) throw new Error(t('err.libMissing'));
@@ -1286,7 +1405,7 @@
       }
 
       setStatus(t('import.fetchingStructure'));
-      const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}`);
+      const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
       const lids = Crawl.parseChapterLids(courseText);
       if (!lids.length) throw new Error(t('err.noChapters'));
       const lists = [];
@@ -1297,7 +1416,7 @@
         // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
         setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
         const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
-        const listText = fromCapture ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`);
+        const listText = fromCapture ? cap.lists[lid] : await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
         harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
         const oids = Crawl.parseLineOids(listText);
         lists.push({ listText, oids });
@@ -1329,7 +1448,6 @@
       const fortschritt = () => (fromShared
         ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
         : t('import.fetchingLines', { done, total: toFetch }));
-      const newChapters = [];   // nur fürs inkrementelle Anhängen gesammelt
       for (const { listText, oids } of lists) {
         // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
         // Inhalt (null) aus dem geteilten Cache.
@@ -1343,7 +1461,16 @@
             done++; setStatus(fortschritt());
             continue;
           }
-          if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(crawlPauseMs()); }
+          if (!g) {
+            try {
+              g = await chessableGetChecked(`getGame?lng=en&oid=${oid}`, 'game', { oid: String(oid) });
+            } catch (e) {
+              // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen (Abbruch-Zweig unten).
+              if (e && e.unexpected && incremental && lines.length) newChapters.push({ chapterJson: listText, lines, lineOids });
+              throw e;
+            }
+            await sleep(crawlPauseMs());
+          }
           if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
           done++; setStatus(fortschritt());
         }
@@ -1376,7 +1503,22 @@
       }
       ensureProgress(true);
     } catch (err) {
-      setStatus(t('import.error', { error: (err && err.message) || err }));
+      if (err && err.unexpected) {
+        // Bis zum Abbruch geholte, geprüfte Linien noch anhängen — nur beim Repertoire; ein Buch braucht den ganzen
+        // Kurs am Stück (die Chunks ohne final verfallen serverseitig).
+        let saved = 0;
+        if (incremental && newChapters.length) {
+          try {
+            await ingestLiveInParts(bid, target, bestCourseName(bid), newChapters);
+            saved = newChapters.reduce((n, c) => n + c.lineOids.length, 0);
+            markCourseFetched();
+            ensureProgress(true);
+          } catch (e) { /* die Warnung zählt mehr als die Teilsicherung */ }
+        }
+        await handleUnexpected(bid, err.unexpected, saved);
+      } else {
+        setStatus(t('import.error', { error: (err && err.message) || err }));
+      }
     } finally { crawling = false; crawlStartedAt = null; }
   }
 
