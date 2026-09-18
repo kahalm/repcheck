@@ -91,7 +91,17 @@ test('Stopp: Warnung mit Discord-Link, Hinweis fürs Popup, Meldung an RookHub; 
 test('Popup zeigt den Hinweis und fragt vor dem nächsten Holen nach', () => {
   assert.match(popupHtml, /id="ci-alert"/);
   assert.match(popup, /rcCrawlAlert/);
-  const klick = popup.slice(popup.indexOf("CI_CRAWL.addEventListener('click'"));
-  const frage = klick.indexOf('import.unexpected.rerunConfirm');
-  assert.ok(frage > 0 && frage < klick.indexOf("ciSend('crawl'"));
+  // Kein natives confirm()/alert()/prompt(): Firefox unterdrückt das in Extension-Popups (kehrt
+  // sofort ohne Dialog zurück) — die Bestätigung passiert seit v1.60.1 inline über ci-warn.
+  assert.doesNotMatch(popup, /window\.(confirm|alert|prompt)\(/);
+  assert.match(popupHtml, /id="ci-warn"/);
+  const klick = popup.slice(popup.indexOf("CI_CRAWL.addEventListener('click'"), popup.indexOf('});', popup.indexOf("CI_CRAWL.addEventListener('click'")));
+  // Der Klick-Handler holt den Kurs nicht direkt, sondern zeigt erst die Warnung.
+  assert.doesNotMatch(klick, /ciSend\('crawl'/);
+  assert.match(klick, /showCiWarn\(\)/);
+  const warnFn = popup.slice(popup.indexOf('function showCiWarn'));
+  const frage = warnFn.indexOf('import.unexpected.rerunConfirm');
+  assert.ok(frage > 0 && frage < warnFn.indexOf('startCiCrawl'));
+  // Der eigentliche Abruf läuft erst los, wenn der „Fortfahren"-Klick in der Warnbox das auslöst.
+  assert.match(popup, /addEventListener\('click', startCiCrawl\)/);
 });

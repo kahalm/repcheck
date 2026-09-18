@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.60.0
+// @version      1.60.1
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -62,7 +62,7 @@
     movetext = movetext.replace(/\$\d+/g, ' ');
     // Normalize whitespace
     movetext = movetext.replace(/\s+/g, ' ').trim();
-
+  
     const tokens = [];
     let i = 0;
     while (i < movetext.length) {
@@ -79,7 +79,7 @@
     }
     return tokens;
   }
-
+  
   function isMoveToken(token) {
     if (!token || token === '(' || token === ')') return false;
     // Skip move numbers: "1.", "1...", "12."
@@ -89,7 +89,7 @@
     // A move token starts with a letter (a-h for pawns, KQRBN for pieces) or O for castling
     return /^[a-hKQRBNO]/.test(token);
   }
-
+  
   function parseMoveTokens(tokens, pos) {
     // Returns { moves: [...], endPos }
     // Each move: { san, variations: [] }
@@ -118,7 +118,7 @@
     }
     return { moves, endPos: pos };
   }
-
+  
   function parsePgnText(text) {
     // Split into games by header blocks
     const games = [];
@@ -146,14 +146,14 @@
       }
       const movetext = movetextLines.join(' ').trim();
       if (!movetext) continue;
-
+  
       const tokens = tokenizePgn(movetext);
       const { moves } = parseMoveTokens(tokens, 0);
       if (moves.length > 0) {
         games.push(moves);
       }
     }
-
+  
     // If no [Event headers found, try parsing the whole text as movetext
     if (games.length === 0 && text.trim()) {
       const tokens = tokenizePgn(text);
@@ -162,16 +162,16 @@
         games.push(moves);
       }
     }
-
+  
     return games;
   }
-
+  
   function normalizedFen(fen) {
     // Nur die ersten 4 Felder (Stellung, Seite, Rochaderechte, en-passant).
     // Halbzug- und Vollzugzaehler spielen fuer Repertoire-Matching keine Rolle.
     return fen.split(' ').slice(0, 4).join(' ');
   }
-
+  
   function chessComPlayedAt(h) {
     if (!h || !h.Date || !/^\d{4}\.\d{2}\.\d{2}$/.test(h.Date)) return null;
     const tm = (h.EndTime || '').match(/(\d{2}):(\d{2}):(\d{2})/);
@@ -179,7 +179,7 @@
     const d = new Date(`${h.Date.replace(/\./g, '-')}T${time}Z`);
     return isNaN(d.getTime()) ? null : d.toISOString();
   }
-
+  
   function chessableSearchUrl(fen) {
     // Globale Chessable-FEN-Suche: "/" wird zu "U", " " zu "%20" (chessable-
     // spezifische Kodierung, KEIN encodeURIComponent).
@@ -197,7 +197,7 @@
       // — Sprachwahl —
       'lang.label': 'Language',
       'lang.auto': 'Automatic ({lang})',
-
+  
       // — Popup: Kopf und Grundgerüst —
       'popup.share.heading': 'Link to the current line',
       'popup.share.copy': 'Copy',
@@ -213,7 +213,7 @@
       'popup.status.loading': 'Loading status…',
       'popup.check': 'Check',
       'popup.settings': 'Settings',
-
+  
       // — Popup: Repertoire-Status —
       'popup.rep.heading': {
         one: 'Repertoire ({count})',
@@ -236,7 +236,7 @@
         other: 'Local: {count} openings loaded ({min} min ago)',
       },
       'popup.none': 'No repertoire loaded yet',
-
+  
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub connection',
       'popup.conn.notConnected': 'Not connected',
@@ -259,20 +259,20 @@
       'popup.conn.errAuth': 'Not signed in to RookHub (or the session expired).',
       'popup.conn.errNotRookhub': 'No RookHub found at this address.',
       'popup.conn.pagePanel': 'Folder / PGN on the page…',
-
+  
       // — Popup: Chessable-Token —
       'popup.chessable.heading': 'Chessable token',
       'popup.chessable.copy': 'Copy token',
       'popup.chessable.justCaptured': 'just captured',
       'popup.chessable.capturedAgo': 'captured {min} min ago',
-
+  
       // — Popup: Chessable-Button-Einstellungen —
       'popup.buttons.heading': 'Chessable buttons',
       'popup.buttons.intro': 'Choose which buttons and indicators appear in the bottom right on chessable.com (practice mode). Everything is off until you turn it on.',
       'popup.buttons.fullscreen': 'Fullscreen',
       'popup.buttons.pool': '⏳ Still open in the training pool',
       'popup.buttons.feedback': 'Move feedback (+XP)',
-
+  
       // — Popup: Erste Schritte + Hinweis „Buttons jetzt aus" (v1.59.0) —
       'popup.onb.heading': 'Getting started',
       'popup.onb.close': 'Hide',
@@ -287,7 +287,7 @@
       'connect.prompt.body': 'Without RookHub, RepCheck cannot fetch courses, show ✓ and ○ or report training time on Chessable.',
       'connect.prompt.connect': 'Connect now',
       'connect.prompt.later': 'Later',
-
+  
       // — Willkommensseite (welcome.html) —
       'welcome.title': 'Welcome to RepCheck',
       'welcome.intro': 'RepCheck connects chess.com, lichess and Chessable with your RookHub. Three steps and you are ready.',
@@ -308,7 +308,7 @@
       'welcome.btn.feedback': 'points for each move, also in fullscreen; click it for the line’s breakdown',
       'welcome.saved': 'Saved.',
       'welcome.footer': 'You can open this page again at any time: popup → “Settings” → “Open the introduction”.',
-
+  
       // — Popup: Kurs holen, Pause zwischen Chessable-Abrufen —
       'popup.crawl.heading': 'Fetch course: pause between requests',
       'popup.crawl.intro': 'Between two Chessable requests RepCheck waits a random time in this range. It can only be made slower — the minimum is {min}–{max} s.',
@@ -316,13 +316,13 @@
       'popup.crawl.to': 'to',
       'popup.crawl.saved': 'Saved: {min}–{max} s',
       'popup.crawl.adjusted': 'Adjusted to the allowed range: {min}–{max} s',
-
+  
       // — Popup: Fußzeile —
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Please open chess.com or lichess.org in the active tab first.',
       'popup.error': 'Error: {error}',
-
+  
       // — Kurs-Import über den Browser —
       'import.heading': 'RookHub import (browser)',
       'import.target.repertoire': 'Repertoire',
@@ -350,6 +350,7 @@
       'import.warn.body': '“Fetch course via my browser” makes rapid, automated calls to the Chessable API. This may violate Chessable’s terms of use and in the worst case get your account suspended.',
       'import.warn.own': 'Use it only for your own courses and at your own risk.',
       'import.warn.confirm': 'Continue anyway?',
+      'import.warn.yes': 'Continue',
       'import.throttled': 'Chessable is throttling (HTTP {status}) — waiting {seconds} s (attempt {attempt}/{max})…',
       'import.fetchingStructure': 'Fetching course structure…',
       'import.fetchingChapters': 'Fetching chapter lists… {done}/{total}',
@@ -405,7 +406,7 @@
       },
       'import.liveError': 'Live error: {error}',
       'import.error': 'Error: {error}',
-
+  
       // — In-Page-Einstellungs-Panel —
       'panel.heading': 'Repertoire settings',
       'panel.rookhub': 'RookHub:',
@@ -431,7 +432,7 @@
       },
       'panel.loadedText': 'Repertoire loaded from text',
       'panel.noPgnFiles': 'No .pgn files found in the folder',
-
+  
       // — Verbindungsstatus (Popup UND Panel) —
       'status.needUrlToken': 'RookHub: URL and token required.',
       'status.connecting': 'RookHub: connecting…',
@@ -443,7 +444,7 @@
         one: 'RookHub: connected ({count} file).',
         other: 'RookHub: connected ({count} files).',
       },
-
+  
       // — Prüf-Ergebnis —
       'check.outOfRep': 'Out of repertoire at move {move} ({color}: {san})',
       'check.outOfRepWithGaps': 'Out of repertoire at move {move} ({color}: {san}) ({gaps})',
@@ -458,7 +459,7 @@
       'check.noRepertoire': 'No repertoire loaded — click ⚙ to set one up',
       'check.white': 'White',
       'check.black': 'Black',
-
+  
       // — Schwebende Knöpfe auf chess.com/lichess —
       'tools.check': 'Check the current game against the repertoire',
       'tools.searchFen': 'Search Chessable for the FEN before the deviation',
@@ -466,12 +467,12 @@
       'tools.saveGame': 'Save game to RookHub',
       'tools.saved': 'Game saved',
       'tools.savedWithLink': 'Saved · share link copied',
-
+  
       // — ✓/○-Marker an Chessables eigener Linienliste —
       'progress.onRookhub': 'On RookHub',
       'progress.notOnRookhub': 'Not on RookHub yet',
       'progress.countTitle': 'On RookHub: {done} of {total}',
-
+  
       // — Fehlertexte —
       'err.noBackground': 'no response from the background worker',
       'err.tokenInvalid': 'Token invalid or expired.',
@@ -490,7 +491,7 @@
       'err.libMissing': 'internal lib missing',
       'err.noChapters': 'No chapters found',
       'err.noLines': 'No lines fetched',
-
+  
       // — Tampermonkey-Menü (nur Userscript) —
       'menu.check': '♟ Check',
       'menu.settings': '⚙ Settings',
@@ -498,11 +499,11 @@
       'menu.noChessableToken': 'RepCheck: no Chessable token found in localStorage — logged in?',
       'menu.chessableTokenCopied': 'RepCheck: Chessable token copied to clipboard.',
     },
-
+  
     de: {
       'lang.label': 'Sprache',
       'lang.auto': 'Automatisch ({lang})',
-
+  
       'popup.share.heading': 'Link zur aktuellen Line',
       'popup.share.copy': 'Kopieren',
       'popup.share.loading': 'lade…',
@@ -517,7 +518,7 @@
       'popup.status.loading': 'Lade Status…',
       'popup.check': 'Prüfen',
       'popup.settings': 'Einstellungen',
-
+  
       'popup.rep.heading': {
         one: 'Repertoire ({count})',
         other: 'Repertoires ({count})',
@@ -539,7 +540,7 @@
         other: 'Lokal: {count} Eröffnungen geladen (vor {min} min)',
       },
       'popup.none': 'Noch kein Repertoire geladen',
-
+  
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub-Verbindung',
       'popup.conn.notConnected': 'Nicht verbunden',
@@ -562,18 +563,18 @@
       'popup.conn.errAuth': 'Nicht bei RookHub angemeldet (oder die Sitzung ist abgelaufen).',
       'popup.conn.errNotRookhub': 'Unter dieser Adresse ist kein RookHub erreichbar.',
       'popup.conn.pagePanel': 'Ordner / PGN auf der Seite…',
-
+  
       'popup.chessable.heading': 'Chessable-Token',
       'popup.chessable.copy': 'Token kopieren',
       'popup.chessable.justCaptured': 'gerade erfasst',
       'popup.chessable.capturedAgo': 'vor {min} min erfasst',
-
+  
       'popup.buttons.heading': 'Chessable-Buttons',
       'popup.buttons.intro': 'Welche Buttons und Anzeigen unten rechts auf chessable.com (Practice-Modus) erscheinen. Standardmäßig ist alles aus.',
       'popup.buttons.fullscreen': 'Vollbild',
       'popup.buttons.pool': '⏳ Noch offen im Trainingspool',
       'popup.buttons.feedback': 'Zug-Rückmeldung (+XP)',
-
+  
       'popup.onb.heading': 'Erste Schritte',
       'popup.onb.close': 'Ausblenden',
       'popup.onb.connect': 'Mit RookHub verbinden',
@@ -587,7 +588,7 @@
       'connect.prompt.body': 'Ohne RookHub kann RepCheck auf Chessable keine Kurse holen, keine ✓ und ○ zeigen und keine Trainingszeit melden.',
       'connect.prompt.connect': 'Jetzt verbinden',
       'connect.prompt.later': 'Später',
-
+  
       'welcome.title': 'Willkommen bei RepCheck',
       'welcome.intro': 'RepCheck verbindet chess.com, lichess und Chessable mit deinem RookHub. Drei Schritte, dann kann es losgehen.',
       'welcome.connect.text': 'RepCheck nutzt dein RookHub-Konto, um deine Repertoires zu kennen und Chessable-Kurse zu holen. Melde dich bei RookHub an, wenn danach gefragt wird; der Zugriffs-Token wird automatisch angelegt.',
@@ -607,19 +608,19 @@
       'welcome.btn.feedback': 'Punkte je Zug, auch im Vollbild; ein Klick zeigt die Einzelbeträge der Linie',
       'welcome.saved': 'Gespeichert.',
       'welcome.footer': 'Diese Seite findest du jederzeit wieder: Popup → „Einstellungen“ → „Einführung öffnen“.',
-
+  
       'popup.crawl.heading': 'Kurs holen: Pause zwischen Abrufen',
       'popup.crawl.intro': 'Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist {min}–{max} s.',
       'popup.crawl.from': 'von',
       'popup.crawl.to': 'bis',
       'popup.crawl.saved': 'Gespeichert: {min}–{max} s',
       'popup.crawl.adjusted': 'Auf den erlaubten Bereich angepasst: {min}–{max} s',
-
+  
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Bitte zuerst chess.com oder lichess.org im aktiven Tab öffnen.',
       'popup.error': 'Fehler: {error}',
-
+  
       'import.heading': 'RookHub-Import (Browser)',
       'import.target.repertoire': 'Repertoire',
       'import.target.book': 'Kurs/Buch',
@@ -646,6 +647,7 @@
       'import.warn.body': '„Kurs über meinen Browser holen“ ruft die Chessable-API automatisiert im Schnelldurchlauf ab. Das kann gegen Chessables Nutzungsbedingungen verstoßen und im schlimmsten Fall zur Sperrung deines Kontos führen.',
       'import.warn.own': 'Nutze es nur für eigene Kurse und auf eigenes Risiko.',
       'import.warn.confirm': 'Wirklich fortfahren?',
+      'import.warn.yes': 'Fortfahren',
       'import.throttled': 'Chessable drosselt (HTTP {status}) — warte {seconds} s (Versuch {attempt}/{max}) …',
       'import.fetchingStructure': 'Hole Kursstruktur …',
       'import.fetchingChapters': 'Hole Kapitellisten … {done}/{total}',
@@ -701,7 +703,7 @@
       },
       'import.liveError': 'Live-Fehler: {error}',
       'import.error': 'Fehler: {error}',
-
+  
       'panel.heading': 'Repertoire-Einstellungen',
       'panel.rookhub': 'RookHub:',
       'panel.connect': 'Verbinden',
@@ -726,7 +728,7 @@
       },
       'panel.loadedText': 'Repertoire aus Text geladen',
       'panel.noPgnFiles': 'Keine .pgn-Dateien im Ordner gefunden',
-
+  
       'status.needUrlToken': 'RookHub: URL und Token erforderlich.',
       'status.connecting': 'RookHub: verbinde…',
       'status.refreshing': 'RookHub: aktualisiere…',
@@ -737,7 +739,7 @@
         one: 'RookHub: verbunden ({count} Datei).',
         other: 'RookHub: verbunden ({count} Dateien).',
       },
-
+  
       'check.outOfRep': 'Aus dem Repertoire bei Zug {move} ({color}: {san})',
       'check.outOfRepWithGaps': 'Aus dem Repertoire bei Zug {move} ({color}: {san}) ({gaps})',
       'check.transpositions': {
@@ -751,7 +753,7 @@
       'check.noRepertoire': 'Kein Repertoire geladen — ⚙ klicken zum Einrichten',
       'check.white': 'Weiß',
       'check.black': 'Schwarz',
-
+  
       'tools.check': 'Aktuelle Partie gegen Repertoire prüfen',
       'tools.searchFen': 'FEN vor Abweichung in Chessable suchen',
       'tools.copyPgn': 'Partie-PGN kopieren',
@@ -761,7 +763,7 @@
       'progress.onRookhub': 'Auf RookHub',
       'progress.notOnRookhub': 'Noch nicht auf RookHub',
       'progress.countTitle': 'Auf RookHub: {done} von {total}',
-
+  
       'err.noBackground': 'keine Antwort vom Background-Worker',
       'err.tokenInvalid': 'Token ungültig oder abgelaufen.',
       'err.http': 'HTTP {status}',
@@ -779,14 +781,14 @@
       'err.libMissing': 'Interne lib fehlt',
       'err.noChapters': 'Keine Kapitel gefunden',
       'err.noLines': 'Keine Linien geholt',
-
+  
       'menu.check': '♟ Prüfen',
       'menu.settings': '⚙ Einstellungen',
       'menu.copyChessableToken': '🔑 Chessable-Token kopieren',
       'menu.noChessableToken': 'RepCheck: Kein Chessable-Token im localStorage gefunden — eingeloggt?',
       'menu.chessableTokenCopied': 'RepCheck: Chessable-Token in die Zwischenablage kopiert.',
     },
-
+  
     hr: {
       'lang.label': 'Jezik',
       'lang.auto': 'Automatski ({lang})',
@@ -830,7 +832,7 @@
         other: 'Lokalno: učitano {count} otvaranja (prije {min} min)',
       },
       'popup.none': 'Još nije učitan nijedan repertoar',
-
+  
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub veza',
       'popup.conn.notConnected': 'Nije povezano',
@@ -932,6 +934,7 @@
       'import.warn.body': '„Dohvati tečaj preko mog preglednika“ automatizirano i u brzom slijedu poziva Chessable API. To može prekršiti Chessableove uvjete korištenja i u najgorem slučaju dovesti do blokade tvojeg računa.',
       'import.warn.own': 'Koristi to samo za vlastite tečajeve i na vlastitu odgovornost.',
       'import.warn.confirm': 'Stvarno nastaviti?',
+      'import.warn.yes': 'Nastavi',
       'import.throttled': 'Chessable usporava promet (HTTP {status}) — čekam {seconds} s (pokušaj {attempt}/{max}) …',
       'import.fetchingStructure': 'Dohvaćam strukturu tečaja …',
       'import.fetchingChapters': 'Dohvaćam popise poglavlja … {done}/{total}',
@@ -1078,13 +1081,13 @@
       'progress.countTitle': 'Na RookHubu: {done} od {total}',
     },
   };
-
+  
   /** Verfügbare Sprache aus einem BCP-47-Tag ableiten („de-AT" → „de"), sonst die Rückfallsprache. */
   function rcNormalizeLang(tag) {
     const kurz = String(tag || '').toLowerCase().split(/[-_]/)[0];
     return RC_LANGS.indexOf(kurz) >= 0 ? kurz : RC_FALLBACK;
   }
-
+  
   /**
    * Sprache bestimmen: ausdrückliche Wahl des Nutzers schlägt alles, sonst die Browsersprache,
    * sonst Englisch. `gespeichert` kommt aus dem jeweiligen Speicher der Distribution
@@ -1102,7 +1105,7 @@
     }
     return RC_FALLBACK;
   }
-
+  
   /** Plural-Variante wählen. Ohne Intl (alte Umgebung) bleibt es bei one/other. */
   function rcPluralForm(lang, count) {
     try {
@@ -1111,7 +1114,7 @@
       return count === 1 ? 'one' : 'other';
     }
   }
-
+  
   /** Eintrag zu einer fertigen Vorlage auflösen: Plural-Objekte auf die passende Variante. */
   function rcTemplate(eintrag, lang, params) {
     if (typeof eintrag === 'string') return eintrag;
@@ -1121,7 +1124,7 @@
     // Kroatisch kennt one/few/other; fehlt eine Variante, greift `other`, dann `one`.
     return eintrag[form] || eintrag.other || eintrag.one || null;
   }
-
+  
   /**
    * Übersetzen. `{name}`-Platzhalter werden aus `params` gefüllt; ein fehlender Platzhalter bleibt
    * wörtlich stehen (sichtbar statt still leer). Unbekannte Schlüssel geben den Schlüssel zurück.
@@ -1148,7 +1151,7 @@
   // NICHT VON HAND EDITIEREN.
   // >>>REPCHECK-SHARED:chessable-feedback
   const RC_FEEDBACK_KINDS = ['correct', 'wrong', 'alt', 'giveup', 'timeup'];
-
+  
   /** Zustand aus einer Icon-Klassenliste; null, wenn keine bekannte Klasse dabei ist. */
   function rcFeedbackKindFromClass(cls) {
     const s = String(cls || '');
@@ -1159,7 +1162,7 @@
     if (s.includes('icon--time-up')) return 'timeup';
     return null;
   }
-
+  
   /**
    * Zählt der Zustand als Fehler für die Genauigkeit einer Linie?
    *
@@ -1182,7 +1185,7 @@
     while (s.length % 4) s += '=';
     return atob(s);
   }
-
+  
   // uid steckt im JWT-Payload unter user.uid (wie piratechess/JwtHelper). Gibt die uid als
   // String zurück oder null (leerer/kaputter Token, fehlende uid).
   function rcDecodeChessableUid(token) {
@@ -1194,7 +1197,7 @@
       return (uid != null && /^\d+$/.test(String(uid))) ? String(uid) : null;
     } catch (e) { return null; }
   }
-
+  
   // getHomeData-Antwort → { bid(string): name }. Toleriert camelCase/PascalCase-Keys und
   // numerische/String-bids; überspringt leere Namen; kappt auf 200 Zeichen.
   function rcParseCourseNameMap(data) {
@@ -1210,7 +1213,7 @@
     }
     return map;
   }
-
+  
   // Navigations-/Modus-/UI-Labels, die KEIN Kursname sind. Die Falle: solche Links zeigen ebenfalls
   // auf /course/{id}/… und verdrängten deshalb den echten Titel — gemeldet wurden „Practice Moves",
   // „Leaderboard" oder „Kapitel 3:" als Kursname.

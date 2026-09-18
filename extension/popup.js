@@ -849,6 +849,57 @@ try {
   });
 } catch (e) { /* ohne storage kein Hinweis */ }
 
+// ---- Bannrisiko-Bestätigung vor „Kurs holen" ----
+// Kein natives Bestätigungsfenster: Firefox zeigt sowas in Extension-Popups nicht an (der Aufruf
+// kehrt sofort zurueck, ohne etwas anzuzeigen) — der Button wirkte dadurch tot. Stattdessen eine
+// inline Box im Popup, die denselben Text zeigt (plus die Rueckfrage nach einem vorherigen Stopp).
+const CI_WARN = document.getElementById('ci-warn');
+
+function hideCiWarn() {
+  if (!CI_WARN) return;
+  CI_WARN.style.display = 'none';
+  CI_WARN.replaceChildren();
+}
+
+function showCiWarn() {
+  if (!CI_WARN) return;
+  const teile = [];
+  if (ciAlert) {
+    const hinweis = document.createElement('div');
+    hinweis.textContent = t('import.unexpected.rerunConfirm', { detail: ciAlert.detail || '' });
+    teile.push(hinweis);
+  }
+  const titel = document.createElement('b');
+  titel.textContent = t('import.warn.title');
+  teile.push(titel);
+  const absatz = (text) => { const d = document.createElement('div'); d.textContent = text; teile.push(d); };
+  absatz(t('import.warn.body'));
+  absatz(t('import.warn.own'));
+  absatz(t('import.warn.confirm'));
+  const zeile = document.createElement('div');
+  zeile.className = 'ci-alert-row';
+  const weiter = document.createElement('button');
+  weiter.type = 'button';
+  weiter.textContent = t('import.warn.yes');
+  weiter.addEventListener('click', startCiCrawl);
+  const abbrechen = document.createElement('button');
+  abbrechen.type = 'button';
+  abbrechen.textContent = t('import.cancel');
+  abbrechen.addEventListener('click', hideCiWarn);
+  zeile.append(weiter, abbrechen);
+  teile.push(zeile);
+  CI_WARN.replaceChildren(...teile);
+  CI_WARN.style.display = 'block';
+}
+
+async function startCiCrawl() {
+  hideCiWarn();
+  if (ciAlert) { try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ } }
+  CI_STATUS.textContent = t('import.starting');
+  await ciSend('crawl', { target: ciSelectedTarget() });
+  ciTick();
+}
+
 function ciSend(action, extra) {
   return new Promise((resolve) => {
     if (ciTabId == null) { resolve(null); return; }
@@ -875,6 +926,7 @@ function ciRender(st) {
     CI_CRAWL.textContent = t('import.cancel');
     CI_CRAWL.classList.add('ci-cancel');
     CI_CRAWL.disabled = false;
+    hideCiWarn();
   } else {
     CI_CRAWL.textContent = t('import.crawl');
     CI_CRAWL.classList.remove('ci-cancel');
@@ -933,20 +985,8 @@ async function initChessableImport() {
       ciTick();
       return;
     }
-    // Der letzte Lauf wurde wegen einer unerwarteten Chessable-Antwort gestoppt → erst fragen, ob der Entwickler Bescheid weiß.
-    if (ciAlert && !window.confirm(t('import.unexpected.rerunConfirm', { detail: ciAlert.detail || '' }))) return;
-    // Bannrisiko: der aktive Crawl klappert die Chessable-API automatisiert ab → explizite Bestätigung.
-    const ok = window.confirm(
-      t('import.warn.title') + '\n\n' +
-      t('import.warn.body') + '\n\n' +
-      t('import.warn.own') + '\n\n' +
-      t('import.warn.confirm')
-    );
-    if (!ok) return;
-    if (ciAlert) { try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ } }
-    CI_STATUS.textContent = t('import.starting');
-    await ciSend('crawl', { target: ciSelectedTarget() });
-    ciTick();
+    // Bannrisiko (+ ggf. Rückfrage nach vorherigem Stopp) — Bestätigung inline, siehe showCiWarn().
+    showCiWarn();
   });
   CI_IMPORTCAP.addEventListener('click', async () => {
     CI_STATUS.textContent = t('import.importing');
