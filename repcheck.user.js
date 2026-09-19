@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck — Opening Repertoire Deviation Checker
 // @namespace    https://github.com/kahalm/repcheck
-// @version      1.60.1
+// @version      1.60.2
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
 // @description  Shows where your game deviates from your opening repertoire (chess.com + lichess, PGN files or RookHub). On chessable.com: copy/search FEN, remember a line to RookHub, show earned XP, report active training time to RookHub, read the API token.
 // @author       kahalm
@@ -62,7 +62,7 @@
     movetext = movetext.replace(/\$\d+/g, ' ');
     // Normalize whitespace
     movetext = movetext.replace(/\s+/g, ' ').trim();
-  
+
     const tokens = [];
     let i = 0;
     while (i < movetext.length) {
@@ -79,7 +79,7 @@
     }
     return tokens;
   }
-  
+
   function isMoveToken(token) {
     if (!token || token === '(' || token === ')') return false;
     // Skip move numbers: "1.", "1...", "12."
@@ -89,7 +89,7 @@
     // A move token starts with a letter (a-h for pawns, KQRBN for pieces) or O for castling
     return /^[a-hKQRBNO]/.test(token);
   }
-  
+
   function parseMoveTokens(tokens, pos) {
     // Returns { moves: [...], endPos }
     // Each move: { san, variations: [] }
@@ -118,7 +118,7 @@
     }
     return { moves, endPos: pos };
   }
-  
+
   function parsePgnText(text) {
     // Split into games by header blocks
     const games = [];
@@ -146,14 +146,14 @@
       }
       const movetext = movetextLines.join(' ').trim();
       if (!movetext) continue;
-  
+
       const tokens = tokenizePgn(movetext);
       const { moves } = parseMoveTokens(tokens, 0);
       if (moves.length > 0) {
         games.push(moves);
       }
     }
-  
+
     // If no [Event headers found, try parsing the whole text as movetext
     if (games.length === 0 && text.trim()) {
       const tokens = tokenizePgn(text);
@@ -162,16 +162,16 @@
         games.push(moves);
       }
     }
-  
+
     return games;
   }
-  
+
   function normalizedFen(fen) {
     // Nur die ersten 4 Felder (Stellung, Seite, Rochaderechte, en-passant).
     // Halbzug- und Vollzugzaehler spielen fuer Repertoire-Matching keine Rolle.
     return fen.split(' ').slice(0, 4).join(' ');
   }
-  
+
   function chessComPlayedAt(h) {
     if (!h || !h.Date || !/^\d{4}\.\d{2}\.\d{2}$/.test(h.Date)) return null;
     const tm = (h.EndTime || '').match(/(\d{2}):(\d{2}):(\d{2})/);
@@ -179,7 +179,7 @@
     const d = new Date(`${h.Date.replace(/\./g, '-')}T${time}Z`);
     return isNaN(d.getTime()) ? null : d.toISOString();
   }
-  
+
   function chessableSearchUrl(fen) {
     // Globale Chessable-FEN-Suche: "/" wird zu "U", " " zu "%20" (chessable-
     // spezifische Kodierung, KEIN encodeURIComponent).
@@ -197,7 +197,7 @@
       // — Sprachwahl —
       'lang.label': 'Language',
       'lang.auto': 'Automatic ({lang})',
-  
+
       // — Popup: Kopf und Grundgerüst —
       'popup.share.heading': 'Link to the current line',
       'popup.share.copy': 'Copy',
@@ -213,7 +213,7 @@
       'popup.status.loading': 'Loading status…',
       'popup.check': 'Check',
       'popup.settings': 'Settings',
-  
+
       // — Popup: Repertoire-Status —
       'popup.rep.heading': {
         one: 'Repertoire ({count})',
@@ -236,7 +236,7 @@
         other: 'Local: {count} openings loaded ({min} min ago)',
       },
       'popup.none': 'No repertoire loaded yet',
-  
+
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub connection',
       'popup.conn.notConnected': 'Not connected',
@@ -259,20 +259,20 @@
       'popup.conn.errAuth': 'Not signed in to RookHub (or the session expired).',
       'popup.conn.errNotRookhub': 'No RookHub found at this address.',
       'popup.conn.pagePanel': 'Folder / PGN on the page…',
-  
+
       // — Popup: Chessable-Token —
       'popup.chessable.heading': 'Chessable token',
       'popup.chessable.copy': 'Copy token',
       'popup.chessable.justCaptured': 'just captured',
       'popup.chessable.capturedAgo': 'captured {min} min ago',
-  
+
       // — Popup: Chessable-Button-Einstellungen —
       'popup.buttons.heading': 'Chessable buttons',
       'popup.buttons.intro': 'Choose which buttons and indicators appear in the bottom right on chessable.com (practice mode). Everything is off until you turn it on.',
       'popup.buttons.fullscreen': 'Fullscreen',
       'popup.buttons.pool': '⏳ Still open in the training pool',
       'popup.buttons.feedback': 'Move feedback (+XP)',
-  
+
       // — Popup: Erste Schritte + Hinweis „Buttons jetzt aus" (v1.59.0) —
       'popup.onb.heading': 'Getting started',
       'popup.onb.close': 'Hide',
@@ -287,7 +287,7 @@
       'connect.prompt.body': 'Without RookHub, RepCheck cannot fetch courses, show ✓ and ○ or report training time on Chessable.',
       'connect.prompt.connect': 'Connect now',
       'connect.prompt.later': 'Later',
-  
+
       // — Willkommensseite (welcome.html) —
       'welcome.title': 'Welcome to RepCheck',
       'welcome.intro': 'RepCheck connects chess.com, lichess and Chessable with your RookHub. Three steps and you are ready.',
@@ -308,7 +308,7 @@
       'welcome.btn.feedback': 'points for each move, also in fullscreen; click it for the line’s breakdown',
       'welcome.saved': 'Saved.',
       'welcome.footer': 'You can open this page again at any time: popup → “Settings” → “Open the introduction”.',
-  
+
       // — Popup: Kurs holen, Pause zwischen Chessable-Abrufen —
       'popup.crawl.heading': 'Fetch course: pause between requests',
       'popup.crawl.intro': 'Between two Chessable requests RepCheck waits a random time in this range. It can only be made slower — the minimum is {min}–{max} s.',
@@ -316,13 +316,13 @@
       'popup.crawl.to': 'to',
       'popup.crawl.saved': 'Saved: {min}–{max} s',
       'popup.crawl.adjusted': 'Adjusted to the allowed range: {min}–{max} s',
-  
+
       // — Popup: Fußzeile —
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Please open chess.com or lichess.org in the active tab first.',
       'popup.error': 'Error: {error}',
-  
+
       // — Kurs-Import über den Browser —
       'import.heading': 'RookHub import (browser)',
       'import.target.repertoire': 'Repertoire',
@@ -359,6 +359,7 @@
         other: '{count} existing lines got their Chessable ID.',
       },
       'import.aborted': 'Cancelled.',
+      'import.abortedPartial': 'Stopped. {chapters} chapters with {count} lines were kept in the course.',
       'import.unexpected.title': 'Unexpected response from Chessable',
       'import.unexpected.body': 'RepCheck stopped fetching. To rule out an anti-crawling measure by Chessable, the developer should check this response. Please let the developer know on Discord before you try again.',
       'import.unexpected.bannedMessage': 'Chessable says: “{message}”. This may mean your Chessable account has been blocked.',
@@ -406,7 +407,7 @@
       },
       'import.liveError': 'Live error: {error}',
       'import.error': 'Error: {error}',
-  
+
       // — In-Page-Einstellungs-Panel —
       'panel.heading': 'Repertoire settings',
       'panel.rookhub': 'RookHub:',
@@ -432,7 +433,7 @@
       },
       'panel.loadedText': 'Repertoire loaded from text',
       'panel.noPgnFiles': 'No .pgn files found in the folder',
-  
+
       // — Verbindungsstatus (Popup UND Panel) —
       'status.needUrlToken': 'RookHub: URL and token required.',
       'status.connecting': 'RookHub: connecting…',
@@ -444,7 +445,7 @@
         one: 'RookHub: connected ({count} file).',
         other: 'RookHub: connected ({count} files).',
       },
-  
+
       // — Prüf-Ergebnis —
       'check.outOfRep': 'Out of repertoire at move {move} ({color}: {san})',
       'check.outOfRepWithGaps': 'Out of repertoire at move {move} ({color}: {san}) ({gaps})',
@@ -459,7 +460,7 @@
       'check.noRepertoire': 'No repertoire loaded — click ⚙ to set one up',
       'check.white': 'White',
       'check.black': 'Black',
-  
+
       // — Schwebende Knöpfe auf chess.com/lichess —
       'tools.check': 'Check the current game against the repertoire',
       'tools.searchFen': 'Search Chessable for the FEN before the deviation',
@@ -467,12 +468,12 @@
       'tools.saveGame': 'Save game to RookHub',
       'tools.saved': 'Game saved',
       'tools.savedWithLink': 'Saved · share link copied',
-  
+
       // — ✓/○-Marker an Chessables eigener Linienliste —
       'progress.onRookhub': 'On RookHub',
       'progress.notOnRookhub': 'Not on RookHub yet',
       'progress.countTitle': 'On RookHub: {done} of {total}',
-  
+
       // — Fehlertexte —
       'err.noBackground': 'no response from the background worker',
       'err.tokenInvalid': 'Token invalid or expired.',
@@ -491,7 +492,7 @@
       'err.libMissing': 'internal lib missing',
       'err.noChapters': 'No chapters found',
       'err.noLines': 'No lines fetched',
-  
+
       // — Tampermonkey-Menü (nur Userscript) —
       'menu.check': '♟ Check',
       'menu.settings': '⚙ Settings',
@@ -499,11 +500,11 @@
       'menu.noChessableToken': 'RepCheck: no Chessable token found in localStorage — logged in?',
       'menu.chessableTokenCopied': 'RepCheck: Chessable token copied to clipboard.',
     },
-  
+
     de: {
       'lang.label': 'Sprache',
       'lang.auto': 'Automatisch ({lang})',
-  
+
       'popup.share.heading': 'Link zur aktuellen Line',
       'popup.share.copy': 'Kopieren',
       'popup.share.loading': 'lade…',
@@ -518,7 +519,7 @@
       'popup.status.loading': 'Lade Status…',
       'popup.check': 'Prüfen',
       'popup.settings': 'Einstellungen',
-  
+
       'popup.rep.heading': {
         one: 'Repertoire ({count})',
         other: 'Repertoires ({count})',
@@ -540,7 +541,7 @@
         other: 'Lokal: {count} Eröffnungen geladen (vor {min} min)',
       },
       'popup.none': 'Noch kein Repertoire geladen',
-  
+
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub-Verbindung',
       'popup.conn.notConnected': 'Nicht verbunden',
@@ -563,18 +564,18 @@
       'popup.conn.errAuth': 'Nicht bei RookHub angemeldet (oder die Sitzung ist abgelaufen).',
       'popup.conn.errNotRookhub': 'Unter dieser Adresse ist kein RookHub erreichbar.',
       'popup.conn.pagePanel': 'Ordner / PGN auf der Seite…',
-  
+
       'popup.chessable.heading': 'Chessable-Token',
       'popup.chessable.copy': 'Token kopieren',
       'popup.chessable.justCaptured': 'gerade erfasst',
       'popup.chessable.capturedAgo': 'vor {min} min erfasst',
-  
+
       'popup.buttons.heading': 'Chessable-Buttons',
       'popup.buttons.intro': 'Welche Buttons und Anzeigen unten rechts auf chessable.com (Practice-Modus) erscheinen. Standardmäßig ist alles aus.',
       'popup.buttons.fullscreen': 'Vollbild',
       'popup.buttons.pool': '⏳ Noch offen im Trainingspool',
       'popup.buttons.feedback': 'Zug-Rückmeldung (+XP)',
-  
+
       'popup.onb.heading': 'Erste Schritte',
       'popup.onb.close': 'Ausblenden',
       'popup.onb.connect': 'Mit RookHub verbinden',
@@ -588,7 +589,7 @@
       'connect.prompt.body': 'Ohne RookHub kann RepCheck auf Chessable keine Kurse holen, keine ✓ und ○ zeigen und keine Trainingszeit melden.',
       'connect.prompt.connect': 'Jetzt verbinden',
       'connect.prompt.later': 'Später',
-  
+
       'welcome.title': 'Willkommen bei RepCheck',
       'welcome.intro': 'RepCheck verbindet chess.com, lichess und Chessable mit deinem RookHub. Drei Schritte, dann kann es losgehen.',
       'welcome.connect.text': 'RepCheck nutzt dein RookHub-Konto, um deine Repertoires zu kennen und Chessable-Kurse zu holen. Melde dich bei RookHub an, wenn danach gefragt wird; der Zugriffs-Token wird automatisch angelegt.',
@@ -608,19 +609,19 @@
       'welcome.btn.feedback': 'Punkte je Zug, auch im Vollbild; ein Klick zeigt die Einzelbeträge der Linie',
       'welcome.saved': 'Gespeichert.',
       'welcome.footer': 'Diese Seite findest du jederzeit wieder: Popup → „Einstellungen“ → „Einführung öffnen“.',
-  
+
       'popup.crawl.heading': 'Kurs holen: Pause zwischen Abrufen',
       'popup.crawl.intro': 'Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist {min}–{max} s.',
       'popup.crawl.from': 'von',
       'popup.crawl.to': 'bis',
       'popup.crawl.saved': 'Gespeichert: {min}–{max} s',
       'popup.crawl.adjusted': 'Auf den erlaubten Bereich angepasst: {min}–{max} s',
-  
+
       'popup.open.chesscom': 'chess.com',
       'popup.open.lichess': 'lichess.org',
       'popup.needTab': 'Bitte zuerst chess.com oder lichess.org im aktiven Tab öffnen.',
       'popup.error': 'Fehler: {error}',
-  
+
       'import.heading': 'RookHub-Import (Browser)',
       'import.target.repertoire': 'Repertoire',
       'import.target.book': 'Kurs/Buch',
@@ -656,6 +657,7 @@
         other: 'Bei {count} vorhandenen Linien wurde die Chessable-ID ergänzt.',
       },
       'import.aborted': 'Abgebrochen.',
+      'import.abortedPartial': 'Abgebrochen. {chapters} Kapitel mit {count} Linien sind im Kurs geblieben.',
       'import.unexpected.title': 'Unerwartete Antwort von Chessable',
       'import.unexpected.body': 'RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.',
       'import.unexpected.bannedMessage': 'Chessable meldet: „{message}“. Das kann heißen, dass dein Chessable-Konto gesperrt wurde.',
@@ -703,7 +705,7 @@
       },
       'import.liveError': 'Live-Fehler: {error}',
       'import.error': 'Fehler: {error}',
-  
+
       'panel.heading': 'Repertoire-Einstellungen',
       'panel.rookhub': 'RookHub:',
       'panel.connect': 'Verbinden',
@@ -728,7 +730,7 @@
       },
       'panel.loadedText': 'Repertoire aus Text geladen',
       'panel.noPgnFiles': 'Keine .pgn-Dateien im Ordner gefunden',
-  
+
       'status.needUrlToken': 'RookHub: URL und Token erforderlich.',
       'status.connecting': 'RookHub: verbinde…',
       'status.refreshing': 'RookHub: aktualisiere…',
@@ -739,7 +741,7 @@
         one: 'RookHub: verbunden ({count} Datei).',
         other: 'RookHub: verbunden ({count} Dateien).',
       },
-  
+
       'check.outOfRep': 'Aus dem Repertoire bei Zug {move} ({color}: {san})',
       'check.outOfRepWithGaps': 'Aus dem Repertoire bei Zug {move} ({color}: {san}) ({gaps})',
       'check.transpositions': {
@@ -753,7 +755,7 @@
       'check.noRepertoire': 'Kein Repertoire geladen — ⚙ klicken zum Einrichten',
       'check.white': 'Weiß',
       'check.black': 'Schwarz',
-  
+
       'tools.check': 'Aktuelle Partie gegen Repertoire prüfen',
       'tools.searchFen': 'FEN vor Abweichung in Chessable suchen',
       'tools.copyPgn': 'Partie-PGN kopieren',
@@ -763,7 +765,7 @@
       'progress.onRookhub': 'Auf RookHub',
       'progress.notOnRookhub': 'Noch nicht auf RookHub',
       'progress.countTitle': 'Auf RookHub: {done} von {total}',
-  
+
       'err.noBackground': 'keine Antwort vom Background-Worker',
       'err.tokenInvalid': 'Token ungültig oder abgelaufen.',
       'err.http': 'HTTP {status}',
@@ -781,14 +783,14 @@
       'err.libMissing': 'Interne lib fehlt',
       'err.noChapters': 'Keine Kapitel gefunden',
       'err.noLines': 'Keine Linien geholt',
-  
+
       'menu.check': '♟ Prüfen',
       'menu.settings': '⚙ Einstellungen',
       'menu.copyChessableToken': '🔑 Chessable-Token kopieren',
       'menu.noChessableToken': 'RepCheck: Kein Chessable-Token im localStorage gefunden — eingeloggt?',
       'menu.chessableTokenCopied': 'RepCheck: Chessable-Token in die Zwischenablage kopiert.',
     },
-  
+
     hr: {
       'lang.label': 'Jezik',
       'lang.auto': 'Automatski ({lang})',
@@ -832,7 +834,7 @@
         other: 'Lokalno: učitano {count} otvaranja (prije {min} min)',
       },
       'popup.none': 'Još nije učitan nijedan repertoar',
-  
+
       // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
       'popup.conn.heading': 'RookHub veza',
       'popup.conn.notConnected': 'Nije povezano',
@@ -944,6 +946,7 @@
         other: '{count} postojećih linija dobilo je Chessable ID.',
       },
       'import.aborted': 'Prekinuto.',
+      'import.abortedPartial': 'Prekinuto. {chapters} poglavlja s {count} linija ostalo je u tečaju.',
       'import.unexpected.title': 'Neočekivan odgovor s Chessablea',
       'import.unexpected.body': 'RepCheck je zaustavio dohvaćanje. Da bi se isključila mjera Chessablea protiv automatskog dohvaćanja (anti-crawling), razvijatelj treba provjeriti ovaj odgovor. Prije ponovnog pokušaja javi to na Discordu.',
       'import.unexpected.bannedMessage': 'Chessable javlja: „{message}”. To može značiti da je tvoj Chessable račun blokiran.',
@@ -1081,13 +1084,13 @@
       'progress.countTitle': 'Na RookHubu: {done} od {total}',
     },
   };
-  
+
   /** Verfügbare Sprache aus einem BCP-47-Tag ableiten („de-AT" → „de"), sonst die Rückfallsprache. */
   function rcNormalizeLang(tag) {
     const kurz = String(tag || '').toLowerCase().split(/[-_]/)[0];
     return RC_LANGS.indexOf(kurz) >= 0 ? kurz : RC_FALLBACK;
   }
-  
+
   /**
    * Sprache bestimmen: ausdrückliche Wahl des Nutzers schlägt alles, sonst die Browsersprache,
    * sonst Englisch. `gespeichert` kommt aus dem jeweiligen Speicher der Distribution
@@ -1105,7 +1108,7 @@
     }
     return RC_FALLBACK;
   }
-  
+
   /** Plural-Variante wählen. Ohne Intl (alte Umgebung) bleibt es bei one/other. */
   function rcPluralForm(lang, count) {
     try {
@@ -1114,7 +1117,7 @@
       return count === 1 ? 'one' : 'other';
     }
   }
-  
+
   /** Eintrag zu einer fertigen Vorlage auflösen: Plural-Objekte auf die passende Variante. */
   function rcTemplate(eintrag, lang, params) {
     if (typeof eintrag === 'string') return eintrag;
@@ -1124,7 +1127,7 @@
     // Kroatisch kennt one/few/other; fehlt eine Variante, greift `other`, dann `one`.
     return eintrag[form] || eintrag.other || eintrag.one || null;
   }
-  
+
   /**
    * Übersetzen. `{name}`-Platzhalter werden aus `params` gefüllt; ein fehlender Platzhalter bleibt
    * wörtlich stehen (sichtbar statt still leer). Unbekannte Schlüssel geben den Schlüssel zurück.
@@ -1151,7 +1154,7 @@
   // NICHT VON HAND EDITIEREN.
   // >>>REPCHECK-SHARED:chessable-feedback
   const RC_FEEDBACK_KINDS = ['correct', 'wrong', 'alt', 'giveup', 'timeup'];
-  
+
   /** Zustand aus einer Icon-Klassenliste; null, wenn keine bekannte Klasse dabei ist. */
   function rcFeedbackKindFromClass(cls) {
     const s = String(cls || '');
@@ -1162,7 +1165,7 @@
     if (s.includes('icon--time-up')) return 'timeup';
     return null;
   }
-  
+
   /**
    * Zählt der Zustand als Fehler für die Genauigkeit einer Linie?
    *
@@ -1185,7 +1188,7 @@
     while (s.length % 4) s += '=';
     return atob(s);
   }
-  
+
   // uid steckt im JWT-Payload unter user.uid (wie piratechess/JwtHelper). Gibt die uid als
   // String zurück oder null (leerer/kaputter Token, fehlende uid).
   function rcDecodeChessableUid(token) {
@@ -1197,7 +1200,7 @@
       return (uid != null && /^\d+$/.test(String(uid))) ? String(uid) : null;
     } catch (e) { return null; }
   }
-  
+
   // getHomeData-Antwort → { bid(string): name }. Toleriert camelCase/PascalCase-Keys und
   // numerische/String-bids; überspringt leere Namen; kappt auf 200 Zeichen.
   function rcParseCourseNameMap(data) {
@@ -1213,7 +1216,7 @@
     }
     return map;
   }
-  
+
   // Navigations-/Modus-/UI-Labels, die KEIN Kursname sind. Die Falle: solche Links zeigen ebenfalls
   // auf /course/{id}/… und verdrängten deshalb den echten Titel — gemeldet wurden „Practice Moves",
   // „Leaderboard" oder „Kapitel 3:" als Kursname.
@@ -1227,6 +1230,21 @@
     // Kapitel-Überschriften („Kapitel 3:", „Chapter 12") — Seitentext, kein Kurstitel.
     if (/^(kapitel|chapter)\s*\d*\s*:?$/.test(t)) return true;
     return false;
+  }
+
+  // Kurstitel aus dem Linktext einer Kurskachel herauslösen. Chessables Kachel ist EIN Link, und
+  // dessen textContent klebt Titel und Fortschrittsbadges zusammen: „Short & Sweet0%Priority0/15
+  // variations✓ 0/15" (so als Repertoire-Name angelegt, 2026-09-19). Gekappt wird am ERSTEN Badge —
+  // Prozentzahl, „Priority", „N/M variations", „✓ N/M" (englisch und deutsch); danach bleibt der
+  // Titel, und Trenn-/Leerzeichen am Ende fallen weg. Leer → null, damit die Fallback-Kette
+  // (Seitentitel) weiterläuft, statt einen leeren Namen zu liefern.
+  const RC_CARD_BADGE = /\s*(?:\d{1,3}\s*%|\bpriorit(?:y|ät|aet)\b|\d+\s*\/\s*\d+\s*(?:variations?|varianten?|lines?|linien?)\b|[✓✔]\s*\d+(?:\s*\/\s*\d+)?)/i;
+  function rcCleanCourseTitle(txt) {
+    const t = String(txt || '').replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    const m = RC_CARD_BADGE.exec(t);
+    const cut = (m ? t.slice(0, m.index) : t).replace(/[\s·•|:\-–—]+$/g, '').trim();
+    return cut || null;
   }
   // <<<REPCHECK-SHARED:chessable-course-names
 
@@ -2895,6 +2913,19 @@
       XHR.prototype.send = function (...a) { try { const url = this.__rcUrl || ''; if (RELEVANT_REQ.test(url) && typeof a[0] === 'string') harvestFromSaveProgress(a[0]); if (RELEVANT.test(url)) this.addEventListener('load', function () { try { const t = (this.responseType === '' || this.responseType === 'text') ? this.responseText : (this.responseType === 'json' ? JSON.stringify(this.response) : null); if (t) absorb(url, t); } catch (e) {} }); } catch (e) {} return oSend.apply(this, a); };
     }
 
+    // Kursname aus einer mitgeschnittenen/geholten Linie dieses Kurses: Chessable schreibt ihn in JEDE Linie
+    // (game.name), wo getCourse nur Kapitel-Ids trägt. Spiegel von parseCourseNameFromGame (extension/lib/chessable-crawl.js).
+    function capturedCourseName(courseId) {
+      if (!courseId || String(cap.bid) !== String(courseId)) return null;
+      for (const oid in cap.games) {
+        try {
+          const g = JSON.parse(cap.games[oid]); const n = g && g.game && g.game.name;
+          const s = typeof n === 'string' ? n.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+          if (s && !rcIsNavLabel(s)) return s;
+        } catch (e) { /* keine Linie */ }
+      }
+      return null;
+    }
     function capturedChapters() {
       const lids = cap.courseText ? parseChapterLids(cap.courseText) : Object.keys(cap.lists);
       return buildIngestChapters(lids.filter(lid => cap.lists[lid]).map(lid => ({ listText: cap.lists[lid], games: cap.games })));
@@ -2950,15 +2981,16 @@
       throw new Error('Chessable HTTP ' + lastStatus);
     }
 
-    // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded); final=true schließt die Session ab.
-    async function ingestChunk(sessionId, bid, target, courseName, chapter, final) {
+    // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded); RookHub ≥ 0.484.0 importiert jeden Chunk sofort,
+    // final=true schließt den Import-Eintrag ab. extra: { aborted: true } beim Abbruch (Eintrag schließen, Importiertes bleibt).
+    async function ingestChunk(sessionId, bid, target, courseName, chapter, final, extra) {
       const cfg = getCfg();
       if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
       const baseUrl = String(cfg.url).replace(/\/$/, '');
       const resp = await fetch(baseUrl + '/api/extension/chessable/ingest/chunk', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ sessionId, bid, target, courseName, chapter, final }),
+        body: JSON.stringify(Object.assign({ sessionId, bid, target, courseName, chapter, final }, extra || {})),
       });
       const data = await resp.json().catch(() => null);
       if (!resp.ok) throw new Error((data && data.message) || ('HTTP ' + resp.status));
@@ -2986,7 +3018,12 @@
       const bid = currentCourseId();
       const sessionId = newSessionId();
       const incremental = target !== 'book';
-      const courseName = (courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null;
+      // Kursliste per Token > mitgeschnittene Linie (game.name, Chessables eigene Angabe — auch für Kurse, die nicht
+      // im Konto liegen); der Server heilt den Rest über die Kurs-ID.
+      const courseName = ((courseNameApi && courseNameApi.apiCourseName) ? courseNameApi.apiCourseName(bid) : null) || capturedCourseName(bid);
+      // Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (bookOpen); ohne
+      // finalen Chunk schließt ihn das finally mit `aborted`.
+      let sent = 0, bookOpen = false, failMsg = null;
       try {
         if (!bid) throw new Error(t('err.noCourse'));
         let already = new Set();
@@ -2998,14 +3035,14 @@
         const lists = []; let total = 0, toFetch = 0;
         for (const lid of lids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } const fromCapture = !!(cap.lists[lid] && cap.bid === bid); const listText = fromCapture ? cap.lists[lid] : await chessableGet(`getList?bid=${bid}&lid=${lid}`); const oids = parseLineOids(listText); lists.push({ listText, oids }); total += oids.length; toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length; if (!fromCapture) await sleep(crawlPauseMs()); }
         if (incremental && toFetch === 0) { setStatus(t('import.nothingNew', { count: total })); ensureProgress(true); return; }
-        let done = 0, sent = 0, skipped = 0;
+        let done = 0, skipped = 0;
         const newChapters = [];
         for (const { listText, oids } of lists) {
           const lines = [];
           for (const oid of oids) { if (cancelRequested) { setStatus(t('import.aborted')); return; } if (incremental && already.has(String(oid))) { skipped++; continue; } let g = cap.games[oid]; if (!g) { g = await chessableGet(`getGame?lng=en&oid=${oid}`); await sleep(crawlPauseMs()); } if (g && g.trim() && g.trim() !== '{}') { lines.push(g); cap.games[oid] = g; } done++; setStatus(t('import.fetchingLines', { done, total: toFetch })); }
           if (!lines.length) continue;
           if (incremental) newChapters.push({ chapterJson: listText, lines });
-          else await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false);
+          else { await ingestChunk(sessionId, bid, target, courseName, { chapterJson: listText, lines }, false); bookOpen = true; }
           sent++;
         }
         if (!sent) throw new Error(t('err.noLines'));
@@ -3018,10 +3055,22 @@
         } else {
           setStatus(t('import.importing'));
           const res = await ingestChunk(sessionId, bid, target, courseName, null, true);
+          bookOpen = false;
           setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported })); ensureProgress(true);
         }
-      } catch (err) { setStatus(t('import.error', { error: (err && err.message) || err })); }
-      finally { crawling = false; crawlStartedAt = null; if (crawlTimerInt) { clearInterval(crawlTimerInt); crawlTimerInt = null; } updatePanel(); }
+      } catch (err) { failMsg = t('import.error', { error: (err && err.message) || err }); setStatus(failMsg); }
+      finally {
+        if (bookOpen) {
+          // Ohne Abschluss stünde der Import-Eintrag bis zum serverseitigen Aufräumen (30 min) auf „läuft".
+          try {
+            const ack = await ingestChunk(sessionId, bid, target, null, null, true, { aborted: true });
+            const note = t('import.abortedPartial', { chapters: (ack && ack.chapters) || 0, count: (ack && ack.imported) || 0 });
+            if (cancelRequested) setStatus(note); else if (failMsg) setStatus(failMsg + ' ' + note);
+            ensureProgress(true);
+          } catch (e) { /* der Server schließt die Sitzung nach 30 min selbst */ }
+        }
+        crawling = false; crawlStartedAt = null; if (crawlTimerInt) { clearInterval(crawlTimerInt); crawlTimerInt = null; } updatePanel();
+      }
     }
     async function importCaptured(target) {
       const bid = cap.bid || currentCourseId(); const chapters = capturedChapters();
@@ -3480,17 +3529,20 @@
       if (id) {
         const candidates = [];
         for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
-          const txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+          // Chessables Kurskachel klebt Titel und Fortschrittsbadges in EINEN Link — Überschrift bevorzugen,
+          // sonst am ersten Badge kappen (rcCleanCourseTitle, lib/chessable-course-names.js).
+          const head = a.querySelector('h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="name" i]');
+          const txt = rcCleanCourseTitle(((head && head.textContent) || a.textContent || ''));
           if (txt && txt.length <= 200 && !rcIsNavLabel(txt)) candidates.push(txt);
         }
-        // Kurstitel ist i. d. R. der längste, beschreibende Linktext (Nav-Labels sind raus).
+        // Kurstitel ist i. d. R. der längste, beschreibende Linktext (Nav-Labels sind raus, Badges gekappt).
         if (candidates.length) return candidates.sort((a, b) => b.length - a.length)[0];
       }
       const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
       // Auch der Seitentitel kann ein Nav-Label sein („Leaderboard | Chessable") — sonst landet
       // der als courseName in training-activity/remember-line (gleiche Regel wie in
       // chessable-activity.js).
-      return (t && !rcIsNavLabel(t)) ? t : null;
+      return (t && !rcIsNavLabel(t)) ? rcCleanCourseTitle(t) : null;
     }
 
     // Bester verfügbarer Kursname: Chessable-API (autoritativ, via Bearer) > DOM-Heuristik.

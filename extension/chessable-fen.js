@@ -1486,6 +1486,15 @@
   function isNavLabel(txt) {
     return typeof CourseNames.isNavLabel === 'function' ? CourseNames.isNavLabel(txt) : false;
   }
+  // Kacheltext → Titel (Chessables Kurskachel klebt Titel und Fortschrittsbadges in EINEN Link); Details in
+  // lib/chessable-course-names.js. Fehlt die Datei, bleibt der Text, wie er ist.
+  function cleanTitle(txt) {
+    return typeof CourseNames.cleanCourseTitle === 'function' ? CourseNames.cleanCourseTitle(txt) : (String(txt || '').trim() || null);
+  }
+  function anchorTitle(a) {
+    const head = a.querySelector('h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="name" i]');
+    return cleanTitle(((head && head.textContent) || a.textContent || '').replace(/\s+/g, ' ').trim());
+  }
 
   // Kursname aus den React-Fiber-Props (autoritativ, gleiche Quelle wie die verlässliche Kurs-ID):
   // das `course`-Objekt trägt neben `id` auch `name`/`title`. Deutlich robuster als Seitentext,
@@ -1521,17 +1530,17 @@
     if (id) {
       const candidates = [];
       for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
-        const txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+        const txt = anchorTitle(a);
         if (txt && txt.length <= 200 && !isNavLabel(txt)) candidates.push(txt);
       }
-      // Kurstitel ist i. d. R. der längste, beschreibende Linktext (Nav-Labels sind raus).
+      // Kurstitel ist i. d. R. der längste, beschreibende Linktext (Nav-Labels sind raus, Badges gekappt).
       if (candidates.length) return candidates.sort((a, b) => b.length - a.length)[0];
     }
     const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
     // Auch der Seitentitel kann ein Nav-Label sein („Leaderboard | Chessable") — sonst landet
     // der als courseName in training-activity/remember-line (gleiche Regel wie in
     // chessable-activity.js).
-    return (t && !isNavLabel(t)) ? t : null;
+    return (t && !isNavLabel(t)) ? cleanTitle(t) : null;
   }
 
   // Kurs-ID (+ Name) an die isolierte Welt (chessable-activity.js) spiegeln: dort ist der

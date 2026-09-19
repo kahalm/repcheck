@@ -40,6 +40,19 @@
     return arr.map(c => (c && (c.id != null ? c.id : c.Id))).filter(v => v != null).map(String);
   }
 
+  // Kursname aus einer getGame-Antwort (roher Text oder Objekt): Chessable schreibt ihn in JEDE Linie
+  // (game.name), wo die getCourse-Antwort nur Kapitel-Ids traegt. Die verlaesslichste Quelle nach der
+  // Kursliste per Token — und die einzige, die auch fuer Kurse greift, die nicht im eigenen Konto liegen
+  // (2026-09-19: ein freier „Short & Sweet"-Kurs bekam sonst den Kacheltext samt Fortschrittsbadges als Namen).
+  function parseCourseNameFromGame(gameJson) {
+    let obj;
+    try { obj = typeof gameJson === 'string' ? JSON.parse(gameJson) : gameJson; } catch (e) { return null; }
+    const game = obj && (obj.game || obj.Game);
+    const name = game && (game.name != null ? game.name : game.Name);
+    const t = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : '';
+    return t ? t.slice(0, 200) : null;
+  }
+
   // Linien-oids aus einer getList-Antwort (roher Text oder Objekt), in Reihenfolge.
   function parseLineOids(listJson) {
     let obj;
@@ -272,7 +285,7 @@
     };
   }
 
-  const api = { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts,
+  const api = { classifyChessableApi, parseChapterLids, parseLineOids, parseCourseNameFromGame, buildIngestChapters, parseCourseVariations, progressCounts,
     pruneStructures, splitIngestChapters, INGEST_BATCH_BYTES,
     checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };

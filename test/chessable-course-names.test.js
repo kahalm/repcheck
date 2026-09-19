@@ -179,3 +179,29 @@ test('das Userscript hat die Lib generiert eingebettet und keine Kopie daneben',
     'repcheck.user.js: eigener uid-Decoder außerhalb der generierten Region');
   assert.ok(user.includes('rcIsNavLabel('), 'repcheck.user.js: benutzt rcIsNavLabel nicht');
 });
+
+// ---- Kurstitel aus dem Kacheltext (2026-09-19) ----------------------------------------------------------
+// Chessables Kurskachel ist EIN Link; ihr textContent klebt Titel und Fortschrittsbadges zusammen. Genau so
+// wurde ein Repertoire „Short & Sweet0%Priority0/15variations✓ 0/15" angelegt.
+const { rcCleanCourseTitle: cleanCourseTitle } = require('../extension/lib/chessable-course-names.js');
+
+test('cleanCourseTitle kappt die Fortschrittsbadges der Kurskachel', () => {
+  assert.strictEqual(cleanCourseTitle('Short & Sweet0%Priority0/15variations✓ 0/15'), 'Short & Sweet');
+  assert.strictEqual(cleanCourseTitle("Lifetime Repertoires: King's Indian Defense - Part 2 37% 700/1881 variations ✓ 12"),
+    "Lifetime Repertoires: King's Indian Defense - Part 2");
+  assert.strictEqual(cleanCourseTitle('Meisterpartien Priorität 3/40 Varianten'), 'Meisterpartien');
+});
+
+test('cleanCourseTitle lässt Titel ohne Badges unangetastet', () => {
+  assert.strictEqual(cleanCourseTitle('1. e4 e5 - The Italian Game'), '1. e4 e5 - The Italian Game');
+  assert.strictEqual(cleanCourseTitle('  Learn  Chess Openings '), 'Learn Chess Openings');
+  // Eine Zahl im Titel ist kein Badge: kein Prozent, kein „N/M variations".
+  assert.strictEqual(cleanCourseTitle('100 Endgames You Must Know'), '100 Endgames You Must Know');
+  assert.strictEqual(cleanCourseTitle('Chess Olympiad 2026'), 'Chess Olympiad 2026');
+});
+
+test('cleanCourseTitle liefert null statt eines leeren Namens', () => {
+  assert.strictEqual(cleanCourseTitle('0%Priority0/15variations'), null);
+  assert.strictEqual(cleanCourseTitle('   '), null);
+  assert.strictEqual(cleanCourseTitle(null), null);
+});

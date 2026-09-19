@@ -63,15 +63,31 @@ function rcIsNavLabel(txt) {
   return false;
 }
 
+// Kurstitel aus dem Linktext einer Kurskachel herauslösen. Chessables Kachel ist EIN Link, und
+// dessen textContent klebt Titel und Fortschrittsbadges zusammen: „Short & Sweet0%Priority0/15
+// variations✓ 0/15" (so als Repertoire-Name angelegt, 2026-09-19). Gekappt wird am ERSTEN Badge —
+// Prozentzahl, „Priority", „N/M variations", „✓ N/M" (englisch und deutsch); danach bleibt der
+// Titel, und Trenn-/Leerzeichen am Ende fallen weg. Leer → null, damit die Fallback-Kette
+// (Seitentitel) weiterläuft, statt einen leeren Namen zu liefern.
+const RC_CARD_BADGE = /\s*(?:\d{1,3}\s*%|\bpriorit(?:y|ät|aet)\b|\d+\s*\/\s*\d+\s*(?:variations?|varianten?|lines?|linien?)\b|[✓✔]\s*\d+(?:\s*\/\s*\d+)?)/i;
+function rcCleanCourseTitle(txt) {
+  const t = String(txt || '').replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  const m = RC_CARD_BADGE.exec(t);
+  const cut = (m ? t.slice(0, m.index) : t).replace(/[\s·•|:\-–—]+$/g, '').trim();
+  return cut || null;
+}
+
 // Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts). Im Userscript steht der Kern
 // direkt im IIFE-Scope, dort greift keiner der beiden Zweige.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { rcB64UrlDecode, rcDecodeChessableUid, rcParseCourseNameMap, rcIsNavLabel };
+  module.exports = { rcB64UrlDecode, rcDecodeChessableUid, rcParseCourseNameMap, rcIsNavLabel, rcCleanCourseTitle };
 }
 if (typeof self !== 'undefined') {
   self.RepCheckCourseNames = {
     decodeChessableUid: rcDecodeChessableUid,
     parseCourseNameMap: rcParseCourseNameMap,
     isNavLabel: rcIsNavLabel,
+    cleanCourseTitle: rcCleanCourseTitle,
   };
 }

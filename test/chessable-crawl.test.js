@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { classifyChessableApi, parseChapterLids, parseLineOids, buildIngestChapters, parseCourseVariations, progressCounts } =
+const { classifyChessableApi, parseChapterLids, parseLineOids, parseCourseNameFromGame, buildIngestChapters, parseCourseVariations, progressCounts } =
   require('../extension/lib/chessable-crawl.js');
 
 test('classifyChessableApi recognizes getCourse/getList/getGame with params', () => {
@@ -164,4 +164,15 @@ test('Zähler hängen an den echten Chessable-Ankern (Dumps 13.09.), nicht an ge
   assert.ok(src.includes("'#mainBooksList .bookHome[data-bid]'"), 'Startseite zählt nicht über die Kurskarten');
   assert.ok(src.includes('if (!COURSE_PAGE_RE.test(location.pathname)) return;'), 'getCourse auf der Startseite nicht verhindert');
   assert.ok(src.includes('annotateDom(); annotateHome();'), 'Startseiten-Zähler nicht an den DOM-Observer gehängt');
+});
+
+test('parseCourseNameFromGame liest game.name (Kursname in jeder Linie) und verträgt Müll', () => {
+  // Echte Form (Prod-Cache, oid 9960377): game.name = Kurs, game.title = Linie.
+  assert.equal(parseCourseNameFromGame('{"game":{"bid":55720,"name":"  Chessable Challenge ","title":"Carlsen – Karjakin"}}'), 'Chessable Challenge');
+  assert.equal(parseCourseNameFromGame({ Game: { Name: 'Lifetime Repertoires' } }), 'Lifetime Repertoires');
+  assert.equal(parseCourseNameFromGame('{"game":{"name":"   "}}'), null);
+  assert.equal(parseCourseNameFromGame('{"error":{"message":"User is banned or deleted"}}'), null);
+  assert.equal(parseCourseNameFromGame('not json'), null);
+  assert.equal(parseCourseNameFromGame(null), null);
+  assert.equal(parseCourseNameFromGame('{"game":{"name":"' + 'x'.repeat(300) + '"}}').length, 200);
 });

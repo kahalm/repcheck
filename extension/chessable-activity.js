@@ -271,19 +271,29 @@
   // Lesbarer Kursname (Fallback, falls die MAIN-World-Bridge noch nichts gespiegelt hat).
   // Modus-/Nav-Labels werden verworfen — lieber KEIN Name (der Server heilt über die Kurs-ID)
   // als ein falscher.
+  // Kacheltext → Titel: Chessables Kurskachel ist EIN Link, dessen textContent Titel und Fortschrittsbadges
+  // zusammenklebt („Short & Sweet0%Priority0/15variations✓ 0/15" — so hieß am 2026-09-19 ein Repertoire).
+  // Ein Überschriften-Element im Link trägt den Titel allein; sonst kappt cleanCourseTitle am ersten Badge.
+  function cleanTitle(txt) {
+    return typeof CourseNames.cleanCourseTitle === 'function' ? CourseNames.cleanCourseTitle(txt) : (String(txt || '').trim() || null);
+  }
+  function anchorTitle(a) {
+    const head = a.querySelector('h1, h2, h3, h4, h5, h6, [class*="title" i], [class*="name" i]');
+    return cleanTitle(((head && head.textContent) || a.textContent || '').replace(/\s+/g, ' ').trim());
+  }
   function currentCourseName() {
-    if (bridgedCourseName && !isNavLabel(bridgedCourseName)) return bridgedCourseName;
+    if (bridgedCourseName && !isNavLabel(bridgedCourseName)) return cleanTitle(bridgedCourseName);
     const id = currentCourseId();
     if (id) {
       const candidates = [];
       for (const a of document.querySelectorAll('a[href*="/course/' + id + '/"]')) {
-        const txt = (a.textContent || '').replace(/\s+/g, ' ').trim();
+        const txt = anchorTitle(a);
         if (txt && txt.length <= 200 && !isNavLabel(txt)) candidates.push(txt);
       }
       if (candidates.length) return candidates.sort((a, b) => b.length - a.length)[0];
     }
     const t = (document.title || '').replace(/\s*[|\-–]\s*Chessable.*$/i, '').trim();
-    return (t && !isNavLabel(t)) ? t : null;
+    return (t && !isNavLabel(t)) ? cleanTitle(t) : null;
   }
 
   // ---- Autoritativer Kursname über den Chessable-Bearer ----
@@ -383,9 +393,22 @@
   }
 
   // Bester verfügbarer Name: Chessable-API (autoritativ) > MAIN-World-DOM-Bridge > lokale Heuristik.
+  // Kursname aus einer schon geholten/mitgeschnittenen Linie dieses Kurses (game.name) — Chessables eigene
+  // Angabe, auch fuer Kurse, die nicht im Konto liegen und deshalb in der Kursliste per Token fehlen.
+  function capturedCourseName(courseId) {
+    if (!courseId || String(cap.bid) !== String(courseId) || !Crawl || typeof Crawl.parseCourseNameFromGame !== 'function') return null;
+    for (const oid in cap.games) {
+      const n = Crawl.parseCourseNameFromGame(cap.games[oid]);
+      if (n && !isNavLabel(n)) return n;
+    }
+    return null;
+  }
+
+  // Reihenfolge = Verlaesslichkeit: Kursliste per Token > Linien-JSON > MAIN-World-Bridge > Seitentext (gesaeubert).
   function bestCourseName(courseId) {
     return apiCourseName(courseId)
-      || (bridgedCourseName && !isNavLabel(bridgedCourseName) ? bridgedCourseName : null)
+      || capturedCourseName(courseId)
+      || (bridgedCourseName && !isNavLabel(bridgedCourseName) ? cleanTitle(bridgedCourseName) : null)
       || currentCourseName();
   }
 
@@ -1210,9 +1233,10 @@
     throw err;
   }
 
-  // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). final=true schließt die
-  // Session ab → Server parst+importiert den GANZEN Kurs (korrekte Kapitel-/Round-Reihenfolge).
-  // extra: nur beim finalen Chunk eines vollständig geholten Kurses { courseJson, complete }.
+  // Ein Kapitel-Chunk an den kapitelweisen Ingest (bounded pro Request). RookHub ≥ 0.484.0 importiert jeden
+  // Chunk SOFORT; final=true schließt den Import-Eintrag ab (Status, Benachrichtigung).
+  // extra: beim finalen Chunk eines vollständig geholten Kurses { courseJson, complete }; bei einem Abbruch
+  // { aborted: true } (schließt den Eintrag als abgebrochen, die schon importierten Kapitel bleiben).
   async function ingestChunk(sessionId, bid, target, courseName, chapter, final, extra) {
     const cfg = await readConfig();
     if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
@@ -1392,6 +1416,9 @@
     // Nur fürs inkrementelle Anhängen gesammelt. Außerhalb des try, damit ein Abbruch wegen einer unerwarteten
     // Chessable-Antwort die bis dahin geholten (geprüften) Linien noch speichern kann.
     const newChapters = [];
+    // Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (bookOpen); kommt kein
+    // finaler Chunk (Stopp, Fehler, unerwartete Antwort), schließt ihn das finally mit `aborted`.
+    let sent = 0, bookOpen = false, failMsg = null;
     try {
       if (!bid) throw new Error(t('err.noCourse'));
       if (!Crawl) throw new Error(t('err.libMissing'));
@@ -1444,7 +1471,7 @@
       }
       const shared = wanted.length ? await fetchSharedCachedOids(wanted) : new Set();
 
-      let done = 0, sent = 0, skipped = 0, fromShared = 0;
+      let done = 0, skipped = 0, fromShared = 0;
       const fortschritt = () => (fromShared
         ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
         : t('import.fetchingLines', { done, total: toFetch }));
@@ -1477,7 +1504,7 @@
         if (!lines.length) continue;
         const chapter = { chapterJson: listText, lines, lineOids };
         if (incremental) newChapters.push(chapter);
-        else await ingestChunk(sessionId, bid, target, courseName, chapter, false);
+        else { await ingestChunk(sessionId, bid, target, courseName, chapter, false); bookOpen = true; }
         sent++;
       }
       if (!sent) throw new Error(t('err.noLines'));
@@ -1498,14 +1525,15 @@
         // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
         // dann als Ganzes im geteilten Cache ab (und prüft selbst Kapitelzahl und Lücken).
         const res = await ingestChunk(sessionId, bid, target, courseName, null, true, { courseJson: courseText, complete: true });
+        bookOpen = false;
         markCourseFetched();
         setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));
       }
       ensureProgress(true);
     } catch (err) {
       if (err && err.unexpected) {
-        // Bis zum Abbruch geholte, geprüfte Linien noch anhängen — nur beim Repertoire; ein Buch braucht den ganzen
-        // Kurs am Stück (die Chunks ohne final verfallen serverseitig).
+        // Bis zum Abbruch geholte, geprüfte Linien noch anhängen — nur beim Repertoire; beim Buch sind die schon
+        // gesendeten Kapitel bereits importiert, den Eintrag schließt das finally mit `aborted`.
         let saved = 0;
         if (incremental && newChapters.length) {
           try {
@@ -1517,9 +1545,23 @@
         }
         await handleUnexpected(bid, err.unexpected, saved);
       } else {
-        setStatus(t('import.error', { error: (err && err.message) || err }));
+        failMsg = t('import.error', { error: (err && err.message) || err });
+        setStatus(failMsg);
       }
-    } finally { crawling = false; crawlStartedAt = null; }
+    } finally {
+      if (bookOpen) {
+        // Ohne Abschluss stünde der Import-Eintrag bis zum serverseitigen Aufräumen (30 min ohne Kapitel) auf
+        // „läuft" — und die Rückmeldung sagte nicht, dass die bis hierhin geholten Kapitel im Kurs sind.
+        try {
+          const ack = await ingestChunk(sessionId, bid, target, null, null, true, { aborted: true });
+          const note = t('import.abortedPartial', { chapters: (ack && ack.chapters) || 0, count: (ack && ack.imported) || 0 });
+          if (cancelRequested) setStatus(note);
+          else if (failMsg) setStatus(failMsg + ' ' + note);
+          ensureProgress(true);
+        } catch (e) { /* der Server schließt die Sitzung nach 30 min selbst */ }
+      }
+      crawling = false; crawlStartedAt = null;
+    }
   }
 
   // V1: nur den passiven Mitschnitt importieren (kein aktives Holen).
