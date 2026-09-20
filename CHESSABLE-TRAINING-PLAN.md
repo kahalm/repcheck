@@ -3,6 +3,10 @@
 Status: **UMGESETZT** (2026-06-17). Feature spannt zwei Repos: **repcheck**
 (Extension/Userscript v1.10.0) + **rookhub** (Backend/Tracker v0.153.0).
 
+> Archiv-Hinweis (2026-09-20): Dieses Dokument beschreibt den Stand zur Umsetzung, als es
+> NEBEN der Extension noch das Tampermonkey-Userscript gab. Das Userscript ist entfallen
+> (siehe CLAUDE.md, „Auslieferung"); alle Userscript-Passagen hier sind historisch.
+
 > **Umgesetzt 2026-06-17:** Eigene Kategorie „Chessable" gewählt.
 > - rookhub v0.153.0: Entity `ChessableActivity` + Spalte `ChessableMinutes` in
 >   User-/Gruppen-Ziel (Migration `AddChessableActivityAndGoal`); Endpoint

@@ -5,7 +5,7 @@ title: RepCheck — Opening Repertoire Deviation Checker
 
 # RepCheck — Opening Repertoire Deviation Checker
 
-Browser-Erweiterung und Tampermonkey-Userscript, die auf chess.com markiert, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft.
+Browser-Erweiterung, die auf chess.com markiert, ab welchem Zug deine Partie aus dem hinterlegten Eröffnungsrepertoire heraus läuft.
 
 - 🌐 **Quellcode**: [github.com/kahalm/repcheck](https://github.com/kahalm/repcheck)
 - 🔒 **Datenschutz**: [Privacy Policy](./privacy.html)

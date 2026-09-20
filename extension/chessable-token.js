@@ -11,7 +11,7 @@
 // stattdessen ueber die LEBENSDAUER begrenzt: verschwindet der JWT aus dem
 // localStorage (Logout/Session-Ende), loescht syncToken() die Kopie hier;
 // antwortet die Chessable-API mit 401 (Bearer serverseitig tot), loescht sie
-// chessable-activity.js (clearStoredChessableToken). Der Userscript-Spiegel
+// chessable-activity.js (clearStoredChessableToken). Früher gab es dafür einen Userscript-Spiegel
 // hat kein Pendant: er liest den JWT bei Bedarf live aus dem localStorage und
 // persistiert nie eine Kopie.
 (function () {

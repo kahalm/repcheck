@@ -2,9 +2,8 @@
   "name": "repcheck-dev",
   "version": "1.18.1",
   "private": true,
-  "description": "Dev-Tooling + Unit-Tests für die reine RepCheck-Logik. NICHT Teil des ausgelieferten Add-ons/Userscripts.",
+  "description": "Dev-Tooling + Unit-Tests für die reine RepCheck-Logik. NICHT Teil des ausgelieferten Add-ons.",
   "scripts": {
-    "test": "node --test",
-    "build:userscript": "node build/assemble.mjs"
+    "test": "node --test"
   }
 }

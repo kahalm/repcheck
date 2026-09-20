@@ -1,7 +1,7 @@
 // Reine (Node-testbare) Bausteine für den Chessable-Browser-Import (V1 passiv + V2 aktiv).
 // Kein DOM/Netzwerk hier — nur URL-Klassifikation, JSON-Parsing der Chessable-Antworten und die
 // Assemblierung der Ingest-Payload. Die eigentlichen fetch()/Egress-Pfade liegen in
-// chessable-activity.js (Extension, isolierte Welt) bzw. im Userscript.
+// chessable-activity.js (Extension, isolierte Welt).
 //
 // Chessable-Kurs-Struktur (wie piratechess sie liest):
 //   getCourse?uid&bid            → { course: { data: [ { id: <lid> }, … ] } }        (Kapitel-lids, in Reihenfolge)

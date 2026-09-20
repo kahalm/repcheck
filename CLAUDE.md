@@ -1,51 +1,76 @@
 # Project Rules
 
-## Distributions-Pfade
+## Auslieferung
 
-Dieses Repo liefert **zwei** Varianten derselben Funktionalität, die parallel gepflegt werden:
+Dieses Repo liefert **eine** Variante: die **Browser-Extension (Manifest V3)** im Verzeichnis
+`extension/` — Chrome Web Store + Firefox AMO. RookHub-Aufrufe laufen über den
+Background-Service-Worker (`background.js`), nicht über direktes `fetch()`.
 
-1. **Tampermonkey-Userscript** — `repcheck.user.js` im Root. Eigenständig, Cross-Browser via Tampermonkey/Greasemonkey. Auto-Update über die GitHub-Raw-URL.
-2. **Browser-Extension (Manifest V3)** — `extension/`-Verzeichnis. Chrome Web Store + Firefox AMO. Content-Script-Logik identisch zum Userscript, RookHub-Fetches laufen über Background-Service-Worker (`background.js`) statt direkter `fetch()`.
+**Das Tampermonkey-Userscript ist am 2026-09-20 entfallen** (`repcheck.user.js`, zuletzt v1.61.0).
+Es war eine zweite, von Hand gepflegte Fassung derselben Logik: 4978 Zeilen, davon 1182 generiert
+(Shared-Regionen) — also rund **3800 Zeilen Doppelpflege**, um ganze **17 Egress-Aufrufe** zu
+isolieren (`chrome.runtime.sendMessage` statt `fetch`). Der Preis dafür waren zehn dauerhafte
+Rückstände, drei davon nicht kosmetisch: keine `lineOids` (der Parser ordnete Linien
+positionsbasiert zu), kein Byte-Splitting beim Buch-Crawl (der 48-MB-Fehler vom 2026-09-20 blieb
+dort offen und war ohne `lineOids` auch nicht sicher zu beheben) und keine Prüfung unerwarteter
+Chessable-Antworten (v1.60.0) — der Userscript crawlte also in eine Chessable-Sperre hinein,
+statt zu stoppen.
 
-**Beide teilen sich denselben IndexedDB-Layout** (DB `RepertoireCheckerDB`, Stores `handles` + `rookhub`). Die RookHub-**URL** wird dort origin-scoped geteilt (Variantenwechsel ohne erneutes URL-Eintragen). Der **Token** liegt seit v1.19.1 NICHT mehr im (seiten-lesbaren) IndexedDB, sondern extension-privat in `chrome.storage.local` (Extension) bzw. GM-Storage (Userscript) — er wird daher zwischen Extension↔Userscript NICHT geteilt und muss beim Variantenwechsel einmal neu eingetragen werden (bewusster Sicherheits-Tradeoff, s. „Sicherheit").
+**Folgen für bestehende Installationen:** `@updateURL`/`@downloadURL` zeigten auf die
+`master`-Raw-URL. Mit dem Entfernen der Datei bekommt Tampermonkey dort einen 404; installierte
+Kopien laufen unverändert mit 1.61.0 weiter und erhalten nie wieder ein Update. Ein
+Abschieds-Hinweis wurde bewusst NICHT mehr ausgeliefert (er hätte vor dem Entfernen erscheinen
+müssen). Umkehrbar ist das: Datei zurück auf `master` → Updates laufen wieder.
+
+**IndexedDB-Layout** (DB `RepertoireCheckerDB`, Stores `handles` + `rookhub`) bleibt unverändert.
+Der **Token** liegt seit v1.19.1 nicht im (seiten-lesbaren) IndexedDB, sondern extension-privat in
+`chrome.storage.local` (bewusster Sicherheits-Tradeoff, s. „Sicherheit").
 
 ## Versioning
-- Bei jeder Änderung an `repcheck.user.js` muss die `@version` im Tampermonkey-Header erhöht werden.
-- Bei jeder Änderung in `extension/` muss die `version` in `extension/manifest.json` mit erhöht werden.
-- Beide Versionsfelder sollen synchron bleiben (gleiche SemVer-Nummer), damit User identische Versions zwischen Userscript und Extension haben.
+- Bei jeder Änderung in `extension/` muss die `version` in `extension/manifest.json` erhöht werden.
+- Das ist seit dem Wegfall des Userscripts (2026-09-20) das EINZIGE Versionsfeld; die frühere
+  Paritätsregel zwischen zwei Feldern entfällt.
 - SemVer: patch für Bugfixes, minor für neue Features, major für Breaking Changes.
 
-## Code-Synchronisation Userscript ↔ Extension
+## Geteilte Module (`extension/lib/`)
 
-**Shared Core (seit v1.20.0, single-sourced seit v1.21.0):** die reinen Text-/PGN-/FEN-Helfer (`tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl`) leben in EINER Quelle: `extension/lib/repertoire-text.js` (Node-getestet).
-- **Extension**: lädt die Datei als eigenes Content-Script VOR `content.js` (Manifest `content_scripts` + Popup-`executeScript`) und bezieht die Helfer über `self.RepCheckLib`; `content.js` hat keine Inline-Kopien.
-- **Userscript**: `repcheck.user.js` kann keine separate Datei laden → der Build-Schritt **`build/assemble.mjs`** (`npm run build:userscript`) fügt die Funktionen aus `lib/repertoire-text.js` zwischen den Sentinel-Markern `>>>REPCHECK-SHARED:repertoire-text` … `<<<` ein. Die Region ist **generiert — NICHT von Hand editieren**.
-**Weitere geteilte Dateien nach demselben Muster** (je ein Eintrag in `REGIONEN` in `build/assemble.mjs` + ein Marker-Paar im Userscript):
-- `lib/i18n.js` → `self.RepCheckI18n`, Region `>>>REPCHECK-SHARED:i18n` (siehe „Oberflächensprache").
-- `lib/chessable-course-names.js` → `self.RepCheckCourseNames`, Region `>>>REPCHECK-SHARED:chessable-course-names`. Wird auf chessable.com in **beiden** Welten geladen (isoliert vor `chessable-activity.js`, MAIN vor `chessable-fen.js`) und vom Popup beim Nachinjizieren mitgegeben. Deshalb tragen die Funktionen `rc`-Präfixe: in der MAIN-World landen Top-Level-Deklarationen im `window` der Seite. Die früheren drei Inline-Kopien von `isNavLabel` sind weg; `test/chessable-course-names.test.js` prüft Manifest-Auslieferung, Lib-Nutzung und die generierte Userscript-Region.
+Die reinen Helfer leben in EINER Quelle unter `extension/lib/` und sind Node-getestet
+(`npm test`). Sie werden geteilt, weil die Extension in ZWEI Welten läuft — isoliert
+(`chessable-activity.js`, `content.js`) und MAIN (`chessable-fen.js`) —, die getrennte globale
+Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 
-- **Workflow bei Logik-Änderung an diesen Helfern**: nur `lib/repertoire-text.js` ändern → `npm test` → `npm run build:userscript` → beide Distributionen sind synchron. Der Rest der Hauptlogik (Position-Set/Analyse/Adapter/UI) ist weiterhin zwischen `content.js` und Userscript hand-gepflegt (siehe unten).
+| Datei | Global | Inhalt |
+|---|---|---|
+| `lib/repertoire-text.js` | `self.RepCheckLib` | `tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl` |
+| `lib/i18n.js` | `self.RepCheckI18n` | Sprachtabelle (siehe „Oberflächensprache") |
+| `lib/chessable-course-names.js` | `self.RepCheckCourseNames` | Kursnamen/Nav-Label/uid-Decode — `rc`-Präfixe, weil Top-Level-Deklarationen in der MAIN-World im `window` der Seite landen |
+| `lib/chessable-crawl.js` | `RepCheckCrawl` | Crawl-/Ingest-Helfer (`splitIngestChapters`, `checkChessableResponse`, `looksBanned`, …) |
+| `lib/chessable-feedback.js` | — | Zuordnung der Rückmeldungs-Icons |
 
-Wenn du an der übrigen Hauptlogik etwas änderst:
-- **Den Userscript** `repcheck.user.js` anpassen
-- Dann `extension/content.js` **angleichen**: alles 1:1 übernehmen, außer die RookHub-Fetches — die laufen in der Extension über `chrome.runtime.sendMessage({type: 'rookhub-fetch', ...})` zum Background-Worker statt direkter `fetch()`.
-- Der einzige abweichende Codepfad ist `rookhubAnalyzeGame`: im Userscript direkter `fetch(POST …)`, in der Extension `rookhubProxy({ method:'POST', body, … })` zum Background-Worker.
+Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
+`content_scripts`) und beim Nachladen aus dem Popup mit injiziert (`executeScript`). Wer eine
+neue Lib anlegt, trägt sie an BEIDEN Stellen ein — `test/chessable-course-names.test.js` prüft
+Manifest-Auslieferung und Lib-Nutzung und schlägt bei einer wiederauferstandenen Inline-Kopie fehl.
 
-**Bewusste Divergenzen (NICHT 1:1 syncen):**
-- **⚙-Status/Settings-Banner (`showBanner`)** — seit v1.14.0 nur noch im **Userscript** aktiv (dort gibt es kein Popup, das ⚙/Panel ist die einzige Config-UI). In der **Extension** ist `showBanner` ein **No-op** und das ⚙ entfernt; Einstellungen laufen über das Popup („Einstellungen" → `openSettings` → `togglePanel`), das Prüf-Ergebnis bleibt über `highlightDeviation` direkt in der Zugliste markiert.
-- **Chessable-FEN-Tools** — `chessable-fen.js` (Extension) bzw. `initChessableFenTools` (Userscript) blenden ihre Buttons seit v1.14.0 NUR im **Practice-Mode** ein (`isPracticeMode()` = `location.pathname` beginnt mit `/practice`); bei SPA-Navigation aus dem Practice-Mode raus wird die UI per `removeUi()` wieder entfernt. Seit v1.33.0 ist **jeder Button (Extension) einzeln ein-/ausblendbar** über das Popup (`chessableButtons` in `chrome.storage.local`): chessable-fen.js (MAIN-World, kein chrome.*-Zugriff) bekommt die Einstellung per postMessage-Bridge `chessable-buttons` von chessable-activity.js (isoliert, `chrome.storage.onChanged` → Live-Update) und blendet die Buttons via `applyButtonSettings()` ein/aus. **Seit v1.59.0 ist dort alles standardmäßig aus**: nur ein gespeichertes `true` zeigt ein Element, ein fehlender Schlüssel heißt aus (auch vor dem Eintreffen der Einstellung — kein Aufblitzen). Neben den sechs Buttons hängen auch der ⏳-Pool-Zähler (`pool`) und die Zug-Rückmeldung (`feedback`) an eigenen Schaltern (`buttonEnabled()` in `renderPool`/`renderFeedback`, auch im Zen). Ein neuer Button braucht also Checkbox in `popup.html`, Eintrag in `CB_KEYS` und `btnRefs` — `test/chessable-buttons.test.js` hält die drei gleich. Userscript-Variante hat (noch) keine Toggles.
+**Workflow bei einer Logik-Änderung:** nur die Lib ändern → `npm test`. Der frühere Build-Schritt
+(`build/assemble.mjs`, Sentinel-Regionen, `npm run build:userscript`) ist mit dem Userscript
+entfallen — es gibt nichts mehr zu generieren.
+
+**Eigenheiten einzelner Funktionen:**
+
+- **⚙-Status/Settings-Banner (`showBanner`)** — ist ein **No-op** und das ⚙ entfernt; Einstellungen laufen über das Popup („Einstellungen" → `openSettings` → `togglePanel`), das Prüf-Ergebnis bleibt über `highlightDeviation` direkt in der Zugliste markiert.
+- **Chessable-FEN-Tools** — `chessable-fen.js` blendet seine Buttons seit v1.14.0 NUR im **Practice-Mode** ein (`isPracticeMode()` = `location.pathname` beginnt mit `/practice`); bei SPA-Navigation aus dem Practice-Mode raus wird die UI per `removeUi()` wieder entfernt. Seit v1.33.0 ist **jeder Button (Extension) einzeln ein-/ausblendbar** über das Popup (`chessableButtons` in `chrome.storage.local`): chessable-fen.js (MAIN-World, kein chrome.*-Zugriff) bekommt die Einstellung per postMessage-Bridge `chessable-buttons` von chessable-activity.js (isoliert, `chrome.storage.onChanged` → Live-Update) und blendet die Buttons via `applyButtonSettings()` ein/aus. **Seit v1.59.0 ist dort alles standardmäßig aus**: nur ein gespeichertes `true` zeigt ein Element, ein fehlender Schlüssel heißt aus (auch vor dem Eintreffen der Einstellung — kein Aufblitzen). Neben den sechs Buttons hängen auch der ⏳-Pool-Zähler (`pool`) und die Zug-Rückmeldung (`feedback`) an eigenen Schaltern (`buttonEnabled()` in `renderPool`/`renderFeedback`, auch im Zen). Ein neuer Button braucht also Checkbox in `popup.html`, Eintrag in `CB_KEYS` und `btnRefs` — `test/chessable-buttons.test.js` hält die drei gleich.
 - **Button-Styling** — seit v1.14.0 KEINE site-spezifischen Farben mehr; chess.com nutzt dasselbe dezente Dark/Light-Styling wie Lichess (die `[data-site="chesscom"]`-CSS-Overrides sind raus).
-- **„Partie speichern" (💾)** — bei Erfolg wird der öffentliche Teilen-Link `{RookHub-URL}/g/{shareToken}` (aus der Server-Antwort) in die Zwischenablage gelegt (`buildShareLink`); Button quittiert mit 🔗. Egress wie gehabt: Userscript `fetch`, Extension `rookhubProxy`.
-- **RookHub-Import (Browser) auf chessable.com** — seit v1.30.0 lebt die Import-UI (Ziel Repertoire/Buch, „⚡ Kurs holen", Mitschnitt importieren, „live anhängen", Fortschritt) im **Extension-Popup**, NICHT mehr als On-Page-Panel. Das Popup pollt/steuert `chessable-activity.js` (isolierte Welt) per `chrome.runtime.onMessage` `{type:'rc-import', action}` (`state`/`setTarget`/`crawl`/`importCaptured`/`setLive`/`refreshProgress`). Die In-Page-Marker (✓/○ an den Linien) + die ganze Import-/Crawl-/Live-Logik bleiben im Content-Script. **Userscript**: hat kein Popup → behält sein eingeblendetes On-Page-Import-Panel (unverändert). Also bewusst getrennt, nicht 1:1 syncen.
-- **Kurs-holen-Pause** (v1.56.0) — zwischen zwei Chessable-Abrufen (`getList`, `getGame`) wartet der Crawl eine **zufällige** Zeit, Standard 2,5–3,5 s. **Extension**: im Popup unter „Einstellungen" einstellbar (`chrome.storage.local` `crawlDelay` = `{minMs,maxMs}`), aber **nur nach oben** — `normalizeCrawlDelay` in `lib/chessable-crawl.js` (von Popup UND `chessable-activity.js` genutzt) hebt alles unter 2,5 bzw. 3,5 s an, erzwingt max ≥ min und deckelt bei 120 s; `chessable-activity.js` führt den Wert per `storage.onChanged` live nach, auch in einen laufenden Crawl. Gewartet wird nur nach einem ECHTEN Abruf — aus dem Mitschnitt stammende Kapitel kosten keine Pause mehr (vorher 3 s auch ohne Request). Das Backoff bei 429/5xx bleibt auf Basis 3 s (`CRAWL_BACKOFF_BASE_MS`: 6/12/24/30 s). **Userscript**: fester Bereich 2,5–3,5 s (`crawlPauseMs`), kein Regler, weil kein Popup.
-- **Geteilter Linien-Cache beim Kurs holen** (v1.57.0, **Extension-only**) — nach der Kapitel-Phase fragt `crawlAndImport` per `POST /api/extension/chessable/cached-lines` (Batches à 5000), welche der noch zu holenden oids schon im geteilten piratechess-Rohdaten-Cache liegen. Für diese kein `getGame` und keine Pause: die Linie geht als `null` mit ihrer oid in den Ingest, piratechess setzt den Inhalt serverseitig ein (der Inhalt erreicht den Browser nie). Jeder Ingest (`crawlAndImport`, `flushLive`, `buildIngestChapters`) schickt je Kapitel **`lineOids` parallel zu `lines`** — ohne sie las der Parser positionsbasiert, und ein Teil der Linien eines Kapitels (inkrementell/live/Mitschnitt) landete unter der oid und dem Namen der ersten Einträge, galt also nie als importiert. Der finale Buch-Chunk trägt `courseJson` (echte getCourse-Antwort) + `complete: true` → piratechess cacht den Kurs als Ganzes, sofern lückenlos. Umgekehrt landen per Browser geholte Linien im Cache (nie überschreibend). Abwärtskompatibel: alte RookHub-Version → `cached-lines` 404 → nichts gecacht → alles selbst holen, keine `null`-Linien. **Userscript**: nutzt den Cache nicht und schickt noch keine `lineOids` (positionsbasiert wie bisher).
-- **Import in Portionen** (v1.59.1, **Extension-only**) — „Mitschnitt importieren", „⚡ Kurs holen" (inkrementell) und „live anhängen" schicken nicht mehr alles in EINER Anfrage: `splitIngestChapters` (lib/chessable-crawl.js) schneidet nach UTF-8-Bytes auf ≤ 8 MB je Anfrage und verteilt ein zu großes Kapitel auf Teile mit derselben `chapterJson` (nur mit `lineOids`, sonst bleibt es ganz). Anlass: Felix bekam am 2026-09-14 viermal 413 — RookHubs Frontend-nginx deckelte `/api/` auf 15 MB, und Linien kommentierter Kurse wiegen entpackt ~0,5 MB. Beim Mitschnitt geht die erste Portion über `/ingest` (Import-Eintrag, Benachrichtigung), der Rest über `/ingest/live`. Der Buch-Crawl (`ingest/chunk`) blieb dabei zunächst ungeteilt (ein Kapitel je Anfrage) — das fiel am 2026-09-20 auf die Füße, s. v1.61.0. Seit 1.59.2 zählt „Kurs holen" die Kapitellisten sichtbar mit (`import.fetchingChapters`, vorher stand bei 36 Kapiteln mit Pause zwei Minuten „Kursstruktur") und nennt in der Abschlussmeldung auch verknüpfte Alt-Linien (`linked` aus `ingest/live`, RookHub ≥ 0.478.7; `import.linkedNote`) — ein Abruf, der 641 Linien ihre oid nachtrug, las sich sonst als „0 neue Linien angehängt". **Userscript**: schickt keine `lineOids` und kann deshalb nicht sicher teilen, unverändert.
-- **Unerwartete Chessable-Antwort stoppt „Kurs holen"** (v1.60.0, **Extension-only**) — `crawlAndImport` holt getCourse/getList/getGame über `chessableGetChecked`, das jede Antwort mit `checkChessableResponse` (lib/chessable-crawl.js) prüft. Abbruch bei: kein 2xx (nach den 429/5xx-Wiederholungen; `chessableGet` hängt dafür `chessableStatus`/`chessableBody` an den Fehler), kein JSON, `{"error":…}` statt Daten, JSON ohne `course.data`/`list.data`/`game` (auch `{}`). 401 bleibt der bekannte Fehler (Anmeldung abgelaufen). Dahinter kann eine Anti-Crawling-Maßnahme stecken, deshalb: (1) die bis dahin geholten, geprüften Linien werden beim Repertoire noch angehängt — sonst müsste ein erneuter Lauf sie wieder bei Chessable holen (beim Buch nicht, das braucht den ganzen Kurs am Stück); (2) Karte auf der Seite und Hinweis im Popup (`rcCrawlAlert` in `chrome.storage.local`) mit Discord-Link und der Bitte, VOR einem erneuten Versuch dem Entwickler Bescheid zu geben — das Popup fragt vor dem nächsten „Kurs holen" nach und löscht den Hinweis erst nach der Bestätigung; (3) Meldung an RookHub (`POST /api/extension/chessable/unexpected-response`, RookHub ≥ 0.478.8) mit Endpunkt, lid/oid, Status, Grund, Fehlermeldung und einem Ausschnitt ≤ 1000 Zeichen, aus dem `scrubSnippet` E-Mail- und IP-Adressen entfernt (eine Cloudflare-Sperrseite nennt die IP). Sieht die Antwort nach einer Sperre aus (`looksBanned`: Fehlermeldung bzw. Nicht-JSON-Text mit banned/suspended/blocked/deleted — dieselbe Wortliste wie RookHubs `ChessableResponseAlertService.LooksBanned`, nur gemeinsam ändern), schreibt RookHub den Admins (höchstens einmal je Nutzer in 24 h), und die Karte sagt das. Anlass: zu 31 Linien kam am 30.06.2026 nur `{"error":{"message":"User is banned or deleted"}}`, und die lagen monatelang als „gecacht" im Linien-Cache. Passive Wege (Mitschnitt, ✓/○-Fortschritt, Startseiten-Zähler) prüfen bewusst nicht — sie holen nicht aktiv. **Userscript**: prüft nicht.
-- **Kursname: Kachel-Badges kappen, Linie fragen, Buch-Abbruch abschließen** (v1.60.2) — (1) Chessables Kurskachel ist EIN Link, dessen `textContent` Titel und Fortschrittsbadges zusammenklebt („Short & Sweet0%Priority0/15variations✓ 0/15" hieß am 19.09. ein Repertoire). `rcCleanCourseTitle` (lib/chessable-course-names.js) kappt am ersten Badge (`\d%`, Priority/Priorität, `N/M variations|Varianten|lines|Linien`, `✓ N[/M]`); alle drei `currentCourseName()` (chessable-activity.js, chessable-fen.js, Userscript) bevorzugen ein Überschriften-Element im Link und laufen den Text hindurch. (2) Vor dem Seitentext kommt `game.name` aus einer mitgeschnittenen/geholten Linie (`parseCourseNameFromGame` in lib/chessable-crawl.js; Userscript hand-gespiegelt `capturedCourseName`) — Chessables eigene Angabe, auch für Kurse, die nicht im Konto liegen und deshalb in der Kursliste per Token fehlen. RookHub ≥ 0.484.1 liest denselben Wert serverseitig aus den Linien und stellt ihn vor den gesendeten Namen. (3) Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (`bookOpen`); erreicht der Lauf den finalen Chunk nicht (Stopp, Fehler, unerwartete Antwort), schickt das `finally` `ingestChunk(…, true, { aborted: true })` — der Eintrag schließt mit Zählern, die importierten Kapitel bleiben, Status `import.abortedPartial`. Vorher blieb er am Server bis zum Aufräumen (30 min) auf „läuft". Extension UND Userscript.
-- **Buch-Crawl teilt große Kapitel** (v1.61.0, **Extension-only**) — der Buch-Zweig von `crawlAndImport` schickt ein Kapitel nicht mehr als EINE Anfrage, sondern durch dasselbe `splitIngestChapters` wie Mitschnitt/Repertoire (≤ 8 MB je Anfrage). Anlass: Kapitel 30 („London System – Mainline", 87 Linien) eines Lifetime-Repertoires riss am 2026-09-20 das 48-MB-Limit von `ingest/chunk`; Kestrel lehnt anhand `Content-Length` ab, und RookHubs Fehler-Handler machte daraus ein nacktes **HTTP 500** — der Lauf starb dort, alles ab diesem Kapitel fehlte (Felix: 1290 von 1881 Linien). Die Teile tragen denselben `chapterKey` (die lid) und bleiben serverseitig EIN Kapitel: RookHub ≥ 0.495.0 hält die Kapitelnummer und schiebt nur die LINIENnummer weiter — der Parser wirft die Einträge ohne Inhalt aus `list.data` und begänne sonst je Teil wieder bei `.002`, also genau auf den Linien des Vorgängers (LineId = `Datei:Round`). Alt-Client ohne `chapterKey` → jeder Chunk ist wie bisher ein eigenes Kapitel. **Userscript**: schickt keine `lineOids` und kann deshalb nicht sicher teilen — unverändert, also dort weiterhin die alte Grenze.
-- **Fortschritts-Zähler auf Kursübersicht und Startseite** (v1.58.0, **Extension-only**) — zweiter Anlauf nach dem Revert von v1.52.0, diesmal mit Ankern aus echten Inspector-Dumps (volles `pageHtml`, 13.09.): Kursübersicht `#chapterBoxes a.levelBox[href=/course/{bid}/{lid}]` → Badge `✓ done/total` in `.progressVisuals` neben Chessables eigenem Zähler, Kurs-Summe an `h1.courseUI-bookChapter`; Startseite `#mainBooksList .bookHome[data-bid]` → Badge in `.bookDetails` (NIE über Links — dieselben Kurs-Links stehen auch in Dropdown-Menüs). Zähler = Schnittmenge aus `/chessable/progress`-oids und der Kursstruktur (getCourse `includeVariations`), nicht der rohe oid-Count (das war der 413-bei-365-Fehler). Kursstruktur wird je bid in `chrome.storage.local` `courseStructures` gemerkt (7 Tage, max. 80 Kurse, `pruneStructures`); Kurs-/Kapitelseiten legen sie beim Laden ab, die Startseite holt fehlende mit Pause (`crawlPauseMs`, max. 25 je Besuch) und zeigt Badges nur für Kurse, die auf RookHub liegen. `ensureProgress` läuft nur noch auf `/course|practice|learn/{bid}` — vorher löste die Startseite ein getCourse für den erstbesten Kurs-Link aus. **Userscript**: behält nur die ✓/○-Linienmarker.
+- **„Partie speichern" (💾)** — bei Erfolg wird der öffentliche Teilen-Link `{RookHub-URL}/g/{shareToken}` (aus der Server-Antwort) in die Zwischenablage gelegt (`buildShareLink`); Button quittiert mit 🔗. Egress: `rookhubProxy`.
+- **RookHub-Import (Browser) auf chessable.com** — seit v1.30.0 lebt die Import-UI (Ziel Repertoire/Buch, „⚡ Kurs holen", Mitschnitt importieren, „live anhängen", Fortschritt) im **Extension-Popup**, NICHT mehr als On-Page-Panel. Das Popup pollt/steuert `chessable-activity.js` (isolierte Welt) per `chrome.runtime.onMessage` `{type:'rc-import', action}` (`state`/`setTarget`/`crawl`/`importCaptured`/`setLive`/`refreshProgress`). Die In-Page-Marker (✓/○ an den Linien) + die ganze Import-/Crawl-/Live-Logik bleiben im Content-Script.
+- **Kurs-holen-Pause** (v1.56.0) — zwischen zwei Chessable-Abrufen (`getList`, `getGame`) wartet der Crawl eine **zufällige** Zeit, Standard 2,5–3,5 s. **Extension**: im Popup unter „Einstellungen" einstellbar (`chrome.storage.local` `crawlDelay` = `{minMs,maxMs}`), aber **nur nach oben** — `normalizeCrawlDelay` in `lib/chessable-crawl.js` (von Popup UND `chessable-activity.js` genutzt) hebt alles unter 2,5 bzw. 3,5 s an, erzwingt max ≥ min und deckelt bei 120 s; `chessable-activity.js` führt den Wert per `storage.onChanged` live nach, auch in einen laufenden Crawl. Gewartet wird nur nach einem ECHTEN Abruf — aus dem Mitschnitt stammende Kapitel kosten keine Pause mehr (vorher 3 s auch ohne Request). Das Backoff bei 429/5xx bleibt auf Basis 3 s (`CRAWL_BACKOFF_BASE_MS`: 6/12/24/30 s).
+- **Geteilter Linien-Cache beim Kurs holen** (v1.57.0, **Extension-only**) — nach der Kapitel-Phase fragt `crawlAndImport` per `POST /api/extension/chessable/cached-lines` (Batches à 5000), welche der noch zu holenden oids schon im geteilten piratechess-Rohdaten-Cache liegen. Für diese kein `getGame` und keine Pause: die Linie geht als `null` mit ihrer oid in den Ingest, piratechess setzt den Inhalt serverseitig ein (der Inhalt erreicht den Browser nie). Jeder Ingest (`crawlAndImport`, `flushLive`, `buildIngestChapters`) schickt je Kapitel **`lineOids` parallel zu `lines`** — ohne sie las der Parser positionsbasiert, und ein Teil der Linien eines Kapitels (inkrementell/live/Mitschnitt) landete unter der oid und dem Namen der ersten Einträge, galt also nie als importiert. Der finale Buch-Chunk trägt `courseJson` (echte getCourse-Antwort) + `complete: true` → piratechess cacht den Kurs als Ganzes, sofern lückenlos. Umgekehrt landen per Browser geholte Linien im Cache (nie überschreibend). Abwärtskompatibel: alte RookHub-Version → `cached-lines` 404 → nichts gecacht → alles selbst holen, keine `null`-Linien.
+- **Import in Portionen** (v1.59.1, **Extension-only**) — „Mitschnitt importieren", „⚡ Kurs holen" (inkrementell) und „live anhängen" schicken nicht mehr alles in EINER Anfrage: `splitIngestChapters` (lib/chessable-crawl.js) schneidet nach UTF-8-Bytes auf ≤ 8 MB je Anfrage und verteilt ein zu großes Kapitel auf Teile mit derselben `chapterJson` (nur mit `lineOids`, sonst bleibt es ganz). Anlass: Felix bekam am 2026-09-14 viermal 413 — RookHubs Frontend-nginx deckelte `/api/` auf 15 MB, und Linien kommentierter Kurse wiegen entpackt ~0,5 MB. Beim Mitschnitt geht die erste Portion über `/ingest` (Import-Eintrag, Benachrichtigung), der Rest über `/ingest/live`. Der Buch-Crawl (`ingest/chunk`) blieb dabei zunächst ungeteilt (ein Kapitel je Anfrage) — das fiel am 2026-09-20 auf die Füße, s. v1.61.0. Seit 1.59.2 zählt „Kurs holen" die Kapitellisten sichtbar mit (`import.fetchingChapters`, vorher stand bei 36 Kapiteln mit Pause zwei Minuten „Kursstruktur") und nennt in der Abschlussmeldung auch verknüpfte Alt-Linien (`linked` aus `ingest/live`, RookHub ≥ 0.478.7; `import.linkedNote`) — ein Abruf, der 641 Linien ihre oid nachtrug, las sich sonst als „0 neue Linien angehängt".
+- **Unerwartete Chessable-Antwort stoppt „Kurs holen"** (v1.60.0, **Extension-only**) — `crawlAndImport` holt getCourse/getList/getGame über `chessableGetChecked`, das jede Antwort mit `checkChessableResponse` (lib/chessable-crawl.js) prüft. Abbruch bei: kein 2xx (nach den 429/5xx-Wiederholungen; `chessableGet` hängt dafür `chessableStatus`/`chessableBody` an den Fehler), kein JSON, `{"error":…}` statt Daten, JSON ohne `course.data`/`list.data`/`game` (auch `{}`). 401 bleibt der bekannte Fehler (Anmeldung abgelaufen). Dahinter kann eine Anti-Crawling-Maßnahme stecken, deshalb: (1) die bis dahin geholten, geprüften Linien werden beim Repertoire noch angehängt — sonst müsste ein erneuter Lauf sie wieder bei Chessable holen (beim Buch nicht, das braucht den ganzen Kurs am Stück); (2) Karte auf der Seite und Hinweis im Popup (`rcCrawlAlert` in `chrome.storage.local`) mit Discord-Link und der Bitte, VOR einem erneuten Versuch dem Entwickler Bescheid zu geben — das Popup fragt vor dem nächsten „Kurs holen" nach und löscht den Hinweis erst nach der Bestätigung; (3) Meldung an RookHub (`POST /api/extension/chessable/unexpected-response`, RookHub ≥ 0.478.8) mit Endpunkt, lid/oid, Status, Grund, Fehlermeldung und einem Ausschnitt ≤ 1000 Zeichen, aus dem `scrubSnippet` E-Mail- und IP-Adressen entfernt (eine Cloudflare-Sperrseite nennt die IP). Sieht die Antwort nach einer Sperre aus (`looksBanned`: Fehlermeldung bzw. Nicht-JSON-Text mit banned/suspended/blocked/deleted — dieselbe Wortliste wie RookHubs `ChessableResponseAlertService.LooksBanned`, nur gemeinsam ändern), schreibt RookHub den Admins (höchstens einmal je Nutzer in 24 h), und die Karte sagt das. Anlass: zu 31 Linien kam am 30.06.2026 nur `{"error":{"message":"User is banned or deleted"}}`, und die lagen monatelang als „gecacht" im Linien-Cache. Passive Wege (Mitschnitt, ✓/○-Fortschritt, Startseiten-Zähler) prüfen bewusst nicht — sie holen nicht aktiv.
+- **Kursname: Kachel-Badges kappen, Linie fragen, Buch-Abbruch abschließen** (v1.60.2) — (1) Chessables Kurskachel ist EIN Link, dessen `textContent` Titel und Fortschrittsbadges zusammenklebt („Short & Sweet0%Priority0/15variations✓ 0/15" hieß am 19.09. ein Repertoire). `rcCleanCourseTitle` (lib/chessable-course-names.js) kappt am ersten Badge (`\d%`, Priority/Priorität, `N/M variations|Varianten|lines|Linien`, `✓ N[/M]`); alle drei `currentCourseName()` (chessable-activity.js, chessable-fen.js) bevorzugen ein Überschriften-Element im Link und laufen den Text hindurch. (2) Vor dem Seitentext kommt `game.name` aus einer mitgeschnittenen/geholten Linie (`parseCourseNameFromGame` in lib/chessable-crawl.js) — Chessables eigene Angabe, auch für Kurse, die nicht im Konto liegen und deshalb in der Kursliste per Token fehlen. RookHub ≥ 0.484.1 liest denselben Wert serverseitig aus den Linien und stellt ihn vor den gesendeten Namen. (3) Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (`bookOpen`); erreicht der Lauf den finalen Chunk nicht (Stopp, Fehler, unerwartete Antwort), schickt das `finally` `ingestChunk(…, true, { aborted: true })` — der Eintrag schließt mit Zählern, die importierten Kapitel bleiben, Status `import.abortedPartial`. Vorher blieb er am Server bis zum Aufräumen (30 min) auf „läuft".
+- **Buch-Crawl teilt große Kapitel** (v1.61.0, **Extension-only**) — der Buch-Zweig von `crawlAndImport` schickt ein Kapitel nicht mehr als EINE Anfrage, sondern durch dasselbe `splitIngestChapters` wie Mitschnitt/Repertoire (≤ 8 MB je Anfrage). Anlass: Kapitel 30 („London System – Mainline", 87 Linien) eines Lifetime-Repertoires riss am 2026-09-20 das 48-MB-Limit von `ingest/chunk`; Kestrel lehnt anhand `Content-Length` ab, und RookHubs Fehler-Handler machte daraus ein nacktes **HTTP 500** — der Lauf starb dort, alles ab diesem Kapitel fehlte (Felix: 1290 von 1881 Linien). Die Teile tragen denselben `chapterKey` (die lid) und bleiben serverseitig EIN Kapitel: RookHub ≥ 0.495.0 hält die Kapitelnummer und schiebt nur die LINIENnummer weiter — der Parser wirft die Einträge ohne Inhalt aus `list.data` und begänne sonst je Teil wieder bei `.002`, also genau auf den Linien des Vorgängers (LineId = `Datei:Round`). Alt-Client ohne `chapterKey` → jeder Chunk ist wie bisher ein eigenes Kapitel.
+- **Fortschritts-Zähler auf Kursübersicht und Startseite** (v1.58.0, **Extension-only**) — zweiter Anlauf nach dem Revert von v1.52.0, diesmal mit Ankern aus echten Inspector-Dumps (volles `pageHtml`, 13.09.): Kursübersicht `#chapterBoxes a.levelBox[href=/course/{bid}/{lid}]` → Badge `✓ done/total` in `.progressVisuals` neben Chessables eigenem Zähler, Kurs-Summe an `h1.courseUI-bookChapter`; Startseite `#mainBooksList .bookHome[data-bid]` → Badge in `.bookDetails` (NIE über Links — dieselben Kurs-Links stehen auch in Dropdown-Menüs). Zähler = Schnittmenge aus `/chessable/progress`-oids und der Kursstruktur (getCourse `includeVariations`), nicht der rohe oid-Count (das war der 413-bei-365-Fehler). Kursstruktur wird je bid in `chrome.storage.local` `courseStructures` gemerkt (7 Tage, max. 80 Kurse, `pruneStructures`); Kurs-/Kapitelseiten legen sie beim Laden ab, die Startseite holt fehlende mit Pause (`crawlPauseMs`, max. 25 je Besuch) und zeigt Badges nur für Kurse, die auf RookHub liegen. `ensureProgress` läuft nur noch auf `/course|practice|learn/{bid}` — vorher löste die Startseite ein getCourse für den erstbesten Kurs-Link aus.
 
-Ein einziger Build-Schritt, der die Userscript-Quelle als Basis nimmt und nur die Fetch-Funktionen patcht, wäre eine Option für die Zukunft — aktuell ist die Diff klein genug, um manuell synchron gehalten zu werden.
 
 ## Einführung für neue Nutzer (v1.59.0, Extension-only)
 
@@ -54,23 +79,22 @@ Ein einziger Build-Schritt, der die Userscript-Quelle als Basis nimmt und nur di
 - **Hinweis für Updater**: `onInstalled` mit `reason: 'update'` und `previousVersion` < 1.59.0 setzt `rcButtonsNotice: 'pending'` → Hinweis im Popup UND einmal als Banner auf `/practice` (genau dort fehlen die Buttons). „OK", „Buttons auswählen" oder jede gespeicherte Button-Auswahl setzen `'done'`. Content-Scripts öffnen die Willkommensseite über `{type:'rc-open-welcome'}` am Worker (Absender-Prüfung wie beim Fetch-Proxy).
 - Die Entscheidungen sind rein und getestet (`versionLess`/`onboardingPlan` in background.js, `onboardingState` in popup.js → `test/onboarding.test.js`); die Button-Schlüssel stehen in popup.js UND welcome.js, der Test hält sie gleich und prüft, dass jeder benutzte Text-Schlüssel existiert.
 - **Ohne RookHub-Verbindung** (kein Token in `rookhubConfig`) zeigt `chessable-activity.js` bei JEDEM Laden einer chessable.com-Seite die Karte „RepCheck ist noch nicht mit RookHub verbunden" — ohne Token kann die Extension dort fast nichts. „Später" gilt nur für diese Seite, „Jetzt verbinden" öffnet die Willkommensseite bei `#connect`; ein Verbinden in einem anderen Tab räumt die Karte live weg. Solange sie gilt, wartet der Update-Hinweis. Alle Karten (Verbinden, Zustimmung zu getReview, Update-Hinweis) stapeln sich in EINEM Halter `#repcheck-banners` unten links (`bannerHost`/`bannerCard`) statt einzeln fixiert übereinander zu liegen.
-- **Userscript**: nichts davon (kein Worker, kein Popup).
 
 ## Oberflächensprache (v1.42.0+)
 
 Popup und In-Page-Panel sprechen **en/de/hr**. Einzige Quelle ist `extension/lib/i18n.js`
-(`RC_MESSAGES[lang][key]`); der Build (`npm run build:userscript`) kopiert sie zwischen die
-Sentinel-Marker `>>>REPCHECK-SHARED:i18n` in `repcheck.user.js` — die Region dort ist **generiert
+(`RC_MESSAGES[lang][key]`) — einquellig, seit dem Wegfall des Userscripts gibt es nichts mehr
+zu generieren (die dortige Region war **generiert
 und wird nicht von Hand editiert**.
 
 - **Sprachwahl**: `chrome.storage.local['rcLang']` (Extension) bzw. `GM_setValue('rcLang')`
-  (Userscript). Fehlt der Wert, entscheidet `navigator.languages`; Fallback ist `en`. Schalter
-  sitzt im Popup UND im In-Page-Panel (das Userscript hat kein Popup — dort ist das Panel die
+  Fehlt der Wert, entscheidet `navigator.languages`; Fallback ist `en`. Schalter
+  sitzt im Popup UND im In-Page-Panel (dort ist das Panel die
   einzige Einstellungsfläche).
 - **Warum nicht `chrome.i18n`/`_locales`**: das folgt der Browser-Sprache und ist zur Laufzeit
   nicht umschaltbar; RookHub hat aber eine Nutzer-Sprachwahl, und die soll hier genauso gehen.
   Dazu existiert `chrome.i18n` weder in der MAIN-World (`chessable-fen.js`, dort ist `chrome` das
-  Objekt der SEITE) noch unter Tampermonkey. Eine Tabelle lässt sich in beide Welten laden, eine
+  Objekt der SEITE). Eine Tabelle lässt sich in beide Welten laden, eine
   API nicht. `_locales` bleibt für die drei Manifest-Felder sinnvoll (siehe TODO).
 - **Plural** über `Intl.PluralRules`: Einträge sind `{ one, few, other }`. Kroatisch braucht die
   `few`-Form (1 linija / 2–4 linije / 5+ linija) — das Ternary-Muster des Bestands
@@ -79,13 +103,13 @@ und wird nicht von Hand editiert**.
   bekommen einen EIGENEN Schlüssel (`import.doneAppended` vs. `…Skipped`), weil der Zusatz nicht
   in jeder Sprache am Satzende steht.
 - **Neuer Text?** Schlüssel in `lib/i18n.js` in ALLEN drei Sprachen anlegen → `npm test`
-  (prüft Schlüssel-, Platzhalter- und Plural-Parität) → `npm run build:userscript`.
+  (prüft Schlüssel-, Platzhalter- und Plural-Parität).
 - **Noch nicht umgestellt**: die On-Page-Knopfleiste auf chessable.com (`chessable-fen.js`) —
   siehe TODO.md.
 
 ## Site-Adapter (v1.5.0+)
 
-`repcheck.user.js` und `extension/content.js` haben ein `ADAPTERS`-Objekt mit einem Eintrag pro unterstützter Plattform (`chesscom`, `lichess`). Jeder Adapter exportiert:
+`extension/content.js` hat ein `ADAPTERS`-Objekt mit einem Eintrag pro unterstützter Plattform (`chesscom`, `lichess`). Jeder Adapter exportiert:
 - `test(host)` — entscheidet, ob er für `location.hostname` zuständig ist
 - `isReviewPage()` — Site-spezifischer URL/DOM-Check für die Analyse-Seite
 - `getMoveListEl()` — liefert das Container-Element der Zugliste
@@ -111,13 +135,6 @@ Aufklapper (URL + `rkh_…` aus **Profil → Extension-Tokens**).
 das lebt nur auf chess.com/lichess. Wer die Extension für Chessable installiert hatte, musste erst
 chess.com aufrufen, um sie überhaupt verbinden zu können. Die Verbindung darf deshalb nie wieder an
 einer Site hängen — `test/rookhub-connect.test.js` hält das fest.
-
-### Setup (Userscript)
-1. In RookHub einloggen → **Profil → „Extension-Tokens"** → „Token erstellen" (Scope `extension`, Ablauf optional). Raw-Token erscheint einmalig — kopieren.
-2. Auf chess.com, lichess.org **oder chessable.com** im Repertoire-Settings-Panel (Zahnrad):
-   - **URL**: z. B. `https://rookhub.example.com` (ohne trailing slash; Protokoll http/https, der userscript respektiert beides).
-   - **Token**: `rkh_…` aus dem Profil.
-3. „Verbinden" → URL landet in IndexedDB (`RepertoireCheckerDB` / `rookhub` Store), der Token im GM-Storage. Ein einmaliger `POST /api/extension/analyze-game` mit leerer Zugliste verifiziert Auth und meldet die Anzahl gefundener Opening-Dateien.
 
 ### Ein-Klick-Verbindung (nur Extension, v1.55.0+)
 Ablauf in `background.js` (`pairStart` → `pairAttempt`), Zustand in `chrome.storage.local`
@@ -181,7 +198,7 @@ aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupli
 (User, Source, ExternalId). (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
 `{ pgn, sourceUrl }` — auf das reichere Format umgestellt, ohne den 📋-Copy-Pfad zu ändern.)
 
-- **Egress**: **Userscript** = `rookhubSaveGame()` direkter `fetch`; **Extension** = `rookhubProxy()`
+- **Egress**: `rookhubProxy()`
   zum Background-Worker (CORS-frei). Beide Pfade identisch außer diesem Fetch (wie `rookhubAnalyzeGame`).
 - **Privacy**: liest nur Zugliste + Seitentitel/URL lokal; sendet ausschließlich an die konfigurierte RookHub-Instanz.
 
@@ -196,8 +213,8 @@ kein Button-Umweg, direkt beim Öffnen des Popups sichtbar/kopierbar.
   dann `POST /api/extension/share-line { moves, title }` über den Background-Worker → `{ shareToken }`.
 - **Dedup**: serverseitig über die **Zugfolge** (nicht den variablen Seitentitel) → derselbe Spielstand
   liefert denselben Link (`SharedLineService.CreateStandaloneAsync`, RookHub).
-- **Nur Extension**: das Userscript hat kein Popup und definiert kein `__rdc_loaded` → `getCurrentLine`
-  lebt nur in `content.js`, NICHT im Userscript (wie die übrigen Popup-Pfade). Server-Endpoint ist geteilt.
+- `getCurrentLine`
+  lebt in `content.js`.
 - **Privacy/Egress**: wie „Partie speichern" — nur Zugliste + Seitentitel lokal gelesen, Egress via
   Background-Worker an die konfigurierte RookHub-Instanz.
 
@@ -219,10 +236,6 @@ und wird per Copy-Button im Popup in die Zwischenablage gegeben.
   `chrome.storage.local` Key `chessableToken`. Das Popup liest denselben Key
   (origin-uebergreifend, daher NICHT IndexedDB) und aktiviert „Token kopieren".
   Braucht die `storage`-Permission im Manifest.
-- **Userscript**: laeuft via `@match https://www.chessable.com/*` im
-  Page-Kontext; auf chessable wird **nur** ein TM-Menuekommando
-  „🔑 Chessable-Token kopieren" registriert (`GM_setClipboard`, `@grant`
-  ergaenzt) und sofort `return` — die Repertoire-Logik bleibt aus.
 - **Privacy**: rein lokal (localStorage → clipboard / chrome.storage.local),
   kein Netzwerk-Egress, kein Logging des Tokens.
 
@@ -235,7 +248,7 @@ Chessable-FEN-Suche, kursintern `/course/<id>/fen/…` mit Fallback global),
 s. u.). Die **XP-Anzeige** der zuletzt erspielten Punkte ist seit **v1.14.3
 vorerst deaktiviert** (Badge nicht gerendert, `initPointsTracker`/
 `attachNextVariationListener` nicht aufgerufen — Code bleibt für späteres
-Re-Aktivieren erhalten; gilt für Extension `chessable-fen.js` UND Userscript).
+Re-Aktivieren erhalten; gilt für `chessable-fen.js`).
 Ursprung:
 [chessable-extension](https://github.com/kahalm/chessable-extension) (v0.9.4),
 erweitert.
@@ -256,7 +269,6 @@ und werden ausgeliefert — nicht mehr gespiegelt (s. „Shared Core"). Egress w
 Activity-Tracking: **Extension** = chessable-fen.js (MAIN-World) postet per
 `window.postMessage` zur isolierten chessable-activity.js, die mit RookHub-Config
 + Background-Worker sendet (Token bleibt aus dem Page-Kontext);
-**Userscript** = `rememberLine()` liest GM-Config und `fetch`t direkt.
 
 - **FEN-Quelle**: bevorzugt die an den Brett-DOM-Knoten haengenden **React-Fiber-
   Props** (`fen`/`interactiveFen`) — nur so kommen Zugrecht/Rochade/Halbzug/
@@ -271,12 +283,6 @@ Activity-Tracking: **Extension** = chessable-fen.js (MAIN-World) postet per
   NICHT lesbar sind. Braucht KEINE chrome.*-APIs (Clipboard via
   `navigator.clipboard`, execCommand-Fallback), laeuft daher neben dem isolierten
   `chessable-token.js`.
-- **Userscript**: dieselbe Logik gekapselt in `initChessableFenTools()`, aufgerufen
-  im Chessable-Branch (vor dem fruehen `return`). In Tampermonkey ist der
-  React-Fiber direkt lesbar; Clipboard via `GM_setClipboard` (Fallback
-  navigator.clipboard). **Sync-Hinweis**: dies ist — wie chessable-token — ein
-  bewusst getrennter Codepfad zwischen Userscript (inline) und Extension
-  (`chessable-fen.js`, MAIN-World); bei Aenderungen beide angleichen.
 - **Privacy**: liest nur Seiten-DOM/React-State lokal; FEN geht in die
   Zwischenablage. „Search FEN" oeffnet einen chessable.com-Tab (reine Navigation,
   keine Datenweitergabe an Dritte). Kein zusaetzlicher Netzwerk-Egress.
@@ -295,23 +301,18 @@ eigene Kategorie **„Chessable"** des Trainingsziele-Trackers fließt.
 - **RookHub-Config-Sharing** ⚠️: URL+Token liegen in IndexedDB auf chess.com/lichess-
   Origin — auf chessable.com NICHT lesbar (origin-scoped). Daher spiegelt
   `saveRookhubConfig` die Config zusätzlich in **`chrome.storage.local`** (Extension)
-  bzw. **`GM_setValue`** (Userscript, origin-übergreifend). Das Activity-Script liest
+ . Das Activity-Script liest
   sie von dort; ohne Config wird nichts gemessen/gesendet.
 - **Extension**: `chessable-activity.js` läuft in der **isolierten** Welt (braucht
   `chrome.storage` + `chrome.runtime`); Egress CORS-frei über den Background-Worker
   (`rookhub-fetch`, POST). NICHT MAIN-World (anders als chessable-fen.js).
-- **Userscript**: gekapselt in `initChessableActivityTracking()` im Chessable-Branch;
-  Config via `GM_getValue('rookhubConfig')`, Egress per `fetch` (RookHub-`ExtensionPolicy`
-  erlaubt chessable.com + POST). Braucht `@grant GM_setValue`/`GM_getValue`.
-- **Sync-Hinweis**: getrennte Codepfade Userscript (`initChessableActivityTracking`)
-  ↔ Extension (`chessable-activity.js`) — bei Änderungen beide angleichen.
 - **Privacy**: misst nur lokal aus Seiten-DOM; sendet ausschließlich an die vom User
   konfigurierte RookHub-Instanz (Dauer in Sekunden + Zuganzahl, kein Seiteninhalt).
 
 ## Chessable getReview-Linien → RookHub (v1.50.0+; token-los + Default v1.51.0)
 
 Beim Training schneidet die Extension die rohe **getReview**-Antwort der gerade trainierten Linie
-mit (MAIN-World `chessable-capture.js` → isolierte `chessable-activity.js`; Userscript: fetch/XHR im
+mit (MAIN-World `chessable-capture.js` → isolierte `chessable-activity.js`; fetch/XHR im
 Page-Kontext) und schickt sie an RookHub (`POST /api/extension/chessable/review-lines`), wo sie als
 Lücken-Füller neben getGame landet (siehe RookHub-CLAUDE.md). Klassifikation in `lib/chessable-crawl.js`
 (`classifyChessableApi` → `{kind:'review',bid,oid}`), Puffer/Flush in `chessable-activity.js`
@@ -325,9 +326,6 @@ Egress-Origin). Der **erste** token-lose Versand ist EINMALIG zustimmungspflicht
 blendet ein In-Page-Banner ein (i18n `review.consent.*`), speichert `rcReviewConsent` = `granted`/`denied`
 (chrome.storage.local bzw. GM). Bis zur Zustimmung wird nur gepuffert; „Nicht senden" schaltet es dauerhaft
 ab. RookHub claimt die anonym gesammelten Linien, sobald der User seinen Chessable-Bearer verknüpft (uid-Match).
-- **Sync-Hinweis**: getrennte Codepfade Userscript (`initChessableBrowserImport`) ↔ Extension
-  (`chessable-activity.js`) — bei Änderungen beide angleichen. `classifyChessableApi` ist in beiden
-  hand-gespiegelt (KEINE generierte Region).
 - **Privacy/Store**: der Default sendet an den Autor-Server — offengelegt in `PRIVACY.md`/`docs/privacy.md`,
   und NUR nach ausdrücklicher Zustimmung. Beim Ändern nicht die Zustimmungspflicht/Offenlegung entfernen.
 
@@ -340,7 +338,7 @@ XHR `send`-Argument) → Bridge mit `req:true` → `harvestFromSaveProgress` in 
 (parst `{uid, data}`, `data` ist ein JSON-STRING mit `{moves:[…]}`), gruppiert je (bid|oid) und sendet
 Batches an `POST /api/extension/chessable/session-moves` (RookHub: append-only Roh-Log
 `ChessableSessionMoves`, Auswertung offen). **NUR mit RookHub-Token** (wie problem-moves) — der Anon-Pfad
-bekommt KEINE Sitzungsdaten; entsprechend in PRIVACY.md/docs/privacy.md offengelegt. Userscript:
+bekommt KEINE Sitzungsdaten; entsprechend in PRIVACY.md/docs/privacy.md offengelegt.
 hand-gespiegelt in `initChessableBrowserImport` (direkter `fetch`).
 
 **Zen auf dem Handy (v1.54.1):** Das Zen-Brett liegt per `position:fixed` + z-index ÜBER dem Backdrop — das
@@ -350,7 +348,7 @@ container-type/will-change/positioniertes z-index/opacity<1). Chessables mobiles
 solche Vorfahren von Brett UND Panel für die Zen-Dauer (Inline-!important, `zenRestoreAncestors` beim Verlassen);
 kein DOM-Umbau. Zweite Handy-Falle: das rechts angedockte Panel (≥280 px + 24) liess auf 390 px Breite ein ~80-px-
 Brett übrig → `zenNarrow()` (innerWidth<720 oder hochkant) dockt das Panel UNTEN an (`zenPanelPlace`, 34 vh,
-vertikale Reserve `zenReservedBottom`), kein Auto-Öffnen, Brett-Minimum 160 px. Extension + Userscript.
+vertikale Reserve `zenReservedBottom`), kein Auto-Öffnen, Brett-Minimum 160 px.
 
 **Cached-Count-Overlays (v1.52.0):** `annotateDom` heftet neben den ✓/○-Linien-Markern jetzt auch
 Zähl-Badges: auf `/course/{bid}` pro Kapitel `done/total` (Anker `a[href*="/course/{bid}/{lid}"]`, lid exakt
@@ -361,24 +359,24 @@ Nur mit RookHub-Token (Zähler kommen aus `GET /chessable/progress?bid=`). i18n 
 
 **Chessable-Hint-Button (v1.52.0):** `clickChessableHint` klickt primär `[data-testid="squareHintButton"]`
 (Chessables Hint ist ein Icon-DIV mit Glocke, KEIN `<button>` → die alte Text-über-`button`-Suche fand ihn
-nie). Fallback bleibt die Textsuche, jetzt inkl. `div[data-testid]`. Extension `chessable-fen.js` + Userscript.
+nie). Fallback bleibt die Textsuche, jetzt inkl. `div[data-testid]`. `chessable-fen.js`.
 
 **Chessable-Next-Button (v1.53.4):** `clickChessableNext` klickt primär `[data-testid="nextLessonButton"]`.
 Chessables Next trägt ZWEI Label-Spans („Next variation" `not-in-mobile` + „Next" `not-in-desktop`) →
 `textContent` ist „Next variationNext" und die exakte Textsuche griff nie („Kein „Next" da" im Zen).
 Fallback bleibt die Textsuche; der Line-Reset-Listener (`NEXT_LABEL_RE`) erkennt die testid ebenfalls.
-Extension `chessable-fen.js` + Userscript.
+`chessable-fen.js`.
 
 ## Extension-Architektur (`extension/`)
 
 ```
 extension/
 ├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com (chessable hat ZWEI: token=isoliert, fen=world:MAIN); permissions: scripting/activeTab/storage
-├── content.js          # Hauptlogik (port vom Userscript)
+├── content.js          # Hauptlogik
 ├── chessable-token.js    # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
 ├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub; hält zudem den Browser-Kurs-Import-Zustand (Crawl/Mitschnitt/Live/Fortschritt) + chrome.runtime.onMessage-Bridge (`{type:'rc-import'}`), gesteuert vom Popup (kein On-Page-Panel mehr; ✓/○-Marker an den Linien bleiben)
 ├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
-├── lib/chessable-course-names.js # geteilter Kern der Kursnamen-Auflösung (uid-Decode + getHomeData-Parsing + isNavLabel), Node-getestet; wird per Manifest in BEIDEN chessable-Welten geladen (isoliert vor chessable-activity.js, MAIN vor chessable-fen.js) → `self.RepCheckCourseNames`; ins Userscript kopiert der Build (Sentinel `>>>REPCHECK-SHARED:chessable-course-names`). Keine Inline-Kopien mehr — test/chessable-course-names.test.js hält das fest
+├── lib/chessable-course-names.js # geteilter Kern der Kursnamen-Auflösung (uid-Decode + getHomeData-Parsing + isNavLabel), Node-getestet; wird per Manifest in BEIDEN chessable-Welten geladen (isoliert vor chessable-activity.js, MAIN vor chessable-fen.js) → `self.RepCheckCourseNames`. Keine Inline-Kopien mehr — test/chessable-course-names.test.js hält das fest
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei); öffnet nach der Installation die Willkommensseite
 ├── welcome.html / .js  # Willkommensseite (v1.59.0): verbinden, was RepCheck wo tut, Chessable-Buttons ankreuzen
 ├── popup.html / .js    # Toolbar-Button: Cache-Status + „Chessable-Token kopieren" + Sharebar + RookHub-Import (Browser) auf chessable.com [Ziel/Crawl/Mitschnitt/Live/Fortschritt, pollt chessable-activity.js per rc-import; Extension-only] + Chessable-Button-Einstellungen [chrome.storage.local `chessableButtons`, pro Button ein-/ausblendbar]. „Einstellungen"-Knopf klappt seit v1.55.0 IMMER die Popup-Einstellungen auf (`#settings-box`): RookHub-Verbindung [1-Klick-Verbinden + Rückfall „Token von Hand"] + Chessable-Buttons + Kurs-holen-Pause [`crawlDelay`, nur nach oben] + auf chess.com/lichess zusätzlich „Ordner / PGN auf der Seite…" → In-Page-Panel (openSettings)
@@ -411,7 +409,7 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 
 Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst beibehalten:
 
-- **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`) bzw. Tampermonkey-GM-Storage; im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token), `saveRookhubConfig()` schreibt ins IDB nur `{ url }`. Gilt für Extension UND Userscript.
+- **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`); im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token), `saveRookhubConfig()` schreibt ins IDB nur `{ url }`.
 - **MAIN↔isoliert postMessage-Bridge** (`chessable-fen.js` ↔ `chessable-activity.js`): Empfänger prüfen `e.source === window` **UND** `e.origin === location.origin`. Rest-Risiko (same-origin Page-Skript könnte Bridge-Messages fälschen) ist bewusst akzeptiert — der Token bleibt aus dem Page-Kontext heraus, Impact wäre nur Daten-Injection, kein Token-Diebstahl. Ein Handshake-Nonce hilft hier nicht robust (MAIN-World ist page-beobachtbar).
 - **Background-Egress** (`background.js`): nur `type:'rookhub-fetch'` von `sender.id === chrome.runtime.id`, Ziel-Origin MUSS = `rookhubConfig.url`-Origin, **HTTPS-only** (http nur für `localhost`/`127.0.0.1`), `credentials:'omit'`. Kein offener Proxy.
 - **Ein-Klick-Verbindung** (`background.js` `pairAttempt`): das RookHub-JWT wird nur nach ausdrücklichem Nutzer-Klick, nur aus einem Tab mit passender Ziel-Origin gelesen, nie gespeichert und nur für den einen `POST /api/profile/tokens` verwendet. Persistiert wird ausschliesslich der zurueckgegebene `rkh_`-Token — extension-privat wie bisher. Der Token wird im Popup (Extension-Origin) eingegeben, nicht mehr im Seiten-DOM.
@@ -426,7 +424,7 @@ Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst b
 ### Veroeffentlichungs-Workflow (Stand 2026-06-11)
 
 **Vor jeder neuen Version**: `version` in `manifest.json` UND `@version` im
-Userscript synchron erhoehen (siehe „Versioning" oben).
+erhoehen (siehe „Versioning" oben).
 
 **Firefox AMO — das Add-on ist LISTED (öffentliche addons.mozilla.org-Seite,
 NICHT self-hosted).**

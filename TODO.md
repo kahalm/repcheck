@@ -149,28 +149,21 @@ Wiederkehrend (kein einmaliges TODO):
 - [ ] **Edge Add-ons Submission**
   Chrome-Store-Extensions sind in Edge automatisch installierbar. Eine eigene [Edge-Submission](https://partner.microsoft.com/dashboard/microsoftedge/) ist trotzdem möglich (kostenlos), erhöht aber Pflegeaufwand.
 
-- [ ] **Userscript-Distribution** (alternative für User ohne Store-Extension)
-  Tampermonkey-User können direkt von GitHub-Raw installieren:
-  `https://raw.githubusercontent.com/kahalm/repcheck/master/repcheck.user.js`
-  
-  Auto-Update läuft bereits über die `@updateURL`/`@downloadURL` im Header.
-  Eventuell: in Greasy Fork oder OpenUserJS listen für Discoverability.
-
 - [ ] **Echte Icons** (statt der jetzt-rein-geometrischen Turm-Silhouette)
   Wenn jemand mit Grafik-Sense Lust hat: ein 128×128-PNG mit ordentlicher Schach-Turm-Illustration ersetzen. `extension/generate-icons.py` kann auch entfernt werden, wenn die PNGs handgemacht sind.
 
-- [ ] **Code-Sync-Script** zwischen `repcheck.user.js` (Userscript) und `extension/content.js` (Extension)
-  Aktuell pflegen wir beide getrennt. Klein und überschaubar, aber bei der nächsten größeren Feature-Änderung leicht zu vergessen. Ein Build-Script, das nur die `rookhub*Fetch*`-Funktionen austauscht, würde Konsistenz garantieren.
+- [x] **Code-Sync-Script zwischen Userscript und Extension** — HINFÄLLIG seit 2026-09-20:
+  das Userscript ist entfallen, es gibt nur noch die Extension. Es gibt nichts mehr zu syncen.
 
 - [x] **i18n für die Einstellungs-UI** — ERLEDIGT v1.42.0 (en/de/hr, Sprachwahl im Popup UND im
-  In-Page-Panel; `extension/lib/i18n.js` ist die einzige Quelle und wird per Build ins Userscript
-  gespiegelt). Umgestellt sind Popup, In-Page-Panel (beide Distributionen), Prüf-Ergebnis,
+  In-Page-Panel; `extension/lib/i18n.js` ist die einzige Quelle). Umgestellt sind Popup,
+  In-Page-Panel, Prüf-Ergebnis,
   Knopf-Tooltips auf chess.com/lichess und der komplette Chessable-Browser-Import.
   Vorgefunden war übrigens KEIN reines Deutsch, sondern ein Mischmasch — „Repertoire Settings",
   „Select PGN Folder", „Close" standen englisch neben „Verbinden" und „RookHub: verbinde…".
 
 - [ ] **i18n Teil 2: die On-Page-Knopfleiste auf chessable.com** (bewusst nicht in v1.42.0)
-  `extension/chessable-fen.js` + sein Spiegel in `repcheck.user.js` (~26 Texte: Knopf-Tooltips,
+  `extension/chessable-fen.js` (~26 Texte: Knopf-Tooltips,
   `flash()`-Kurzmeldungen, das Zug-Rückmeldungs-Panel). Steckt in der MAIN-World, hat also weder
   `chrome.*` noch Zugriff auf die Sprachwahl. Der Weg ist klar und die Bausteine liegen:
   `lib/i18n.js` ist reine Logik ohne `chrome.*` und lässt sich als viertes MAIN-World-Script VOR
@@ -199,5 +192,5 @@ Wiederkehrend (kein einmaliges TODO):
 - [x] MIT-Lizenz
 - [x] GitHub-Actions Build-Workflow
 - [x] GitHub-Actions Release-Workflow (mit optional AMO-Sign)
-- [x] Userscript-Auto-Update via `@updateURL`/`@downloadURL`
+- [x] Userscript-Auto-Update via `@updateURL`/`@downloadURL` (mit dem Userscript 2026-09-20 entfallen)
 - [x] README + CLAUDE.md aktualisiert

@@ -1,12 +1,11 @@
 // Geteilte Auswertung von Chessables Zug-Rückmeldung.
 //
-// Logik NUR hier ändern, dann `npm run build:userscript` — der Build kopiert den Kern zwischen
-// die Sentinel-Marker in repcheck.user.js. NICHT die generierte Region im Userscript editieren.
+// Logik NUR hier ändern — es gibt keine zweite Fassung mehr.
 //
-// Warum geteilt: die Zuordnung Icon-Klasse → Zustand brauchen inzwischen DREI Stellen —
-// chessable-fen.js (Farbe der XP-Plakette, MAIN-World), chessable-activity.js (Genauigkeit je
-// Linie, isolierte Welt) und der Userscript-Spiegel. Genau solche Dreifach-Kopien hat der
-// Codereview 2026-08-07 als Drift-Risiko benannt.
+// Warum geteilt: die Zuordnung Icon-Klasse → Zustand brauchen ZWEI Stellen —
+// chessable-fen.js (Farbe der XP-Plakette, MAIN-World) und chessable-activity.js (Genauigkeit
+// je Linie, isolierte Welt). Genau solche Mehrfach-Kopien hat der Codereview 2026-08-07 als
+// Drift-Risiko benannt.
 //
 // Bewusst über die ICON-KLASSE statt über den Text: „Overstudied“, „Incorrect“ usw. heißen in
 // jeder Chessable-Kontosprache anders, die Klassennamen nicht.
@@ -37,7 +36,7 @@ function rcFeedbackIsFehler(kind) {
 }
 
 // Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts in BEIDEN Welten). Im
-// Userscript steht der Kern direkt im IIFE-Scope, dort greift keiner der beiden Zweige.
+// Früher stand der Kern im Userscript direkt im IIFE-Scope, dort griff keiner der beiden Zweige.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { RC_FEEDBACK_KINDS, rcFeedbackKindFromClass, rcFeedbackIsFehler };
 }

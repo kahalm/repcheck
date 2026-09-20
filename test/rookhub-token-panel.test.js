@@ -7,7 +7,7 @@
 // Token hinterlegt ist, und der Connect-Handler greift bei leerem Feld auf den
 // gespeicherten Token zurueck — der Ablauf fuer den Nutzer bleibt gleich.
 //
-// Die Panel-Glue-Logik ist zwischen extension/content.js und repcheck.user.js
+// Die Panel-Glue-Logik lag frueher doppelt vor (extension/content.js und repcheck.user.js);
 // hand-gespiegelt und in Node nicht als Ganzes ladbar (IIFE + DOM). Die Tests
 // schneiden daher die ECHTEN Codebloecke per stabiler Anker aus beiden Dateien
 // und fuehren sie mit Stubs aus — laufen also gegen den ausgelieferten Code
@@ -20,7 +20,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const lies = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-const DATEIEN = ['extension/content.js', 'repcheck.user.js'];
+const DATEIEN = ['extension/content.js'];
 
 function schnipsel(src, vonAnker, bisAnker, datei) {
   const von = src.indexOf(vonAnker);

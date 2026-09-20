@@ -53,8 +53,4 @@ test('die Laufzeit-Dateien haben keine eigene Klassen-Zuordnung mehr', () => {
     assert.ok(!src.includes("includes('icon--correct')"),
       `${rel} enthält wieder eine eigene Icon-Zuordnung — lib/chessable-feedback.js benutzen`);
   }
-  // Im Userscript steht der Kern generiert zwischen den Sentinels; dort GENAU einmal.
-  const user = fs.readFileSync(path.join(wurzel, 'repcheck.user.js'), 'utf8');
-  const treffer = user.split("includes('icon--correct')").length - 1;
-  assert.strictEqual(treffer, 1, `Userscript: ${treffer} Zuordnungen statt genau einer (generierte Region)`);
 });

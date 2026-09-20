@@ -8,7 +8,6 @@ Zwei Distributions-Pfade:
 
 | Variante | Datei / Verzeichnis | Installation |
 |----------|---------------------|--------------|
-| **Tampermonkey-Userscript** | `repcheck.user.js` | Tampermonkey → New Script → Datei einfügen, oder direkt von GitHub-Raw-URL importieren |
 | **Browser-Extension (MV3)** | `extension/` | Lokal: Chrome `chrome://extensions/` → „Entpackt laden" · Firefox `about:debugging` → „Temporäres Add-on" · Submission: Chrome Web Store / Firefox AMO (siehe unten) |
 
 Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layout (`RepertoireCheckerDB`) — User können wechseln, ohne URL/Token erneut zu hinterlegen.
@@ -45,7 +44,6 @@ Die FEN wird bevorzugt aus dem internen React-State von Chessable gelesen (korre
 [piratechess](https://github.com/kahalm/piratechess) exportiert gekaufte Chessable-Kurse als PGN und braucht dafür den Chessable-API-Token (ein JWT). RepCheck liest genau diesen Token rein lokal aus und gibt ihn nur auf Knopfdruck in die Zwischenablage, damit man ihn dort einfügen kann:
 
 - **Extension**: Auf `chessable.com` eingeloggt sein → RepCheck-Icon in der Toolbar anklicken → unter „Chessable-Token" auf **„Token kopieren"**. Das Token wird aus `localStorage['chessable.web.production.JWT']` gelesen, in `chrome.storage.local` zwischengespeichert und beim Klick in die Zwischenablage kopiert. Es wird **nicht** angezeigt (zu lang) und **nirgendwohin gesendet**.
-- **Userscript**: Auf `chessable.com` das Tampermonkey-Menü öffnen → **„🔑 Chessable-Token kopieren"** (nutzt `GM_setClipboard`). Auf Chessable läuft sonst keine Repertoire-Logik.
 
 ## Setup für die Browser-Extension
 
@@ -56,10 +54,10 @@ Das geht auf jedem Tab (auch auf chessable.com). RepCheck öffnet dazu RookHub, 
 deine Anmeldung und legt den Zugriffs-Token selbst an; er taucht in RookHub unter **Profil →
 Extension-Tokens** als „RepCheck (Chrome/Firefox)" auf und ist dort jederzeit widerrufbar.
 
-**Von Hand (Userscript, Selbsthoster, Sonderfälle)**:
+**Von Hand (Selbsthoster, Sonderfälle)**:
 1. In RookHub einloggen → **Profil → „Extension-Tokens"** → „Token erstellen" (Scope `extension`).
 2. Den Raw-Token (`rkh_…`) **einmalig** beim Anlegen kopieren.
-3. Extension: „Einstellungen" → „Token von Hand eintragen" · Userscript: ⚙ im Repertoire-Banner.
+3. „Einstellungen" → „Token von Hand eintragen".
 
 ### Lokale Entwicklung / temporäres Testen
 
@@ -120,10 +118,9 @@ Chrome-Store-Extensions sind in Edge automatisch installierbar. Eigene Edge-Subm
 
 ```
 repcheck/
-├── repcheck.user.js   # Tampermonkey-Userscript (eigenständig)
 ├── extension/                    # Browser-Extension (MV3)
 │   ├── manifest.json
-│   ├── content.js                # Logik wie Userscript, RookHub-Fetches über Background
+│   ├── content.js                # Hauptlogik, RookHub-Fetches über Background
 │   ├── chessable-token.js        # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
 │   ├── chessable-activity.js     # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → RookHub
 │   ├── chessable-fen.js          # Content-Script (world: MAIN) auf chessable.com: FEN-Copy/Search + XP-Anzeige

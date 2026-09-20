@@ -115,18 +115,3 @@ test('rcResolveLang: Nutzerwahl schlägt Browsersprache', () => {
   assert.strictEqual(rcResolveLang('klingonisch', ['de']), 'de'); // ungültige Wahl wird ignoriert
 });
 
-// Drift-Guard: die Tabelle wird per Build in repcheck.user.js kopiert. Läuft der Build nicht,
-// zeigt das Userscript andere Texte als die Extension — genau die Klasse Fehler, für die es im
-// Repo schon einen Guard gibt (test/chessable-course-names.test.js).
-test('die Shared-Region im Userscript ist mit lib/i18n.js gebaut', () => {
-  const user = fs.readFileSync(path.join(__dirname, '../repcheck.user.js'), 'utf8');
-  const von = user.indexOf('// >>>REPCHECK-SHARED:i18n');
-  const bis = user.indexOf('// <<<REPCHECK-SHARED:i18n');
-  assert.ok(von >= 0 && bis > von, 'Sentinel-Marker für i18n fehlen im Userscript');
-  const region = user.slice(von, bis);
-  // Stichproben aus allen drei Sprachen — die Region muss die echte Tabelle enthalten.
-  for (const probe of [RC_MESSAGES.de['panel.connect'], RC_MESSAGES.en['panel.close'], RC_MESSAGES.hr['panel.close']]) {
-    assert.ok(region.includes(probe),
-      `„${probe}“ fehlt in der generierten Region — npm run build:userscript vergessen?`);
-  }
-});

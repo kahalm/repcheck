@@ -100,14 +100,13 @@ test('isNavLabel lässt echte Kurstitel durch', () => {
 // ─── Auslieferung: die getestete Lib IST der Laufzeit-Code ──────────────────────────────
 //
 // Früher standen hier Drift-Guards: die Lib war eine reine Spiegel-Datei, ausgeführt wurden
-// drei hand-gepflegte Kopien von isNavLabel (chessable-activity.js, chessable-fen.js,
-// repcheck.user.js) — die prompt auseinanderliefen. Seit der Umstellung gibt es keine Kopien
-// mehr; die folgenden Tests belegen stattdessen, dass die Lib tatsächlich ausgeliefert und
-// benutzt wird. Ohne Manifest-Eintrag bzw. mit einer wiederauferstandenen Inline-Kopie
-// schlagen sie fehl.
+// hand-gepflegte Kopien von isNavLabel (chessable-activity.js, chessable-fen.js) — die prompt
+// auseinanderliefen. Seit der Umstellung gibt es keine Kopien mehr; die folgenden Tests belegen
+// stattdessen, dass die Lib tatsächlich ausgeliefert und benutzt wird. Ohne Manifest-Eintrag bzw.
+// mit einer wiederauferstandenen Inline-Kopie schlagen sie fehl.
 
-// Erkennungszeichen einer eigenen Kopie: das Nav-Label-Regex. Steht es außerhalb der Lib bzw.
-// außerhalb der generierten Userscript-Region, hat sich jemand wieder eine Kopie gebaut.
+// Erkennungszeichen einer eigenen Kopie: das Nav-Label-Regex. Steht es außerhalb der Lib, hat
+// sich jemand wieder eine Kopie gebaut.
 const KOPIE_MARKER = 'practice( moves)?';
 
 test('manifest.json liefert lib/chessable-course-names.js in BEIDEN Welten aus', () => {
@@ -153,31 +152,6 @@ test('die Extension-Laufzeitdateien benutzen die Lib statt eigener Definitionen'
     'chessable-activity.js: decodiert die uid nicht über die Lib');
   assert.ok(activity.includes('CourseNames.parseCourseNameMap'),
     'chessable-activity.js: parst getHomeData nicht über die Lib');
-});
-
-test('das Userscript hat die Lib generiert eingebettet und keine Kopie daneben', () => {
-  const user = lies('repcheck.user.js');
-  const von = user.indexOf('// >>>REPCHECK-SHARED:chessable-course-names');
-  const bis = user.indexOf('// <<<REPCHECK-SHARED:chessable-course-names');
-  assert.ok(von >= 0 && bis > von, 'Sentinel-Marker für chessable-course-names fehlen');
-  const region = user.slice(von, bis);
-
-  // Die Region muss den Kern der Lib enthalten — sonst lief `npm run build:userscript` nicht.
-  const lib = lies('extension/lib/chessable-course-names.js');
-  const kern = lib.slice(lib.indexOf('function rcB64UrlDecode'), lib.indexOf('// Node/CommonJS-Export')).trimEnd();
-  for (const zeile of kern.split('\n').filter((l) => l.trim())) {
-    assert.ok(region.includes(zeile.trim()),
-      `Zeile fehlt in der generierten Region (npm run build:userscript vergessen?): ${zeile.trim()}`);
-  }
-
-  // Und außerhalb der Region darf es keine zweite Fassung geben.
-  const davor = user.slice(0, von);
-  const danach = user.slice(bis);
-  assert.ok(!davor.includes(KOPIE_MARKER) && !danach.includes(KOPIE_MARKER),
-    'repcheck.user.js: isNavLabel-Kopie außerhalb der generierten Region');
-  assert.ok(!danach.includes('function decodeUid'),
-    'repcheck.user.js: eigener uid-Decoder außerhalb der generierten Region');
-  assert.ok(user.includes('rcIsNavLabel('), 'repcheck.user.js: benutzt rcIsNavLabel nicht');
 });
 
 // ---- Kurstitel aus dem Kacheltext (2026-09-19) ----------------------------------------------------------

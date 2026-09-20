@@ -1,8 +1,6 @@
 // Geteilte Übersetzungen für die RepCheck-Oberflächen (Popup + In-Page-Einstellungs-Panel).
 //
-// Logik NUR hier ändern, dann `npm run build:userscript` — der Build kopiert den Kern zwischen
-// die Sentinel-Marker in repcheck.user.js. NICHT die generierte Region im Userscript von Hand
-// editieren.
+// Logik NUR hier ändern — es gibt keine zweite Fassung mehr.
 //
 // Aufbau:
 //   RC_MESSAGES[lang][key] = 'Text mit {platzhalter}'
@@ -14,8 +12,7 @@
 // Warum ein eigenes Modul statt `chrome.i18n`/`_locales`: chrome.i18n folgt der BROWSER-Sprache
 // und lässt sich vom Nutzer nicht umstellen; RookHub hat aber eine eigene Sprachwahl, und die
 // soll hier genauso funktionieren. Dazu kommt: `chrome.i18n` steht weder im MAIN-World-Script
-// (chessable-fen.js) noch im Tampermonkey-Userscript zur Verfügung — beide Distributionen
-// brauchen dieselbe Tabelle. Die Store-Metadaten (Name/Beschreibung) bleiben davon unberührt.
+// (chessable-fen.js) zur Verfügung. Die Store-Metadaten (Name/Beschreibung) bleiben davon unberührt.
 
 const RC_LANGS = ['en', 'de', 'hr'];
 const RC_FALLBACK = 'en';
@@ -322,7 +319,7 @@ const RC_MESSAGES = {
     'err.noChapters': 'No chapters found',
     'err.noLines': 'No lines fetched',
 
-    // — Tampermonkey-Menü (nur Userscript) —
+    // — Menü-Einträge (Altbestand, seit dem Wegfall des Userscripts ungenutzt) —
     'menu.check': '♟ Check',
     'menu.settings': '⚙ Settings',
     'menu.copyChessableToken': '🔑 Copy Chessable token',
@@ -926,7 +923,7 @@ function rcNormalizeLang(tag) {
  * Sprache bestimmen: ausdrückliche Wahl des Nutzers schlägt alles, sonst die Browsersprache,
  * sonst Englisch. `gespeichert` kommt aus dem jeweiligen Speicher der Distribution
  * (chrome.storage.local bzw. GM-Storage) — dieses Modul kennt keinen Speicher, damit es
- * unverändert in Node, im Content-Script und im Userscript läuft.
+ * unverändert in Node und im Content-Script läuft.
  */
 function rcResolveLang(gespeichert, navigatorSprachen) {
   if (gespeichert && RC_LANGS.indexOf(String(gespeichert).toLowerCase()) >= 0) {
@@ -979,7 +976,7 @@ function rcTranslate(lang, key, params) {
   ));
 }
 
-// Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts). Im Userscript steht der
+// Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts). Früher stand der
 // Kern direkt im IIFE-Scope, dort greift keiner der beiden Zweige.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { RC_LANGS, RC_FALLBACK, RC_MESSAGES, rcNormalizeLang, rcResolveLang, rcPluralForm, rcTranslate };

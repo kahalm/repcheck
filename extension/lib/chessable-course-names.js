@@ -5,9 +5,6 @@
 //   - Extension: wird per manifest.json als Content-Script geladen, und zwar VOR
 //     chessable-activity.js (isolierte Welt) UND vor chessable-fen.js (MAIN-World); beide holen
 //     sich die Funktionen über `self.RepCheckCourseNames`.
-//   - Userscript: build/assemble.mjs kopiert den Kern zwischen die Sentinel-Marker
-//     `>>>REPCHECK-SHARED:chessable-course-names` in repcheck.user.js (dort stehen die
-//     Funktionen einfach im IIFE-Scope).
 //
 // Die `rc`-Präfixe sind kein Zierrat: in der MAIN-World landen Top-Level-Deklarationen im
 // `window` der Seite — ein generisches `isNavLabel` würde sich dort mit Seitencode ins Gehege
@@ -78,7 +75,7 @@ function rcCleanCourseTitle(txt) {
   return cut || null;
 }
 
-// Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts). Im Userscript steht der Kern
+// Node/CommonJS-Export (Tests) + Browser-Global (Content-Scripts). Früher steht der Kern
 // direkt im IIFE-Scope, dort greift keiner der beiden Zweige.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { rcB64UrlDecode, rcDecodeChessableUid, rcParseCourseNameMap, rcIsNavLabel, rcCleanCourseTitle };

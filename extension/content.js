@@ -1,7 +1,6 @@
 // RepCheck — Opening Repertoire Deviation Checker — Content script.
 //
-// Gleiche Logik wie das Tampermonkey-Userscript im Root des Repos
-// (`repcheck.user.js`), aber fuer den Browser-Extension-Kontext
+// Hauptlogik im Browser-Extension-Kontext
 // angepasst: RookHub-Fetches laufen ueber den Background-Service-Worker
 // (`background.js`), damit CORS unabhaengig von der RookHub-Server-Policy
 // klappt. IndexedDB-Layout (DB `RepertoireCheckerDB`) ist identisch — User
@@ -1104,7 +1103,7 @@
   // („Einstellungen"); das Prüf-Ergebnis bleibt direkt in der Zugliste farblich
   // markiert (highlightDeviation). showBanner bleibt als No-op, damit die
   // bestehenden Aufrufer unverändert bleiben.
-  // ⚠️ Userscript-Sync: Im Userscript bleibt showBanner AKTIV (kein Popup dort).
+  // showBanner ist hier ein No-op (Einstellungen laufen über das Popup).
   function showBanner(_message, _type) { /* extension: kein ⚙-Banner mehr */ }
 
   function highlightDeviation(index, gaps, inRepertoire) {

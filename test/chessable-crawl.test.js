@@ -125,7 +125,7 @@ test('pickCrawlDelayMs: eine zu schnelle Einstellung wird auch beim Würfeln nic
 });
 
 test('Crawl-Schleifen: keine feste 3-s-Pause mehr, und keine Pause für Mitgeschnittenes', () => {
-  for (const datei of ['extension/chessable-activity.js', 'repcheck.user.js']) {
+  for (const datei of ['extension/chessable-activity.js']) {
     const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', datei), 'utf8');
     assert.ok(!/sleep\((CRAWL_)?INTER_MS\)/.test(src), `${datei}: feste Pause gefunden`);
     assert.ok(src.includes('if (!fromCapture) await sleep(crawlPauseMs())'), `${datei}: Kapitel-Pause nicht an echten Abruf gebunden`);
