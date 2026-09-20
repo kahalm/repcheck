@@ -1403,16 +1403,29 @@
   }
 
   // V2: Kurs aktiv holen (getCourse→getList→getGame).
-  //  • Repertoire (Default): INKREMENTELL — Linien, deren oid schon auf RookHub liegt, werden NICHT erneut von
-  //    Chessable geholt; nur die neuen werden per ingestLive angehängt (AppendLiveAsync dedupt per Zugtext).
-  //    Spart Chessable-Abrufe (Tempo + Ban-Risiko) beim erneuten „Kurs holen".
-  //  • Buch: weiterhin VOLLSTÄNDIG holen + kapitelweise streamen (ingestChunk) — die Buch-LineId hängt an der
-  //    Round-Nummer (Kapitel.Linie), daher braucht der Parser den ganzen Kurs am Stück (kein Skip).
+  //
+  // BEIDE Ziele holen INKREMENTELL (v1.63.0): Linien, deren oid schon auf RookHub liegt, werden nicht
+  // erneut von Chessable geholt. Das spart Abrufe, Zeit und Ban-Risiko — bei einem halb importierten
+  // Kurs ist das der Unterschied zwischen „1290 Linien noch einmal" und „nur die fehlenden 591".
+  //
+  // Das Buch war davon bis v1.62.0 ausgenommen, weil seine LineId an der Round-Nummer (Kapitel.Linie)
+  // hängt und ein Skip die Nummerierung verschiebt. Seit RookHub 0.496.0 ist die Chessable-oid die
+  // Identität einer Linie, die Nummer nur noch ein Etikett; 0.497.1 sucht bei einer Kollision den
+  // nächsten freien Platz. Deshalb schickt jeder Chunk `partial`, sobald etwas übersprungen wurde —
+  // daran erkennt der Server, dass eine Nummern-Kollision NICHTS über die Identität aussagt.
+  // ⚠️ Braucht RookHub ≥ 0.497.1. Gegen einen älteren Server würde ein Teil-Import Linien verlieren.
+  //
+  // Was sich NICHT ändert: der Transportweg. Das Buch streamt weiter über die Chunk-Sitzung
+  // (`ingest/chunk`) — daran hängen Import-Eintrag, Benachrichtigung und der Watchdog; das Repertoire
+  // hängt über `ingest/live` an. Das ist ein Unterschied im Lebenszyklus, keine doppelte Logik.
   async function crawlAndImport(target) {
     if (crawling) return; crawling = true; crawlStartedAt = Date.now(); cancelRequested = false;
     const bid = currentCourseId();
     const sessionId = newSessionId();
-    const incremental = target !== 'book';
+    // Zwei getrennte Fragen, die früher EIN Schalter waren: was wird geholt, und wie wird es geschickt.
+    const skipKnown = true;                    // beide Ziele überspringen, was schon auf RookHub liegt
+    const viaSession = target === 'book';      // Buch: Chunk-Sitzung (Import-Eintrag); Repertoire: Live-Append
+    const incremental = !viaSession;           // nur noch: „sammelt für den Live-Append"
     // Nur fürs inkrementelle Anhängen gesammelt. Außerhalb des try, damit ein Abbruch wegen einer unerwarteten
     // Chessable-Antwort die bis dahin geholten (geprüften) Linien noch speichern kann.
     const newChapters = [];
@@ -1425,11 +1438,11 @@
 
       // Schon importierte oids (nur fürs inkrementelle Repertoire-Anhängen). Fehlt der Endpoint (alte
       // RookHub-Version) → leere Menge → es wird alles geholt (via Append, weiterhin dedupt).
-      let already = new Set();
-      if (incremental) {
-        const prog = await fetchImportedOids(bid);
-        already = new Set((prog && prog.oids) || []);
-      }
+      const prog = await fetchImportedOids(bid);
+      const already = new Set((prog && prog.oids) || []);
+      // Teil-Import: es wird etwas ausgelassen, der Stapel ist also nicht der ganze Kurs. Daran liest
+      // der Server ab, dass eine Kollision der Positionsnummer nichts über die Identität aussagt.
+      const partial = skipKnown && already.size > 0;
 
       setStatus(t('import.fetchingStructure'));
       const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
@@ -1448,12 +1461,12 @@
         const oids = Crawl.parseLineOids(listText);
         lists.push({ lid, listText, oids });
         total += oids.length;
-        toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length;
+        toFetch += skipKnown ? oids.filter(o => !already.has(String(o))).length : oids.length;
         if (!fromCapture) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf, nicht für Mitgeschnittenes
       }
       const courseName = bestCourseName(bid);
 
-      if (incremental && toFetch === 0) {
+      if (skipKnown && toFetch === 0) {
         setStatus(t('import.nothingNew', { count: total }));
         ensureProgress(true);
         return;
@@ -1464,7 +1477,7 @@
       const wanted = [];
       for (const { oids } of lists) {
         for (const oid of oids) {
-          if (incremental && already.has(String(oid))) continue;
+          if (skipKnown && already.has(String(oid))) continue;
           if (cap.games[oid]) continue;
           wanted.push(String(oid));
         }
@@ -1481,7 +1494,7 @@
         const lines = [], lineOids = [];
         for (const oid of oids) {
           if (cancelRequested) { setStatus(t('import.aborted')); return; }
-          if (incremental && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
+          if (skipKnown && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
           let g = cap.games[oid];
           if (!g && shared.has(String(oid))) {
             lines.push(null); lineOids.push(String(oid)); fromShared++;
@@ -1512,7 +1525,7 @@
           const teile = Crawl.splitIngestChapters([chapter]).flat();
           for (let pi = 0; pi < teile.length; pi++) {
             if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
-            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid) });
+            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
             bookOpen = true;
           }
         }
@@ -1535,7 +1548,10 @@
         setStatus(t('import.importing'));
         // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
         // dann als Ganzes im geteilten Cache ab (und prüft selbst Kapitelzahl und Lücken).
-        const res = await ingestChunk(sessionId, bid, target, courseName, null, true, { courseJson: courseText, complete: true });
+        // `complete` heißt: piratechess darf den Kurs als Ganzes cachen. Nach einem Teil-Import
+        // stimmt das nicht — dieser Lauf hat die übersprungenen Linien gar nicht geholt.
+        const res = await ingestChunk(sessionId, bid, target, courseName, null, true,
+          { courseJson: courseText, complete: !partial, partial });
         bookOpen = false;
         markCourseFetched();
         setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));

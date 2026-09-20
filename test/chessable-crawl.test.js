@@ -140,7 +140,10 @@ test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
   assert.ok(src.includes('await fetchSharedCachedOids(wanted)'), 'Crawl fragt den geteilten Cache nicht ab');
   assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); fromShared++;'), 'gecachte Linie wird nicht übersprungen');
   assert.ok(src.includes('{ chapterJson: listText, lines, lineOids }'), 'Crawl schickt keine lineOids');
-  assert.ok(src.includes('{ courseJson: courseText, complete: true }'), 'finaler Chunk nicht als komplett markiert');
+  // `complete` nur bei einem VOLLSTÄNDIGEN Lauf: nach einem Teil-Import hat dieser Lauf die
+  // übersprungenen Linien gar nicht geholt, piratechess dürfte den Kurs also nicht als Ganzes cachen.
+  assert.ok(src.includes('{ courseJson: courseText, complete: !partial, partial }'),
+    'finaler Chunk markiert komplett/partial nicht korrekt');
   assert.ok(src.includes('lineOids: byLid[lid].map(String)'), 'Live-Anhängen schickt keine lineOids');
 });
 
@@ -156,6 +159,21 @@ test('Buch-Crawl: ein zu großes Kapitel geht in byte-begrenzten Teilen raus (ni
   // Die lid muss dafür bis in die Sendeschleife durchgereicht werden.
   assert.ok(src.includes('lists.push({ lid, listText, oids })'), 'lid wird nicht mitgeführt');
   assert.ok(src.includes('for (const { lid, listText, oids } of lists)'), 'Sendeschleife kennt die lid nicht');
+});
+
+test('Kurs holen: BEIDE Ziele überspringen schon Importiertes, das Buch meldet den Teil-Import', () => {
+  // Bis v1.62.0 war das Buch ausgenommen („VOLLSTÄNDIG holen"), weil seine LineId an der Round-Nummer
+  // hängt. Seit RookHub 0.496.0 ist die oid die Identität, 0.497.1 weicht bei Nummern-Kollisionen aus —
+  // damit darf auch das Buch überspringen. Der Server muss aber WISSEN, dass der Stapel unvollständig
+  // ist, sonst deutet er dieselbe Kollision genau falsch herum.
+  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  assert.ok(src.includes('const skipKnown = true;'), 'Überspringen hängt noch am Ziel');
+  assert.ok(!/const incremental = target !== 'book'/.test(src), 'alte Ziel-Weiche noch da');
+  assert.ok(src.includes('const partial = skipKnown && already.size > 0;'), 'partial wird nicht bestimmt');
+  assert.ok(src.includes('chapterKey: String(lid), partial'), 'Kapitel-Chunk meldet den Teil-Import nicht');
+  // Der Transportweg bleibt getrennt: Buch über die Chunk-Sitzung (Import-Eintrag, Benachrichtigung,
+  // Watchdog), Repertoire über den Live-Append. Das ist Lebenszyklus, keine doppelte Logik.
+  assert.ok(src.includes("const viaSession = target === 'book';"), 'Transport-Weiche fehlt');
 });
 
 // ─── Zähler auf Kursübersicht und Startseite (v1.58.0) ─────────────────────────
