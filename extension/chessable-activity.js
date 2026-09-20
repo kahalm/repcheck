@@ -1446,7 +1446,7 @@
         const listText = fromCapture ? cap.lists[lid] : await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
         harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
         const oids = Crawl.parseLineOids(listText);
-        lists.push({ listText, oids });
+        lists.push({ lid, listText, oids });
         total += oids.length;
         toFetch += incremental ? oids.filter(o => !already.has(String(o))).length : oids.length;
         if (!fromCapture) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf, nicht für Mitgeschnittenes
@@ -1475,7 +1475,7 @@
       const fortschritt = () => (fromShared
         ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
         : t('import.fetchingLines', { done, total: toFetch }));
-      for (const { listText, oids } of lists) {
+      for (const { lid, listText, oids } of lists) {
         // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
         // Inhalt (null) aus dem geteilten Cache.
         const lines = [], lineOids = [];
@@ -1504,7 +1504,18 @@
         if (!lines.length) continue;
         const chapter = { chapterJson: listText, lines, lineOids };
         if (incremental) newChapters.push(chapter);
-        else { await ingestChunk(sessionId, bid, target, courseName, chapter, false); bookOpen = true; }
+        else {
+          // Ein Kapitel kann für EINEN Request zu groß sein — Kapitel 30 eines Lifetime-Repertoires riss am
+          // 2026-09-20 die 48 MB des Endpoints (der Server meldete das als HTTP 500). Darum dieselbe
+          // Byte-Schranke wie beim Mitschnitt/Repertoire; die Teile tragen denselben chapterKey und bleiben
+          // serverseitig EIN Kapitel (RookHub ≥ 0.495.0).
+          const teile = Crawl.splitIngestChapters([chapter]).flat();
+          for (let pi = 0; pi < teile.length; pi++) {
+            if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
+            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid) });
+            bookOpen = true;
+          }
+        }
         sent++;
       }
       if (!sent) throw new Error(t('err.noLines'));

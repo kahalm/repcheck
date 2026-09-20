@@ -144,6 +144,20 @@ test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
   assert.ok(src.includes('lineOids: byLid[lid].map(String)'), 'Live-Anhängen schickt keine lineOids');
 });
 
+test('Buch-Crawl: ein zu großes Kapitel geht in byte-begrenzten Teilen raus (nicht als EIN Request)', () => {
+  // Kapitel 30 eines Lifetime-Repertoires (87 Linien à ~470 KB) riss am 2026-09-20 das 48-MB-Limit des
+  // Chunk-Endpoints; RookHub meldete das als HTTP 500. Der Buch-Zweig muss dieselbe Schranke nutzen wie
+  // Mitschnitt und Repertoire — und die Teile per chapterKey als EIN Kapitel kennzeichnen.
+  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  assert.ok(src.includes('Crawl.splitIngestChapters([chapter]).flat()'), 'Buch-Kapitel wird nicht nach Bytes geteilt');
+  assert.ok(src.includes('chapterKey: String(lid)'), 'Teile tragen keinen chapterKey');
+  assert.ok(!/await ingestChunk\(sessionId, bid, target, courseName, chapter, false\)/.test(src),
+    'ungeteilter Kapitel-Chunk noch vorhanden');
+  // Die lid muss dafür bis in die Sendeschleife durchgereicht werden.
+  assert.ok(src.includes('lists.push({ lid, listText, oids })'), 'lid wird nicht mitgeführt');
+  assert.ok(src.includes('for (const { lid, listText, oids } of lists)'), 'Sendeschleife kennt die lid nicht');
+});
+
 // ─── Zähler auf Kursübersicht und Startseite (v1.58.0) ─────────────────────────
 const { pruneStructures } = require('../extension/lib/chessable-crawl.js');
 

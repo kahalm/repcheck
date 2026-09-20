@@ -229,6 +229,7 @@ const RC_MESSAGES = {
     'import.nothingCaptured': 'Nothing recorded.',
     'import.importingCapture': 'Importing recorded lines…',
     'import.importingCapturePart': 'Importing recorded lines… part {part} of {parts}',
+    'import.chapterPart': 'Sending chapter… part {part} of {parts}',
     'import.liveAppended': {
       one: 'Live: {count} line appended ({sent} sent).',
       other: 'Live: {count} lines appended ({sent} sent).',
@@ -527,6 +528,7 @@ const RC_MESSAGES = {
     'import.nothingCaptured': 'Nichts mitgeschnitten.',
     'import.importingCapture': 'Importiere Mitschnitt …',
     'import.importingCapturePart': 'Importiere Mitschnitt … Teil {part} von {parts}',
+    'import.chapterPart': 'Sende Kapitel … Teil {part} von {parts}',
     'import.liveAppended': {
       one: 'Live: {count} Linie angehängt ({sent} gesendet).',
       other: 'Live: {count} Linien angehängt ({sent} gesendet).',
@@ -822,6 +824,7 @@ const RC_MESSAGES = {
     'import.nothingCaptured': 'Ništa nije snimljeno.',
     'import.importingCapture': 'Uvozim snimku …',
     'import.importingCapturePart': 'Uvozim snimku … dio {part} od {parts}',
+    'import.chapterPart': 'Šaljem poglavlje … dio {part} od {parts}',
     'import.liveAppended': {
       one: 'Uživo: dodana {count} linija ({sent} poslano).',
       few: 'Uživo: dodane {count} linije ({sent} poslano).',
