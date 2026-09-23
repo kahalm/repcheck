@@ -192,6 +192,17 @@ Auf chess.com/lichess-Review-/Analyse-Seiten blendet RepCheck zwei Buttons in de
 - **💾 `#repcheck-save-game`** (`syncSaveButton`): **nur wenn RookHub konfiguriert** — schickt die
   Partie an `POST /api/extension/games`; sie erscheint im RookHub-Bereich **„Partien"** (`/games`).
 
+**Wann sie erscheinen (v1.64.0)**: nicht mehr nur bei den Pfaden `/analysis/game/` bzw.
+`/game/review/`, sondern auf JEDER chess.com-Seite, die BEIDES hat — (a) einen Link auf
+`/analysis/game/…` (so sieht der „Partieanalyse"-Knopf aus; erkannt am ZIEL, nicht an der
+übersetzten Beschriftung) und (b) eine Zugliste mit `.node`-Zügen. Ohne (b) stünden sie auch in der
+Partien-Liste, wo jede Zeile auf die Analyse verlinkt. Gemeldet am 23.09.2026 für `/game/<id>`:
+Zugliste und Analyse-Knopf sind da, aber keine Pfad-Regel traf. Die Zugliste heißt dort
+`wc-simple-move-list` und trägt die Klasse `move-list`, der bestehende Selektor passt also
+(`chessComMoveList()`). Weil der Knopf erst mit dem Partieende entsteht und sich dabei weder
+`<title>` noch Adresse ändern (die beiden Beobachter in `watchNavigation` feuern nicht), bewertet
+ein Takt von `REVIEW_POLL_MS` (2 s) neu — zwei `querySelector`, und jede Injektion prüft ihre id.
+
 **Save-Payload (v1.13.0+)**: `{ source, moves[], externalId?, white?, black?, result?, sourceUrl? }`
 — die per Site-Adapter (`getGameMoves`) extrahierte SAN-Hauptlinie + Best-Effort-Metadaten
 (`getGameMeta`: `externalId` aus URL, `result` aus dem Ergebnis-Token der Zugliste, `white`/`black`

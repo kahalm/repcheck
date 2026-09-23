@@ -487,14 +487,29 @@
     '♚':'K','♛':'Q','♜':'R','♝':'B','♞':'N',
   };
 
+  // Chess.com-Zugliste: die neue `wc-simple-move-list` traegt die Klasse `move-list` (Schnappschuss
+  // 23.09.2026), aeltere Ansichten `.move-list`/`vertical-move-list`/`wc-move-list`.
+  function chessComMoveList() {
+    return document.querySelector('.move-list, vertical-move-list, wc-move-list');
+  }
+
   const ADAPTERS = {
     chesscom: {
       test: (host) => host === 'www.chess.com' || host.endsWith('.chess.com') || host === 'chess.com',
+      // Die Knoepfe gehoeren auf JEDE Partieseite, sobald chess.com die Partieanalyse anbietet
+      // (Wunsch 23.09.2026): auf /game/<id> traf keine der beiden Pfad-Regeln, obwohl Zugliste und
+      // Analyse-Knopf da sind. Erkannt wird der Knopf am ZIEL (`/analysis/game/…`) statt an seiner
+      // Beschriftung — die ist uebersetzt („Partieanalyse" / „Game Review"). Die Zugliste muss dazu
+      // wirklich Zuege fuehren: in der Partien-Liste verlinkt JEDE Zeile auf die Analyse, dort gaebe
+      // es aber nichts zu pruefen.
       isReviewPage: () => {
         const url = location.pathname;
-        return url.includes('/analysis/game/') || url.includes('/game/review/');
+        if (url.includes('/analysis/game/') || url.includes('/game/review/')) return true;
+        if (!document.querySelector('a[href*="/analysis/game/"]')) return false;
+        const liste = chessComMoveList();
+        return !!liste && !!liste.querySelector('.node');
       },
-      getMoveListEl: () => document.querySelector('.move-list, vertical-move-list, wc-move-list'),
+      getMoveListEl: () => chessComMoveList(),
       getMoveNodes: (root) => root.querySelectorAll('.node'),
       extractSan: (node) => {
         // node.textContent enthaelt auch Text aus dem inline <style>-Block der
@@ -1406,6 +1421,7 @@
   // Beobachtet NUR den <title>-Knoten und popstate-Events. Kein subtree-
   // Observer auf document.body, also praktisch kostenlos im Idle.
   // Bei jeder Navigation: pruefen, ob Review-Seite, und Button ein/ausblenden.
+  const REVIEW_POLL_MS = 2000;
   function watchNavigation() {
     const observe = () => {
       const titleEl = document.querySelector('title');
@@ -1417,6 +1433,11 @@
     };
     observe();
     window.addEventListener('popstate', refreshFloatingButton);
+    // Der Analyse-Knopf entsteht erst, wenn die Partie vorbei ist — bzw. nachdem die Seitenleiste
+    // nachgeladen hat. Dabei aendert sich weder <title> noch die Adresse, die beiden Beobachter oben
+    // feuern also nicht. Darum ein sparsamer Takt: zwei querySelector alle 2 s, und Einblenden wie
+    // Ausblenden sind idempotent (jede Injektion prueft ihre id).
+    setInterval(refreshFloatingButton, REVIEW_POLL_MS);
   }
 
   watchNavigation();
