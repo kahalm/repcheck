@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.7.0
-// @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
+// @version      0.8.0
+// @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
+// @match        https://www.chess.com/*
+// @match        https://chess.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -36,6 +38,8 @@
   'use strict';
   const PANEL_ID = 'repcheck-inspector-panel';
   if (document.getElementById(PANEL_ID)) return;
+  // Auf chess.com laeuft NUR der chess.com-Sammler (die Chessable-Sammler greifen dort ins Leere).
+  const AUF_CHESSCOM = /(^|\.)chess\.com$/i.test(location.hostname);
 
   // ── Datenschutz: nichts Geheimes in den Dump ────────────────────────────
   const GEHEIM_KEY = /(token|jwt|auth|secret|passwor|bearer|credential|cookie|api[-_]?key)/i;
@@ -965,6 +969,85 @@
     }, seconds * 1000);
   }
 
+  // ── chess.com: woran haengt die Einblendung der schwebenden Knoepfe? ─────
+  // content.js zeigt ♟/🔎/📋/💾 nur auf einer „Review-Seite": bisher Pfad mit /analysis/game/
+  // oder /game/review/. Die Zuege liest es aus .move-list / vertical-move-list / wc-move-list
+  // (Zugknoten .node). Auf einer Partieseite wie /game/<id> greift beides moeglicherweise nicht.
+  // Dieser Sammler beantwortet: Welcher Knopf bietet die Analyse an, wie ist er ausgezeichnet,
+  // und in welchem Element stehen die Zuege?
+  function ccKurz(el) {
+    const r = el.getBoundingClientRect();
+    return {
+      tag: el.tagName.toLowerCase(),
+      klasse: String(el.className || '').slice(0, 160) || undefined,
+      id: el.id || undefined,
+      href: el.getAttribute('href') || undefined,
+      dataCy: el.getAttribute('data-cy') || undefined,
+      testId: el.getAttribute('data-test-element') || el.getAttribute('data-testid') || undefined,
+      ariaLabel: el.getAttribute('aria-label') || undefined,
+      text: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80) || undefined,
+      pfad: kurzPfad(el, 4),
+      sichtbar: !!(r.width || r.height),
+    };
+  }
+
+  const CC_ANALYSE = /analys|review|auswert|rückblick|ruckblick|rueckblick/i;
+
+  function chessComSnapshot() {
+    const q = (sel) => { try { return [...document.querySelectorAll(sel)]; } catch (e) { return []; } };
+    const alleNodes = q('.node');
+
+    const zuglisten = q('[class*="move-list"], [class*="moveList"], vertical-move-list, wc-move-list, '
+      + '[data-cy*="move"], [class*="movelist"]').slice(0, 8).map((el) => Object.assign(ccKurz(el), {
+        kinder: el.children.length,
+        zugKnoten: el.querySelectorAll('.node').length,
+        // Falls .node nicht passt: was steckt sonst drin?
+        kindTags: [...new Set([...el.children].map((k) => k.tagName.toLowerCase()))].slice(0, 6),
+        htmlAnfang: zensiereText(el.outerHTML.slice(0, 2500)),
+      }));
+
+    const analyse = q('a, button, [role="button"]').filter((el) => CC_ANALYSE.test(
+      (el.textContent || '') + ' ' + String(el.className || '') + ' ' + (el.getAttribute('href') || '')
+      + ' ' + (el.getAttribute('data-cy') || '') + ' ' + (el.getAttribute('aria-label') || ''))
+    ).slice(0, 15).map(ccKurz);
+
+    // Umfeld des ersten sichtbaren Analyse-Knopfes: dort steht meist die ganze Knopfleiste.
+    const ersterSichtbar = q('a, button, [role="button"]').filter((el) => CC_ANALYSE.test(
+      (el.textContent || '') + ' ' + String(el.className || '') + ' ' + (el.getAttribute('href') || ''))
+      && el.getBoundingClientRect().width)[0];
+    const knopfUmfeld = ersterSichtbar
+      ? zensiereText((ersterSichtbar.closest('[class*="sidebar"], [class*="panel"], [class*="controls"], [class*="buttons"]')
+          || ersterSichtbar.parentElement || ersterSichtbar).outerHTML.slice(0, 3000))
+      : null;
+
+    return {
+      kind: 'chesscom-snapshot',
+      zeit: new Date().toISOString(),
+      seite: {
+        pfad: location.pathname,
+        suche: location.search.slice(0, 200),
+        titel: document.title.slice(0, 120),
+        // Genau die beiden Bedingungen, an denen content.js heute entscheidet:
+        trifftAnalysisGame: location.pathname.includes('/analysis/game/'),
+        trifftGameReview: location.pathname.includes('/game/review/'),
+      },
+      repcheckKnoepfeDa: !!document.getElementById('repcheck-floating-wrap'),
+      zugKnotenGesamt: alleNodes.length,
+      zugKnotenBeispiele: alleNodes.slice(0, 6).map((n) => ({
+        klasse: String(n.className || '').slice(0, 80),
+        text: (n.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24),
+        pfad: kurzPfad(n, 3),
+      })),
+      zuglisten,
+      analyseKnoepfe: analyse,
+      knopfUmfeld,
+      // chess.com baut vieles aus Web-Components — welche stehen auf der Seite?
+      webComponents: [...new Set([...document.querySelectorAll('*')]
+        .map((e) => e.tagName.toLowerCase()).filter((t) => t.includes('-')))].slice(0, 40),
+      brett: q('wc-chess-board, chess-board, [class*="board-layout"], [class*="board"]').slice(0, 4).map(ccKurz),
+    };
+  }
+
   // ── Ausgabe: Zwischenablage + Datei-Download ────────────────────────────
   function deliver(obj, btn, label) {
     // Fehlerfest: wenn hier etwas wirft (zu grosses JSON, blockierter Download, Clipboard),
@@ -1021,6 +1104,24 @@
     });
     return b;
   }
+  // Auf chess.com haben die Chessable-Knoepfe keinen Sinn — nur der eine Sammler.
+  if (AUF_CHESSCOM) {
+    const ccBtn = mkBtn('RC-Debug: chess.com-Snapshot', '#2e7d32');
+    ccBtn.title = 'Sammelt Zugliste, Analyse-Knopf und Seitenpfad — die Angaben, an denen haengt, '
+      + 'ob RepCheck seine schwebenden Knoepfe einblenden kann.';
+    ccBtn.addEventListener('click', () => {
+      let data;
+      try { data = chessComSnapshot(); }
+      catch (e) { meldeFehler(ccBtn, 'snapshot: ' + String(e).slice(0, 70)); return; }
+      deliver(data, ccBtn, 'kopiert + Download ✓');
+    });
+    ccBtn.dataset.rcLabel = ccBtn.textContent;
+    ccBtn.dataset.rcBg = ccBtn.style.background;
+    panel.appendChild(ccBtn);
+    document.body.appendChild(panel);
+    return;
+  }
+
   const snapBtn = mkBtn('RC-Debug: Snapshot', '#455a64');
   snapBtn.addEventListener('click', () => {
     let data;

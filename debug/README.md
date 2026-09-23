@@ -56,3 +56,29 @@ verschwindet wieder, ein Snapshot erwischt sie fast nie.
    — gern einen richtigen, einen bereits „overstudied" und (wenn es sich ergibt)
    einen falschen. Danach idealerweise noch eine Linie zu Ende spielen, damit
    die **Gesamt-XP am Linienende** im Snapshot/Trace auftaucht.
+
+## Was v0.8.0 zusätzlich kann: chess.com
+
+Das Script greift jetzt auch auf `chess.com`. Dort erscheint unten links **ein**
+Knopf (die Chessable-Sammler passen auf chess.com nicht):
+
+- **RC-Debug: chess.com-Snapshot** — sammelt genau das, woran hängt, ob RepCheck
+  seine schwebenden Knöpfe (♟ 🔎 📋 💾) einblenden kann:
+  - `seite` — Pfad plus die beiden Bedingungen, nach denen `content.js` heute
+    entscheidet (`trifftAnalysisGame` = Pfad enthält `/analysis/game/`,
+    `trifftGameReview` = `/game/review/`). Beide `false` heißt: hier bleiben die
+    Knöpfe aus.
+  - `analyseKnoepfe` — alle Links/Knöpfe, deren Text, Klasse, `href`, `data-cy`
+    oder `aria-label` nach Analyse/Review aussieht, mit Elternpfad und
+    Sichtbarkeit. Daraus entsteht der neue Anker für „zeigen, sobald die
+    Partieanalyse angeboten wird".
+  - `knopfUmfeld` — das `outerHTML` der umgebenden Knopfleiste (gekürzt).
+  - `zuglisten` + `zugKnotenGesamt` + `zugKnotenBeispiele` — in welchem Element
+    die Züge stehen und ob sie als `.node` ausgezeichnet sind. Ohne lesbare
+    Zugliste nützen die Knöpfe dort nichts.
+  - `webComponents` — die Custom-Elements der Seite (chess.com baut die Zugliste
+    als `wc-move-list`).
+  - `repcheckKnoepfeDa` — ob RepCheck gerade etwas einblendet.
+
+Anwendung: Partieseite öffnen, warten bis der Analyse-Knopf da ist, Knopf
+drücken — JSON liegt in der Zwischenablage und als Download.
