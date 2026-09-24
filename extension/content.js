@@ -666,7 +666,14 @@
       const data = await resp.json();
       const h = data && data.game && data.game.pgnHeaders;
       if (!h) return null;
+      // Die ZUEGE liegen in derselben Antwort (`moveList`, TCN). Sie sind die verlaessliche Quelle: auf
+      // der Analyseseite rendert chess.com im Review-Tab gar keine Zugliste, aus der sich lesen liesse
+      // (gemeldet 2026-09-24). Unlesbar → leer, dann bleibt es bei der DOM-Auslese.
+      const moveApi = (typeof self !== 'undefined' && self.RepCheckChessCom) || null;
+      const moves = moveApi && typeof Chess === 'function'
+        ? moveApi.sansFromTcn(data.game.moveList, Chess) : [];
       return {
+        moves: moves.length ? moves : null,
         white: h.White ? String(h.White).slice(0, 120) : null,
         black: h.Black ? String(h.Black).slice(0, 120) : null,
         result: h.Result || null,
@@ -762,6 +769,9 @@
         if (h.playedAt) meta.playedAt = h.playedAt;
         if (h.whiteElo != null) meta.whiteElo = h.whiteElo;
         if (h.blackElo != null) meta.blackElo = h.blackElo;
+        // Zuege aus chess.coms eigener Antwort schlagen die DOM-Auslese: sie sind vollstaendig, auch
+        // wenn die Seite gerade keine Zugliste zeigt (Analyseseite, Review-Tab).
+        if (h.moves && h.moves.length) meta.moves = h.moves;
       }
     }
     return meta;
