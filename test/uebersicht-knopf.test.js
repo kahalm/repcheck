@@ -110,7 +110,8 @@ function aufbau(zeilen, stubs = {}) {
     createElement: (tag) => el(tag, {}),
     querySelectorAll: (sel) => wurzel.querySelectorAll(sel),
   };
-  const ruf = { known: [], gespeichert: [], header: [], styles: 0 };
+  const ruf = { known: [], gespeichert: [], header: [], analysiert: [], styles: 0 };
+  const uhr = { jetzt: 1_000_000 };
   const echte = {
     t: (key) => key,
     detectSiteKey: () => 'chesscom',
@@ -128,16 +129,21 @@ function aufbau(zeilen, stubs = {}) {
       return { moves: ['d4', 'Nf6'], white: 'Pahan77', black: 'kahalm', result: '1-0', playedAt: null,
         whiteElo: 1837, blackElo: 1881, timeControl: '300+3' };
     },
+    rookhubAnalyzeSavedGame: async (cfg, id) => { ruf.analysiert.push(id); return { analysis: { id: 99 } }; },
+    // Eigene Uhr: der Durchgang fragt laufende Analysen erst nach 30 s wieder nach.
+    Date: { now: () => uhr.jetzt },
     setTimeout: () => 0,
   };
   const args = Object.assign(echte, stubs);
   const namen = ['document', ...Object.keys(args)];
   const fn = new Function(...namen, BLOCK + '\nreturn { syncOverviewGames, chessComGameRows };');
-  return Object.assign({ api: fn(document, ...Object.keys(args).map(k => args[k])), ruf, wurzel }, {});
+  return Object.assign({ api: fn(document, ...Object.keys(args).map(k => args[k])), ruf, wurzel, uhr }, {});
 }
 
 const host = (row) => row.querySelector('.rc-ov');
 const inhalt = (row) => { const h = host(row); return h && h.children[0]; };
+/** Das zweite Element neben dem Haken: der Stand der RookHub-Analyse. */
+const analyse = (row) => { const h = host(row); return h && h.children[1]; };
 
 // ─── Zeilen finden ──────────────────────────────────────────────────────
 
@@ -185,10 +191,11 @@ test('ohne Aktionen-Zelle (Profilseite, kompakte Zeile) haengt der Knopf absolut
   assert.equal(row.children[row.children.length - 1], h);
 });
 
-test('schon uebertragen: Haekchen mit Link auf die Partie statt des Knopfs', async () => {
+test('schon uebertragen und analysiert: Haken + 📈 auf die RookHub-Analyse, Genauigkeit im Tooltip', async () => {
   const row = zeile('184299739920');
   const { api } = aufbau([row], {
-    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: { status: 'done' } }],
+    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7,
+      analysis: { status: 'done', analyzed: 105, total: 105, accuracyWhite: 87.4, accuracyBlack: 71.6 } }],
   });
 
   await api.syncOverviewGames();
@@ -198,17 +205,95 @@ test('schon uebertragen: Haekchen mit Link auf die Partie statt des Knopfs', asy
   assert.equal(haken.textContent, '✓');
   assert.equal(haken.href, 'https://rookhub.example/games/7');
   assert.equal(haken.title, 'overview.sent');
+  const an = analyse(row);
+  assert.equal(an.tag, 'a');
+  assert.equal(an.textContent, '📈');
+  assert.equal(an.href, 'https://rookhub.example/games/7');
+  assert.equal(an.title, 'overview.openAnalysisAcc');
 });
 
-test('laufende Analyse: Sanduhr mit eigener Erklaerung', async () => {
+test('laufende Analyse: Haken + Sanduhr mit Fortschritt', async () => {
   const row = zeile('184299739920');
   const { api } = aufbau([row], {
-    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: { status: 'running' } }],
+    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: { status: 'running', analyzed: 42, total: 105 } }],
   });
 
   await api.syncOverviewGames();
-  assert.equal(inhalt(row).textContent, '⏳');
-  assert.equal(inhalt(row).title, 'overview.analyzing');
+  assert.equal(inhalt(row).textContent, '✓');
+  assert.equal(analyse(row).textContent, '⏳');
+  assert.equal(analyse(row).title, 'overview.analyzingPct');
+});
+
+// Gemeldet 24.09.2026 („da fehlt noch das Icon fuer RookHub -> analyze"): eine Partie, die ueber 💾
+// gespeichert wurde, lag bei RookHub, war aber nie gerechnet — und aus der Uebersicht liess sich das
+// weder sehen noch aendern.
+test('bei RookHub, aber nie analysiert: ein 📈-KNOPF stoesst die Analyse an und wird zur Sanduhr', async () => {
+  const row = zeile('184299739920');
+  const { api, ruf } = aufbau([row], {
+    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: null }],
+  });
+  await api.syncOverviewGames();
+
+  const knopf = analyse(row);
+  assert.equal(knopf.tag, 'button');
+  assert.equal(knopf.title, 'overview.analyze');
+  assert.ok(knopf.klick(), 'Klick wird gestoppt — die Zeile ist selbst ein Knopf mit deckendem Link');
+  await new Promise(r => setImmediate(r));
+
+  assert.deepEqual(ruf.analysiert, [7]);
+  assert.equal(inhalt(row).textContent, '✓');
+  assert.equal(analyse(row).textContent, '⏳');
+});
+
+test('gescheiterte Analyse zaehlt wie keine: der Knopf laedt zum Neuversuch', async () => {
+  const row = zeile('184299739920');
+  const { api } = aufbau([row], {
+    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: { status: 'failed' } }],
+  });
+  await api.syncOverviewGames();
+  assert.equal(analyse(row).tag, 'button');
+});
+
+test('eine Absage des Servers steht am Knopf, statt eine Sanduhr vorzutaeuschen', async () => {
+  const row = zeile('184299739920');
+  const { api } = aufbau([row], {
+    rookhubKnownGames: async () => [{ externalId: '184299739920', id: 7, analysis: null }],
+    rookhubAnalyzeSavedGame: async () => { throw new Error('Keine Engine eingerichtet'); },
+  });
+  await api.syncOverviewGames();
+
+  analyse(row).klick();
+  await new Promise(r => setImmediate(r));
+
+  assert.equal(analyse(row).tag, 'button');
+  assert.equal(analyse(row).textContent, '✗');
+  assert.equal(analyse(row).title, 'Keine Engine eingerichtet');
+  assert.equal(analyse(row).disabled, false);
+});
+
+test('laufende Analysen werden nach 30 s nachgefragt — fertige und fremde nicht', async () => {
+  const laeuft = zeile('1');
+  const fertig = zeile('2');
+  let antwort = [
+    { externalId: '1', id: 11, analysis: { status: 'running', analyzed: 10, total: 100 } },
+    { externalId: '2', id: 12, analysis: { status: 'done' } },
+  ];
+  const { api, ruf, uhr } = aufbau([laeuft, fertig], {
+    rookhubKnownGames: async (cfg, source, ids) => { ruf.known.push({ source, ids }); return antwort.filter(g => ids.includes(g.externalId)); },
+  });
+  await api.syncOverviewGames();
+  assert.equal(analyse(laeuft).textContent, '⏳');
+
+  uhr.jetzt += 10_000;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 1, 'vor Ablauf der 30 s keine neue Abfrage');
+
+  antwort = [{ externalId: '1', id: 11, analysis: { status: 'done', accuracyWhite: 90, accuracyBlack: 80 } }];
+  uhr.jetzt += 25_000;
+  await api.syncOverviewGames();
+  assert.deepEqual(ruf.known[1].ids, ['1'], 'nur die laufende wird nachgefragt');
+  assert.equal(analyse(laeuft).textContent, '📈', 'fertig: aus der Sanduhr wird der Analyse-Link');
+  assert.equal(analyse(fertig).textContent, '📈');
 });
 
 test('zweiter Durchgang fragt nichts nach und zeichnet nicht neu', async () => {
@@ -270,9 +355,10 @@ test('Klick schickt die Partie mit Zuegen, Kopfdaten und analyze:true — und na
   assert.equal(send.meta.whiteElo, 1600);
   assert.equal(send.meta.timeControl, '180+2', 'die Bedenkzeit geht mit (RookHub >= 0.526.0 zeigt sie)');
   assert.equal(send.meta.sourceUrl, 'https://www.chess.com/game/live/184299739920');
-  // Danach steht das Haekchen mit der neuen RookHub-Id da.
+  // Danach steht das Haekchen mit der neuen RookHub-Id da — und die Sanduhr der gerade eingereihten Analyse.
   assert.equal(inhalt(row).tag, 'a');
   assert.equal(inhalt(row).href, 'https://rookhub.example/games/42');
+  assert.equal(analyse(row).textContent, '⏳');
 });
 
 test('ohne Zuege wird nichts geschickt, der Knopf meldet den Grund', async () => {
@@ -399,6 +485,13 @@ test('die Bedenkzeit reist von beiden Plattformen mit (RookHub >= 0.526.0 zeigt 
   assert.match(cc, /timeControl: h\.TimeControl/);
   const li = content.slice(content.indexOf('async function fetchLichessGame('), content.indexOf('async function getGameMeta('));
   assert.match(li, /hdr\('TimeControl'\)/);
+});
+
+test('„In RookHub analysieren" geht ueber die Extension-Flaeche (das API-Token erreicht /api/games nicht)', () => {
+  const fn = content.slice(content.indexOf('async function rookhubAnalyzeSavedGame('), content.indexOf('// Öffentlicher Teilen-Link'));
+  assert.match(fn, /\/api\/extension\/games\/' \+ encodeURIComponent\(id\) \+ '\/analyze'/);
+  assert.match(fn, /no-engine/);
+  assert.match(fn, /too-many-open/);
 });
 
 test('„known" ist best-effort: eine aeltere RookHub-Version liefert einfach keine Haekchen', () => {

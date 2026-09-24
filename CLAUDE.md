@@ -258,6 +258,15 @@ Bedenkzeit in EINEM Abruf, kein TCN-Umweg). Was je Plattform verschieden ist, st
 Debug-Skripts, die echten Zeilen auf keines. Gelöst mit `zeilenGruppen` im Debug-Skript (v0.12.0), das Zeilen
 über wiederholte Geschwister findet statt über Links.
 
+**✓ plus Analyse-Stand** (v1.68.0, gemeldet 24.09.2026: „da fehlt noch das Icon für RookHub -> analyze“):
+neben dem Haken steht der Stand der RookHub-Analyse — fertig 📈 (Link auf die Partie, Genauigkeit ♔/♚ im
+Tooltip), läuft ⏳ (mit Fortschritt), nie gerechnet oder gescheitert ein 📈-KNOPF, der sie über
+`POST /api/extension/games/{id}/analyze` anstößt (RookHub ≥ 0.528.0 — das API-Token erreicht `/api/games` nicht,
+`PatScopeFenceMiddleware`). Eine Absage (`no-engine`, `too-many-open`) steht als Text am Knopf, statt eine Sanduhr
+vorzutäuschen. Laufende Analysen fragt der Durchgang alle 30 s nach (`OVERVIEW_RUNNING_RECHECK_MS`), sonst stünde
+die Sanduhr bis zum nächsten Seitenaufruf. Vorher war „liegt bei RookHub“ nicht von „ist dort analysiert“ zu
+unterscheiden, und eine über 💾 gespeicherte Partie ließ sich aus der Übersicht nicht rechnen lassen.
+
 **Die Bedenkzeit reist mit** (v1.66.1): `timeControl` im Save-Payload, aus chess.coms `pgnHeaders.TimeControl`
 bzw. dem `[TimeControl]` des lichess-Exports — RookHub ≥ 0.526.0 zeigt daraus „3 + 2" in der Partienliste,
 ältere ignorieren das Feld.

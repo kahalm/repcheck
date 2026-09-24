@@ -354,6 +354,26 @@
     }
   }
 
+  /**
+   * „In RookHub analysieren" fuer eine Partie, die schon dort liegt (RookHub >= 0.528.0,
+   * `POST /api/extension/games/{id}/analyze`). Wirft mit einer lesbaren Meldung: die Absage-Gruende
+   * des Servers (`no-engine`, `too-many-open`) werden uebersetzt, statt eine Sanduhr vorzutaeuschen.
+   */
+  async function rookhubAnalyzeSavedGame(cfg, id) {
+    const resp = await rookhubProxy({
+      url: cfg.url.replace(/\/$/, '') + '/api/extension/games/' + encodeURIComponent(id) + '/analyze',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' },
+      expect: 'json',
+    });
+    if (resp && resp.ok) return resp.body;
+    const reason = resp && resp.body && resp.body.reason;
+    if (reason === 'no-engine') throw new Error(t('overview.analyzeNoEngine'));
+    if (reason === 'too-many-open') throw new Error(t('overview.analyzeTooMany'));
+    if (resp && resp.status === 401) throw new Error(t('err.tokenInvalid'));
+    throw new Error(t('overview.analyzeFailed'));
+  }
+
   // Öffentlicher Teilen-Link der gespeicherten Partie ({url}/g/{shareToken}).
   // saved = Server-Antwort von rookhubSaveGame (SavedGameDetailDto).
   function buildShareLink(cfg, saved) {
@@ -994,6 +1014,7 @@
         z-index: 3;
         display: inline-flex;
         align-items: center;
+        gap: 2px;
         margin-left: 2px;
       }
       .rc-ov.rc-ov-loose {
@@ -1026,6 +1047,9 @@
         line-height: 1;
         padding: 3px 5px;
       }
+      /* Stand der RookHub-Analyse neben dem Haken: fertig/laeuft als Link, sonst ein Knopf. */
+      .rc-ov-an { text-decoration: none; line-height: 1; padding: 3px 3px; font-size: 14px; }
+      .rc-ov-an-btn { font-size: 13px; opacity: 0.55; border-style: dashed; }
     `;
 
   function injectStyles() {
@@ -1210,6 +1234,9 @@
   // ABSOLUT positioniert oben rechts in der Zeile (die ist `position: relative`, das Raster bleibt
   // unberuehrt).
   const OVERVIEW_SWEEP_MS = 2500;
+  // Laeuft eine Analyse, fragt der Durchgang ihren Stand in diesem Abstand neu — sonst stuende die
+  // Sanduhr bis zum naechsten Seitenaufruf da, obwohl RookHub laengst fertig ist.
+  const OVERVIEW_RUNNING_RECHECK_MS = 30000;
   const OVERVIEW_HOST_CLASS = 'rc-ov';
   // Externe Id → { id } wenn die Partie schon bei RookHub liegt, sonst null. Erspart die Abfrage bei
   // jedem Durchgang; ein eigener Versand traegt seinen Treffer direkt ein.
@@ -1277,19 +1304,89 @@
     return rookhubId ? cfg.url.replace(/\/$/, '') + '/games/' + rookhubId : cfg.url.replace(/\/$/, '') + '/games';
   }
 
-  // Schon uebertragen: Haekchen mit Link auf die Partie; rechnet die Analyse noch, eine Sanduhr.
+  // Schon uebertragen: ✓ (Link auf die Partie) und daneben der Stand der RookHub-Analyse — fertig 📈
+  // (oeffnet sie, Genauigkeit im Tooltip), laeuft ⏳, nie gerechnet oder gescheitert ein 📈-KNOPF, der
+  // sie anstoesst. Vorher stand nur das ✓, und „liegt bei RookHub" liess sich nicht von „ist dort
+  // analysiert" unterscheiden (gemeldet 24.09.2026: „da fehlt noch das Icon fuer RookHub -> analyze").
   function paintOverviewKnown(host, cfg, state) {
-    const running = state && state.analysis && (state.analysis.status === 'pending' || state.analysis.status === 'running');
     host.replaceChildren();
-    const a = document.createElement('a');
-    a.className = 'rc-ov-done';
-    a.textContent = running ? '⏳' : '✓';
-    a.href = overviewGameLink(cfg, state && state.id);
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.title = t(running ? 'overview.analyzing' : 'overview.sent');
-    a.addEventListener('click', (ev) => ev.stopPropagation());
-    host.appendChild(a);
+    const link = overviewGameLink(cfg, state && state.id);
+    const done = document.createElement('a');
+    done.className = 'rc-ov-done';
+    done.textContent = '✓';
+    done.href = link;
+    done.target = '_blank';
+    done.rel = 'noopener';
+    done.title = t('overview.sent');
+    done.addEventListener('click', (ev) => ev.stopPropagation());
+    host.appendChild(done);
+    host.appendChild(overviewAnalysisElement(host, cfg, state, link));
+  }
+
+  function overviewAnalysisStatus(state) {
+    return (state && state.analysis && state.analysis.status) || null;
+  }
+
+  function overviewAnalysisElement(host, cfg, state, link) {
+    const a = state && state.analysis;
+    const status = overviewAnalysisStatus(state);
+    if (status === 'done' || status === 'pending' || status === 'running') {
+      const el = document.createElement('a');
+      el.className = 'rc-ov-an';
+      el.href = link;
+      el.target = '_blank';
+      el.rel = 'noopener';
+      el.textContent = status === 'done' ? '📈' : '⏳';
+      el.title = status === 'done' ? overviewDoneTitle(a) : overviewRunningTitle(a);
+      el.addEventListener('click', (ev) => ev.stopPropagation());
+      return el;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'rc-ov-btn rc-ov-an-btn';
+    btn.textContent = '📈';
+    btn.title = t('overview.analyze');
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      startOverviewAnalysis(host, cfg, state, btn);
+    });
+    return btn;
+  }
+
+  function overviewDoneTitle(a) {
+    const pct = (v) => (v == null ? '—' : Math.round(v) + ' %');
+    return a.accuracyWhite == null && a.accuracyBlack == null
+      ? t('overview.openAnalysis')
+      : t('overview.openAnalysisAcc', { white: pct(a.accuracyWhite), black: pct(a.accuracyBlack) });
+  }
+
+  function overviewRunningTitle(a) {
+    return a && a.total > 0
+      ? t('overview.analyzingPct', { pct: Math.round(100 * (a.analyzed || 0) / a.total) })
+      : t('overview.analyzing');
+  }
+
+  async function startOverviewAnalysis(host, cfg, state, btn) {
+    if (!state || !state.id) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    btn.title = t('overview.sending');
+    try {
+      await rookhubAnalyzeSavedGame(cfg, state.id);
+      state.analysis = { status: 'pending', analyzed: 0, total: 0 };
+      state.checkedAt = Date.now();
+      paintOverviewKnown(host, cfg, state);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '✗';
+      btn.title = (e && e.message) || t('overview.analyzeFailed');
+      setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.textContent = '📈';
+        btn.title = t('overview.analyze');
+      }, 5000);
+    }
   }
 
   function paintOverviewButton(host, cfg, entry, site) {
@@ -1331,7 +1428,7 @@
         // Aus der Uebersicht geschickte Partien sollen gleich gerechnet werden.
         analyze: true,
       });
-      const state = { id: saved && (saved.id || saved.Id), analysis: { status: 'pending' } };
+      const state = { id: saved && (saved.id || saved.Id), analysis: { status: 'pending' }, checkedAt: Date.now() };
       overviewSeen.set(entry.id, state);
       paintOverviewKnown(host, cfg, state);
     } catch (e) {
@@ -1359,15 +1456,22 @@
     overviewBusy = true;
     try {
       injectStyles();
-      const unknown = entries.map(e => e.id).filter(id => !overviewSeen.has(id));
-      if (unknown.length) {
+      const now = Date.now();
+      // Unbekannte Ids — und die, deren Analyse laeuft und laenger nicht nachgefragt wurde.
+      const faellig = [...new Set(entries.map(e => e.id))].filter((id) => {
+        if (!overviewSeen.has(id)) return true;
+        const st = overviewSeen.get(id);
+        const status = overviewAnalysisStatus(st);
+        return (status === 'pending' || status === 'running') && now - (st.checkedAt || 0) >= OVERVIEW_RUNNING_RECHECK_MS;
+      });
+      if (faellig.length) {
         // Der Endpunkt nimmt hoechstens 300 Ids; der Rest kommt im naechsten Durchgang.
-        const batch = unknown.slice(0, 300);
+        const batch = faellig.slice(0, 300);
         const known = await rookhubKnownGames(cfg, site.source, batch);
         const found = new Map();
         for (const g of known) {
           const ext = g && (g.externalId || g.ExternalId);
-          if (ext) found.set(String(ext), { id: g.id || g.Id, analysis: g.analysis || g.Analysis || null });
+          if (ext) found.set(String(ext), { id: g.id || g.Id, analysis: g.analysis || g.Analysis || null, checkedAt: now });
         }
         for (const id of batch) overviewSeen.set(id, found.get(id) || null);
       }
@@ -1375,7 +1479,10 @@
         if (!overviewSeen.has(entry.id)) continue;   // erst im naechsten Durchgang erfragt
         const host = overviewHost(entry);
         const state = overviewSeen.get(entry.id);
-        const stamp = entry.id + (state ? ':' + (state.id || '') + ':' + ((state.analysis && state.analysis.status) || '') : ':neu');
+        const a = state && state.analysis;
+        const stamp = entry.id + (state
+          ? ':' + (state.id || '') + ':' + (overviewAnalysisStatus(state) || '') + ':' + ((a && a.analyzed) || 0)
+          : ':neu');
         if (host.dataset.rcStamp === stamp && host.childElementCount) continue;
         host.dataset.rcStamp = stamp;
         if (state) paintOverviewKnown(host, cfg, state);
