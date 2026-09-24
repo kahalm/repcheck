@@ -245,6 +245,10 @@ Vier Dinge, die dabei nicht kippen dürfen:
   gemerkt. Die Abfrage ist best-effort — eine ältere RookHub-Version kennt den Endpunkt nicht (404),
   dann stehen eben überall Knöpfe statt Häkchen.
 
+**Die Bedenkzeit reist mit** (v1.66.1): `timeControl` im Save-Payload, aus chess.coms `pgnHeaders.TimeControl`
+bzw. dem `[TimeControl]` des lichess-Exports — RookHub ≥ 0.526.0 zeigt daraus „3 + 2" in der Partienliste,
+ältere ignorieren das Feld.
+
 Getestet in `test/chesscom-overview.test.js`: der Uebersichts-Block wird aus `content.js`
 ausgeschnitten und gegen ein winziges DOM ausgeführt (Zeilen finden, Zeichnen, Nachladen, Deckel 300,
 Schicken samt `analyze:true`, Fehlerpfade, und dass der Durchgang ohne Token bzw. auf lichess ruht).

@@ -316,6 +316,9 @@
         playedAt: meta.playedAt,
         whiteElo: meta.whiteElo,
         blackElo: meta.blackElo,
+        // Bedenkzeit in der Schreibweise der Plattform („180+2"); RookHub >= 0.526.0 zeigt sie in der
+        // Partienliste, aeltere ignorieren das Feld.
+        timeControl: meta.timeControl,
         // Aus der Uebersicht gesendete Partien sollen gleich gerechnet werden (RookHub >= 0.524.0;
         // aeltere ignorieren das Feld, die Partie ist trotzdem gespeichert).
         analyze: !!meta.analyze,
@@ -707,6 +710,7 @@
         playedAt: chessComPlayedAt(h),
         whiteElo: parseElo(h.WhiteElo),
         blackElo: parseElo(h.BlackElo),
+        timeControl: h.TimeControl ? String(h.TimeControl).slice(0, 32) : null,
       };
     } catch (e) { return null; }
   }
@@ -737,6 +741,7 @@
         whiteElo: parseElo(hdr('WhiteElo')),
         blackElo: parseElo(hdr('BlackElo')),
         playedAt: chessComPlayedAt({ Date: hdr('UTCDate'), EndTime: hdr('UTCTime') }),
+        timeControl: hdr('TimeControl') ? hdr('TimeControl').slice(0, 32) : null,
         moves,
       };
     } catch (e) { return null; }
@@ -756,6 +761,7 @@
       playedAt: null,
       whiteElo: null,
       blackElo: null,
+      timeControl: null,
       moves: null,
     };
     try {
@@ -783,6 +789,7 @@
         if (g.playedAt) meta.playedAt = g.playedAt;
         if (g.whiteElo != null) meta.whiteElo = g.whiteElo;
         if (g.blackElo != null) meta.blackElo = g.blackElo;
+        if (g.timeControl) meta.timeControl = g.timeControl;
         if (g.moves) meta.moves = g.moves;
       }
     }
@@ -796,6 +803,7 @@
         if (h.playedAt) meta.playedAt = h.playedAt;
         if (h.whiteElo != null) meta.whiteElo = h.whiteElo;
         if (h.blackElo != null) meta.blackElo = h.blackElo;
+        if (h.timeControl) meta.timeControl = h.timeControl;
         // Zuege aus chess.coms eigener Antwort schlagen die DOM-Auslese: sie sind vollstaendig, auch
         // wenn die Seite gerade keine Zugliste zeigt (Analyseseite, Review-Tab).
         if (h.moves && h.moves.length) meta.moves = h.moves;
@@ -1286,6 +1294,7 @@
         playedAt: h.playedAt,
         whiteElo: h.whiteElo,
         blackElo: h.blackElo,
+        timeControl: h.timeControl,
         sourceUrl: 'https://www.chess.com/game/' + (entry.daily ? 'daily/' : 'live/') + entry.id,
         // Aus der Uebersicht geschickte Partien sollen gleich gerechnet werden.
         analyze: true,

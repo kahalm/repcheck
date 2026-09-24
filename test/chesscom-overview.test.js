@@ -99,7 +99,8 @@ function aufbau(zeilen, stubs = {}) {
     rookhubSaveGame: async (cfg, moves, meta) => { ruf.gespeichert.push({ moves, meta }); return { id: 42 }; },
     fetchChessComHeaders: async (id, daily) => {
       ruf.header.push({ id, daily });
-      return { moves: ['e4', 'c5'], white: 'Anna', black: 'Bert', result: '1-0', playedAt: null, whiteElo: 1600, blackElo: 1650 };
+      return { moves: ['e4', 'c5'], white: 'Anna', black: 'Bert', result: '1-0', playedAt: null,
+        whiteElo: 1600, blackElo: 1650, timeControl: '180+2' };
     },
     setTimeout: () => 0,
   };
@@ -241,6 +242,7 @@ test('Klick schickt die Partie mit Zuegen, Kopfdaten und analyze:true — und na
   assert.equal(send.meta.analyze, true);
   assert.equal(send.meta.white, 'Anna');
   assert.equal(send.meta.whiteElo, 1600);
+  assert.equal(send.meta.timeControl, '180+2', 'die Bedenkzeit geht mit (RookHub >= 0.526.0 zeigt sie)');
   assert.equal(send.meta.sourceUrl, 'https://www.chess.com/game/live/184299739920');
   // Danach steht das Haekchen mit der neuen RookHub-Id da.
   assert.equal(inhalt(row).tag, 'a');
@@ -309,6 +311,16 @@ test('der Host ist positioniert — sonst faengt der deckende Zeilen-Link jeden 
   // Die 80px-Zelle traegt schon zwei Knoepfe: passt der dritte nicht daneben, bricht er UM statt in
   // die Nachbarspalte zu laufen (chess.com setzt dort nowrap). Im Browser nachgemessen.
   assert.match(css, /\.game-history-games-actions \{ flex-wrap: wrap; \}/);
+});
+
+test('die Bedenkzeit reist von beiden Plattformen mit (RookHub >= 0.526.0 zeigt sie in der Liste)', () => {
+  const save = content.slice(content.indexOf('async function rookhubSaveGame('), content.indexOf('async function rookhubKnownGames('));
+  assert.match(save, /timeControl: meta\.timeControl/);
+  // chess.com nennt sie in den pgnHeaders seiner Callback-Antwort, lichess im Export-PGN.
+  const cc = content.slice(content.indexOf('async function fetchChessComHeaders('), content.indexOf('async function fetchLichessGame('));
+  assert.match(cc, /timeControl: h\.TimeControl/);
+  const li = content.slice(content.indexOf('async function fetchLichessGame('), content.indexOf('async function getGameMeta('));
+  assert.match(li, /hdr\('TimeControl'\)/);
 });
 
 test('„known" ist best-effort: eine aeltere RookHub-Version liefert einfach keine Haekchen', () => {
