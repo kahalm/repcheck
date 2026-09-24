@@ -842,10 +842,19 @@ function paintCiAlert() {
   CI_ALERT.style.display = 'block';
 }
 
+// Bis v1.64.x landete auch „Kurs nicht im Konto" (BOOK_NOT_OWNED) hier — solche Altlasten räumt das Popup still weg.
+function takeCiAlert(h) {
+  if (h && CrawlLib && CrawlLib.isNotOwnedAlert(h)) {
+    try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ }
+    return null;
+  }
+  return h || null;
+}
+
 try {
-  chrome.storage.local.get('rcCrawlAlert', (r) => { ciAlert = (r && r.rcCrawlAlert) || null; paintCiAlert(); });
+  chrome.storage.local.get('rcCrawlAlert', (r) => { ciAlert = takeCiAlert(r && r.rcCrawlAlert); paintCiAlert(); });
   chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === 'local' && ch.rcCrawlAlert) { ciAlert = ch.rcCrawlAlert.newValue || null; paintCiAlert(); }
+    if (area === 'local' && ch.rcCrawlAlert) { ciAlert = takeCiAlert(ch.rcCrawlAlert.newValue); paintCiAlert(); }
   });
 } catch (e) { /* ohne storage kein Hinweis */ }
 

@@ -251,6 +251,31 @@
     return JSON.stringify(err);
   }
 
+  // Chessables Fehlercode einer JSON-Antwort ({"error":{"code":"BOOK_NOT_OWNED","data":{"name":…}}}) samt dem
+  // Kursnamen, den Chessable dazu mitschickt; sonst null.
+  function chessableErrorCode(obj) {
+    const err = obj.error != null ? obj.error : obj.Error;
+    if (!err || typeof err !== 'object' || typeof err.code !== 'string' || !err.code) return null;
+    const name = err.data && typeof err.data.name === 'string' && err.data.name.trim() ? err.data.name.trim() : null;
+    return { code: err.code, name };
+  }
+
+  // ---- Kurs nicht im Konto (v1.65.1) ----
+  // Chessable antwortet auf getCourse eines Kurses, den das eingeloggte Konto nicht besitzt, mit HTTP 400 und
+  // {"error":{"code":"BOOK_NOT_OWNED","userFriendlyErrorMessage":"You do not own this course.",…}}. Das ist keine
+  // Anti-Crawling-Maßnahme, sondern eine klare Auskunft — also kein Discord-Alarm und keine Meldung an RookHub,
+  // sondern eine Erklärung für den Nutzer. Anlass: 24.09.2026 acht Versuche in sechs Minuten an „Lifetime
+  // Repertoires: King's Indian Defense - Part 1", jeder mit der Bitte, dem Entwickler Bescheid zu geben.
+  const BOOK_NOT_OWNED = 'BOOK_NOT_OWNED';
+
+  // Ein gemerkter Hinweis (rcCrawlAlert) aus der Zeit vor v1.65.1, der in Wahrheit ein BOOK_NOT_OWNED war? Dann soll
+  // das Popup ihn nicht mehr als Alarm zeigen und vor dem nächsten Holen nicht mehr nachfragen.
+  function isNotOwnedAlert(h) {
+    if (!h || typeof h !== 'object') return false;
+    if (h.code === BOOK_NOT_OWNED) return true;
+    return [h.message, h.detail].some(s => typeof s === 'string' && s.includes('"code":"' + BOOK_NOT_OWNED + '"'));
+  }
+
   function hasExpectedShape(kind, obj) {
     if (kind === 'course') { const c = obj.course || obj.Course; return !!c && Array.isArray(c.data || c.Data); }
     if (kind === 'list') { const l = obj.list || obj.List; return !!l && Array.isArray(l.data || l.Data); }
@@ -259,12 +284,13 @@
   }
 
   // Prüft eine Antwort beim „Kurs holen". kind: 'course' | 'list' | 'game'; status: HTTP-Status (fehlt = 200).
-  // null = in Ordnung. Sonst { reason, status, message, banned, snippet } mit reason
+  // null = in Ordnung. Sonst { reason, status, message, banned, snippet, code, courseName } mit reason
   //   http  — kein 2xx (auch nach den Wiederholungen bei 429/5xx),
   //   json  — kein JSON (z. B. eine HTML-Sperrseite),
   //   error — Chessable meldet einen Fehler statt der Daten,
   //   shape — JSON ohne das erwartete Feld (course.data / list.data / game), auch das leere {}.
   // Eine Antwort MIT dem erwarteten Feld gilt als in Ordnung, auch wenn daneben ein error-Feld steht.
+  // code/courseName: Chessables Fehlercode (z. B. BOOK_NOT_OWNED) und der mitgeschickte Kursname, sonst null.
   function checkChessableResponse(kind, text, status) {
     const code = status == null ? 200 : Number(status);
     const raw = text == null ? '' : String(text);
@@ -276,18 +302,21 @@
     const found = isObj ? chessableErrorMessage(obj) : null;
     const message = found ? found.slice(0, UNEXPECTED_MESSAGE_CHARS) : null;
     const snippet = scrubSnippet(raw);
+    const fehler = isObj ? chessableErrorCode(obj) : null;
     return {
       reason: !ok2xx ? 'http' : !parsed ? 'json' : message ? 'error' : 'shape',
       status: code,
       message,
       banned: looksBanned(message, snippet),
       snippet,
+      code: fehler ? fehler.code : null,
+      courseName: fehler ? fehler.name : null,
     };
   }
 
   const api = { classifyChessableApi, parseChapterLids, parseLineOids, parseCourseNameFromGame, buildIngestChapters, parseCourseVariations, progressCounts,
     pruneStructures, splitIngestChapters, INGEST_BATCH_BYTES,
-    checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS,
+    checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS, BOOK_NOT_OWNED, isNotOwnedAlert,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCrawl = api;

@@ -198,6 +198,10 @@ const RC_MESSAGES = {
     'import.unexpected.discord': 'Open Discord',
     'import.unexpected.dismiss': 'Hide',
     'import.unexpected.rerunConfirm': 'The last fetch was stopped because of an unexpected response from Chessable ({detail}).\n\nHave you told the developer on Discord? Only fetch again once the developer has given the go-ahead.',
+    'import.notOwned.title': 'This course isn’t in your Chessable account',
+    'import.notOwned.body': 'Chessable says you don’t own “{name}”. RepCheck can only fetch courses that are unlocked in your Chessable account.',
+    'import.notOwned.hint': 'If you bought it: check that you’re logged in to Chessable with the account you bought it with and that the course is listed there under “My Courses”. Courses in several parts have a separate page for each part.',
+    'import.notOwned.status': 'Stopped: Chessable says you don’t own “{name}”.',
     'import.abortRequested': 'Cancelling…',
     'import.nothingNew': {
       one: 'Nothing new — the {count} line is already on RookHub.',
@@ -498,6 +502,10 @@ const RC_MESSAGES = {
     'import.unexpected.discord': 'Discord öffnen',
     'import.unexpected.dismiss': 'Ausblenden',
     'import.unexpected.rerunConfirm': 'Der letzte Abruf wurde wegen einer unerwarteten Antwort von Chessable gestoppt ({detail}).\n\nHast du dem Entwickler auf Discord Bescheid gegeben? Erneut holen erst nach dem Okay vom Entwickler.',
+    'import.notOwned.title': 'Kurs nicht in deinem Chessable-Konto',
+    'import.notOwned.body': 'Laut Chessable gehört dir „{name}“ nicht. RepCheck kann nur Kurse holen, die in deinem Chessable-Konto freigeschaltet sind.',
+    'import.notOwned.hint': 'Falls du ihn gekauft hast: Prüf, ob du bei Chessable mit dem Konto eingeloggt bist, mit dem du gekauft hast, und ob der Kurs dort unter „My Courses“ steht. Mehrteilige Kurse haben für jeden Teil eine eigene Seite.',
+    'import.notOwned.status': 'Abgebrochen: Laut Chessable gehört dir „{name}“ nicht.',
     'import.abortRequested': 'Abbruch angefordert …',
     'import.nothingNew': {
       one: 'Nichts Neues — {count} Linie ist schon auf RookHub.',
@@ -790,6 +798,10 @@ const RC_MESSAGES = {
     'import.unexpected.discord': 'Otvori Discord',
     'import.unexpected.dismiss': 'Sakrij',
     'import.unexpected.rerunConfirm': 'Posljednje dohvaćanje zaustavljeno je zbog neočekivanog odgovora s Chessablea ({detail}).\n\nJe li razvijatelj obaviješten na Discordu? Ponovno dohvaćaj tek kad razvijatelj da zeleno svjetlo.',
+    'import.notOwned.title': 'Tečaj nije na tvom Chessable računu',
+    'import.notOwned.body': 'Prema Chessableu „{name}” nije u tvom vlasništvu. RepCheck može dohvatiti samo tečajeve otključane na tvom Chessable računu.',
+    'import.notOwned.hint': 'Ako je tečaj kupljen: provjeri je li na Chessableu otvoren račun kojim je kupljen i nalazi li se tečaj tamo pod „My Courses”. Tečajevi iz više dijelova imaju zasebnu stranicu za svaki dio.',
+    'import.notOwned.status': 'Zaustavljeno: prema Chessableu „{name}” nije u tvom vlasništvu.',
     'import.abortRequested': 'Zatražen prekid …',
     'import.nothingNew': {
       one: 'Ništa novo — {count} linija je već na RookHubu.',

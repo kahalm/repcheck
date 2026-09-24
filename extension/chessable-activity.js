@@ -1314,6 +1314,12 @@
     }
     const bad = Crawl.checkChessableResponse(kind, text, status);
     if (!bad) return text;
+    if (bad.code === Crawl.BOOK_NOT_OWNED) {
+      // Kein Alarm: Chessable sagt nur, dass der Kurs nicht im eingeloggten Konto liegt (v1.65.1).
+      const err = new Error(t('import.notOwned.title'));
+      err.notOwned = { courseName: bad.courseName };
+      throw err;
+    }
     const err = new Error(t('import.unexpected.title'));
     err.unexpected = Object.assign({ endpoint: path.split('?')[0] }, where || {}, bad);
     throw err;
@@ -1400,6 +1406,38 @@
     hinweis.adminNotified = !!res.adminNotified;
     merken();
     if (document.getElementById(CRAWL_ALERT_ID)) showCrawlAlert(hinweis);   // schon weggeklickt → nicht wieder aufdrängen
+  }
+
+  // ---- Kurs nicht im Chessable-Konto (v1.65.1) ----
+  // BOOK_NOT_OWNED ist eine klare Auskunft, keine Sperre: erklären, warum nichts geht, und was der Nutzer prüfen kann.
+  // Kein rcCrawlAlert (das Popup soll vor dem nächsten Holen nicht nachfragen) und keine Meldung an RookHub.
+  const NOT_OWNED_ID = 'repcheck-not-owned';
+
+  function showNotOwned(bid, courseName) {
+    const name = courseName || bestCourseName(bid) || ('#' + bid);
+    const status = t('import.notOwned.status', { name });
+    if (!document.body) return status;
+    document.getElementById(NOT_OWNED_ID)?.remove();
+    const bar = bannerCard(NOT_OWNED_ID);
+    bar.style.borderLeft = '4px solid #5b8def';
+    const absatz = (text, style) => {
+      const d = document.createElement('div');
+      d.textContent = text;
+      Object.assign(d.style, { marginBottom: '8px' }, style || {});
+      bar.appendChild(d);
+    };
+    absatz(t('import.notOwned.title'), { fontWeight: '600', marginBottom: '4px' });
+    absatz(t('import.notOwned.body', { name }));
+    absatz(t('import.notOwned.hint'));
+    const row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', justifyContent: 'flex-end' });
+    const hide = document.createElement('button');
+    hide.type = 'button'; hide.textContent = t('import.unexpected.dismiss'); styleConsentBtn(hide, 'transparent', '#bbb', true);
+    hide.addEventListener('click', () => bar.remove());
+    row.appendChild(hide);
+    bar.appendChild(row);
+    bannerHost().prepend(bar);
+    return status;
   }
 
   // V2: Kurs aktiv holen (getCourse→getList→getGame).
@@ -1571,6 +1609,9 @@
           } catch (e) { /* die Warnung zählt mehr als die Teilsicherung */ }
         }
         await handleUnexpected(bid, err.unexpected, saved);
+      } else if (err && err.notOwned) {
+        failMsg = showNotOwned(bid, err.notOwned.courseName);
+        setStatus(failMsg);
       } else {
         failMsg = t('import.error', { error: (err && err.message) || err });
         setStatus(failMsg);

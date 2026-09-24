@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS } =
+const { checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS, BOOK_NOT_OWNED, isNotOwnedAlert } =
   require('../extension/lib/chessable-crawl.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -104,4 +104,44 @@ test('Popup zeigt den Hinweis und fragt vor dem nächsten Holen nach', () => {
   assert.ok(frage > 0 && frage < warnFn.indexOf('startCiCrawl'));
   // Der eigentliche Abruf läuft erst los, wenn der „Fortfahren"-Klick in der Warnbox das auslöst.
   assert.match(popup, /addEventListener\('click', startCiCrawl\)/);
+});
+
+// Kurs nicht im Konto (v1.65.1): die echte getCourse-Antwort vom 24.09.2026 (HTTP 400, bid 77656).
+const NOT_OWNED_BODY = '{"error":{"userFriendlyErrorMessage":"You do not own this course.","message":"","code":"BOOK_NOT_OWNED",'
+  + '"data":{"name":"Lifetime Repertoires: King\'s Indian Defense - Part 1","bid":77656},"isCustomException":true},"hash":"261"}';
+
+test('BOOK_NOT_OWNED: Code und Kursname aus der Antwort, keine Sperre', () => {
+  const r = checkChessableResponse('course', NOT_OWNED_BODY, 400);
+  assert.deepEqual([r.reason, r.status, r.code, r.courseName, r.banned],
+    ['http', 400, BOOK_NOT_OWNED, "Lifetime Repertoires: King's Indian Defense - Part 1", false]);
+  // Andere Fehler tragen keinen Code, ein Code ohne Kursname keinen Namen.
+  assert.equal(checkChessableResponse('game', '{"error":{"message":"User is banned or deleted"}}').code, null);
+  const ohneName = checkChessableResponse('course', '{"error":{"code":"BOOK_NOT_OWNED","data":{"name":"  "}}}', 400);
+  assert.deepEqual([ohneName.code, ohneName.courseName], [BOOK_NOT_OWNED, null]);
+});
+
+test('BOOK_NOT_OWNED: Erklärung statt Alarm — kein rcCrawlAlert, keine Meldung an RookHub', () => {
+  const checked = activity.slice(activity.indexOf('async function chessableGetChecked('), activity.indexOf('function unexpectedDetail('));
+  // Die Weiche steht VOR dem Fehler mit `unexpected` — sonst liefe der Alarm-Pfad doch.
+  const weiche = checked.indexOf('Crawl.BOOK_NOT_OWNED');
+  assert.ok(weiche > 0 && weiche < checked.indexOf('err.unexpected'));
+  assert.match(checked, /err\.notOwned = /);
+  const karte = activity.slice(activity.indexOf('function showNotOwned('), activity.indexOf('// V2: Kurs aktiv holen'));
+  assert.match(karte, /import\.notOwned\.body/);
+  assert.doesNotMatch(karte, /rcCrawlAlert|reportUnexpected|DISCORD_URL/);
+  const crawl = activity.slice(activity.indexOf('async function crawlAndImport('), activity.indexOf('// V1: nur den passiven Mitschnitt'));
+  assert.match(crawl, /err\.notOwned\) \{\s*failMsg = showNotOwned\(/);
+});
+
+test('BOOK_NOT_OWNED: alter Popup-Hinweis aus v1.64.x wird erkannt und weggeräumt', () => {
+  // So legte 1.64.0 den Hinweis ab: message = das ganze error-Objekt als JSON (Chessables message ist leer).
+  const alt = { bid: '77656', detail: 'getCourse · HTTP 400 · {"userFriendlyErrorMessage":"You do not own this course.","message":"","code":"BOOK_NOT_OWNED"}',
+    message: '{"userFriendlyErrorMessage":"You do not own this course.","message":"","code":"BOOK_NOT_OWNED","data":{"bid":77656}}', banned: false };
+  assert.equal(isNotOwnedAlert(alt), true);
+  assert.equal(isNotOwnedAlert({ code: BOOK_NOT_OWNED }), true);
+  assert.equal(isNotOwnedAlert({ message: 'User is banned or deleted', detail: 'getGame oid 1 · User is banned or deleted' }), false);
+  assert.equal(isNotOwnedAlert(null), false);
+  assert.match(popup, /CrawlLib\.isNotOwnedAlert\(h\)/);
+  assert.match(popup, /ciAlert = takeCiAlert\(r && r\.rcCrawlAlert\)/);
+  assert.match(popup, /ciAlert = takeCiAlert\(ch\.rcCrawlAlert\.newValue\)/);
 });
