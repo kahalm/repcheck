@@ -1217,7 +1217,8 @@
   let overviewBusy = false;
 
   // Alle Partiezeilen der Seite mit ihrer chess.com-Id. Nur ZAHLEN-Ids: zwischen den Partielinks des
-  // Schnappschusses standen auch /cheating, /partners und /chesscom.
+  // Schnappschusses standen auch /cheating, /partners und /chesscom. `slot` = die vorhandene
+  // Aktionen-Zelle, in die der Knopf gehoert.
   function chessComGameRows() {
     const out = [];
     for (const row of document.querySelectorAll('.game-history-games-row')) {
@@ -1225,18 +1226,49 @@
       const href = link ? (link.getAttribute('href') || '') : '';
       const m = href.match(/\/game\/(live|daily)\/(\d+)/);
       if (!m) continue;
-      out.push({ row, id: m[2], daily: m[1] === 'daily' });
+      out.push({ row, id: m[2], daily: m[1] === 'daily', slot: row.querySelector('.game-history-games-actions') });
     }
     return out;
   }
+
+  // lichess (`/@/<name>/all`, Profil): `article.game-row` mit deckendem `a.game-row__overlay`, dessen
+  // Ziel `/<id8><spieler4>` ist — die Partie-Id sind die ersten ACHT Zeichen (dieselben, die
+  // `getGameMeta` aus der Adresse liest). Eine Aktionen-Zelle gibt es dort nicht: der Knopf haengt
+  // absolut oben rechts in der Zeile (Schnappschuss 24.09.2026: `position: relative`, 239 px hoch).
+  function lichessGameRows() {
+    const out = [];
+    for (const row of document.querySelectorAll('.game-row')) {
+      const link = row.querySelector('a.game-row__overlay, a[href^="/"]');
+      const m = link && (link.getAttribute('href') || '').match(/^\/([A-Za-z0-9]{8})(?:[A-Za-z0-9]{4})?(?:\/(?:white|black))?$/);
+      if (!m) continue;
+      out.push({ row, id: m[1], slot: null });
+    }
+    return out;
+  }
+
+  // Was je Plattform verschieden ist — der Rest des Durchgangs ist derselbe.
+  const OVERVIEW_SITES = {
+    chesscom: {
+      source: 'chess.com',
+      rows: chessComGameRows,
+      headers: (entry) => fetchChessComHeaders(entry.id, entry.daily),
+      url: (entry) => 'https://www.chess.com/game/' + (entry.daily ? 'daily/' : 'live/') + entry.id,
+    },
+    lichess: {
+      source: 'lichess',
+      rows: lichessGameRows,
+      // Die Export-API liefert Zuege, Spieler, Wertungen, Ergebnis, Datum und Bedenkzeit in EINEM Abruf.
+      headers: (entry) => fetchLichessGame(entry.id),
+      url: (entry) => 'https://lichess.org/' + entry.id,
+    },
+  };
 
   function overviewHost(entry) {
     let host = entry.row.querySelector('.' + OVERVIEW_HOST_CLASS);
     if (host) return host;
     host = document.createElement('span');
     host.className = OVERVIEW_HOST_CLASS;
-    const slot = entry.row.querySelector('.game-history-games-actions');
-    if (slot) slot.appendChild(host);
+    if (entry.slot) entry.slot.appendChild(host);
     else { host.classList.add('rc-ov-loose'); entry.row.appendChild(host); }
     return host;
   }
@@ -1260,7 +1292,7 @@
     host.appendChild(a);
   }
 
-  function paintOverviewButton(host, cfg, entry) {
+  function paintOverviewButton(host, cfg, entry, site) {
     host.replaceChildren();
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1272,21 +1304,21 @@
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      sendOverviewGame(cfg, entry, host, btn);
+      sendOverviewGame(cfg, entry, host, btn, site);
     });
     host.appendChild(btn);
   }
 
-  async function sendOverviewGame(cfg, entry, host, btn) {
+  async function sendOverviewGame(cfg, entry, host, btn, site) {
     btn.disabled = true;
     btn.textContent = '…';
     btn.title = t('overview.sending');
     try {
-      const h = await fetchChessComHeaders(entry.id, entry.daily);
+      const h = await site.headers(entry);
       const moves = h && h.moves ? h.moves : [];
       if (!moves.length) throw new Error(t('tools.saveNoMoves'));
       const saved = await rookhubSaveGame(cfg, moves, {
-        source: 'chess.com',
+        source: site.source,
         externalId: entry.id,
         white: h.white,
         black: h.black,
@@ -1295,7 +1327,7 @@
         whiteElo: h.whiteElo,
         blackElo: h.blackElo,
         timeControl: h.timeControl,
-        sourceUrl: 'https://www.chess.com/game/' + (entry.daily ? 'daily/' : 'live/') + entry.id,
+        sourceUrl: site.url(entry),
         // Aus der Uebersicht geschickte Partien sollen gleich gerechnet werden.
         analyze: true,
       });
@@ -1318,8 +1350,9 @@
   // Haekchen oder Knopf zeichnen. Laeuft im Takt, weil chess.com die Zeilen nachlaedt (Blaettern,
   // „mehr laden") ohne <title> oder Adresse zu aendern.
   async function syncOverviewGames() {
-    if (overviewBusy || detectSiteKey() !== 'chesscom') return;
-    const entries = chessComGameRows();
+    const site = OVERVIEW_SITES[detectSiteKey()];
+    if (overviewBusy || !site) return;
+    const entries = site.rows();
     if (!entries.length) return;
     const cfg = await loadRookhubConfig().catch(() => null);
     if (!cfg || !cfg.url || !cfg.token) return;
@@ -1330,7 +1363,7 @@
       if (unknown.length) {
         // Der Endpunkt nimmt hoechstens 300 Ids; der Rest kommt im naechsten Durchgang.
         const batch = unknown.slice(0, 300);
-        const known = await rookhubKnownGames(cfg, 'chess.com', batch);
+        const known = await rookhubKnownGames(cfg, site.source, batch);
         const found = new Map();
         for (const g of known) {
           const ext = g && (g.externalId || g.ExternalId);
@@ -1346,7 +1379,7 @@
         if (host.dataset.rcStamp === stamp && host.childElementCount) continue;
         host.dataset.rcStamp = stamp;
         if (state) paintOverviewKnown(host, cfg, state);
-        else paintOverviewButton(host, cfg, entry);
+        else paintOverviewButton(host, cfg, entry, site);
       }
     } finally {
       overviewBusy = false;

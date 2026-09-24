@@ -1,6 +1,6 @@
 'use strict';
 
-// chess.com-Partienuebersicht (v1.66.0): je Zeile ein Knopf „an RookHub schicken", und wo die Partie
+// Partienuebersicht auf chess.com (v1.66.0) und lichess (v1.67.0): je Zeile ein Knopf „an RookHub schicken", und wo die Partie
 // schon liegt, ein Haekchen mit Link statt des Knopfs. Gewuenscht am 24.09.2026; die Zeilen-Struktur
 // stammt aus dem Schnappschuss desselben Tages (`.game-history-games-row`, Grid mit subgrid-Spalten,
 // Aktionen-Zelle `.game-history-games-actions` mit Herz + Auswahlkaestchen).
@@ -26,10 +26,20 @@ const BLOCK = (() => {
 // ─── Winziges DOM, das genau die benutzten Aufrufe kennt ────────────────
 
 function passt(el, sel) {
-  if (sel.startsWith('.')) return el.className.split(/\s+/).includes(sel.slice(1));
-  const m = sel.match(/^(\w+)\[(\w+)\*="([^"]+)"\]$/);   // a[href*="/game/"]
-  if (m) return el.tag === m[1] && String(el.attrs[m[2]] || '').includes(m[3]);
-  throw new Error('Selektor im Test nicht abgebildet: ' + sel);
+  return sel.split(',').map(t => t.trim()).filter(Boolean).some(t => passtEinzeln(el, t));
+}
+
+/** Nur die Formen, die der Uebersichts-Block wirklich benutzt: `.klasse`, `tag.klasse`, `tag[attr*="x"]`, `tag[attr^="x"]`. */
+function passtEinzeln(el, sel) {
+  const m = sel.match(/^([a-z]+)?(?:\.([\w-]+))?(?:\[(\w+)([*^])="([^"]+)"\])?$/);
+  if (!m || (!m[1] && !m[2] && !m[3])) throw new Error('Selektor im Test nicht abgebildet: ' + sel);
+  if (m[1] && el.tag !== m[1]) return false;
+  if (m[2] && !el.className.split(/\s+/).includes(m[2])) return false;
+  if (m[3]) {
+    const wert = String(el.attrs[m[3]] || '');
+    if (m[4] === '*' ? !wert.includes(m[5]) : !wert.startsWith(m[5])) return false;
+  }
+  return true;
 }
 
 function nachkommen(el, out) {
@@ -82,6 +92,17 @@ function zeile(id, { kompakt = false, art = 'live' } = {}) {
   return row;
 }
 
+/** lichess-Partienliste (Schnappschuss 24.09.2026): deckender Overlay-Link, Brett, Infos — keine Aktionen-Zelle. */
+function lichessZeile(id, spieler = 'Pahan77') {
+  const row = el('article', { class: 'game-row paginated' });
+  row.appendChild(el('a', { class: 'game-row__overlay', href: `/${id}KGut` }));   // Id + Spieler-Anhang
+  row.appendChild(el('div', { class: 'game-row__board' }));
+  const infos = el('div', { class: 'game-row__infos' });
+  infos.appendChild(el('a', { class: 'user-link ulpt', href: '/@/' + spieler }));
+  row.appendChild(infos);
+  return row;
+}
+
 function aufbau(zeilen, stubs = {}) {
   const wurzel = el('div', {});
   for (const z of zeilen) wurzel.appendChild(z);
@@ -101,6 +122,11 @@ function aufbau(zeilen, stubs = {}) {
       ruf.header.push({ id, daily });
       return { moves: ['e4', 'c5'], white: 'Anna', black: 'Bert', result: '1-0', playedAt: null,
         whiteElo: 1600, blackElo: 1650, timeControl: '180+2' };
+    },
+    fetchLichessGame: async (id) => {
+      ruf.header.push({ id, lichess: true });
+      return { moves: ['d4', 'Nf6'], white: 'Pahan77', black: 'kahalm', result: '1-0', playedAt: null,
+        whiteElo: 1837, blackElo: 1881, timeControl: '300+3' };
     },
     setTimeout: () => 0,
   };
@@ -286,8 +312,60 @@ test('ohne Token wird nichts gezeichnet und nichts erfragt', async () => {
   assert.equal(ruf.styles, 0);
 });
 
-test('auf lichess laeuft der chess.com-Durchgang nicht (Zeilen-Struktur ist dort anders)', async () => {
+test('auf einer fremden Seite (chessable) ruht der Durchgang', async () => {
   const row = zeile('184299739920');
+  const { api, ruf } = aufbau([row], { detectSiteKey: () => 'chessable' });
+
+  await api.syncOverviewGames();
+
+  assert.equal(host(row), null);
+  assert.equal(ruf.known.length, 0);
+});
+
+// ─── lichess ────────────────────────────────────────────────────────────
+
+test('lichess: Id sind die ersten ACHT Zeichen des Overlay-Links (der traegt den Spieler-Anhang)', async () => {
+  const row = lichessZeile('8NPpBdrS');
+  const { api, ruf } = aufbau([row], { detectSiteKey: () => 'lichess' });
+
+  await api.syncOverviewGames();
+
+  assert.deepEqual(ruf.known, [{ source: 'lichess', ids: ['8NPpBdrS'] }]);
+  assert.equal(inhalt(row).tag, 'button');
+});
+
+test('lichess: ohne Aktionen-Zelle haengt der Knopf absolut in der Zeile', async () => {
+  const row = lichessZeile('8NPpBdrS');
+  const { api } = aufbau([row], { detectSiteKey: () => 'lichess' });
+
+  await api.syncOverviewGames();
+
+  assert.ok(host(row).classList.contains('rc-ov-loose'));
+  assert.equal(row.children[row.children.length - 1], host(row));
+});
+
+test('lichess: geschickt wird mit der Export-API und der lichess-Quelle', async () => {
+  const row = lichessZeile('8NPpBdrS');
+  const { api, ruf } = aufbau([row], { detectSiteKey: () => 'lichess' });
+  await api.syncOverviewGames();
+
+  inhalt(row).klick();
+  await new Promise(r => setImmediate(r));
+
+  assert.deepEqual(ruf.header, [{ id: '8NPpBdrS', lichess: true }]);
+  const [send] = ruf.gespeichert;
+  assert.equal(send.meta.source, 'lichess');
+  assert.equal(send.meta.externalId, '8NPpBdrS');
+  assert.equal(send.meta.sourceUrl, 'https://lichess.org/8NPpBdrS');
+  assert.equal(send.meta.analyze, true);
+  assert.equal(send.meta.timeControl, '300+3');
+  assert.deepEqual(send.moves, ['d4', 'Nf6']);
+  assert.equal(inhalt(row).href, 'https://rookhub.example/games/42');
+});
+
+test('lichess: der Profil-Link daneben ist keine Partie', async () => {
+  const row = el('article', { class: 'game-row' });
+  row.appendChild(el('a', { class: 'user-link', href: '/@/kahalm' }));
   const { api, ruf } = aufbau([row], { detectSiteKey: () => 'lichess' });
 
   await api.syncOverviewGames();

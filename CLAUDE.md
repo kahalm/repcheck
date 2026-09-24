@@ -217,7 +217,7 @@ aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupli
   zum Background-Worker (CORS-frei). Beide Pfade identisch außer diesem Fetch (wie `rookhubAnalyzeGame`).
 - **Privacy**: liest nur Zugliste + Seitentitel/URL lokal; sendet ausschließlich an die konfigurierte RookHub-Instanz.
 
-### Partien-Übersicht: je Zeile ein Knopf (v1.66.0, **chess.com**)
+### Partien-Übersicht: je Zeile ein Knopf (v1.66.0 chess.com, v1.67.0 lichess)
 
 In der Partienliste (`/member/<name>/games`, Profilseite) trägt jede Zeile einen eigenen Knopf
 „an RookHub schicken“ — und wo die Partie schon liegt, ein ✓ mit Link auf `{RookHub-URL}/games/{id}`
@@ -245,11 +245,24 @@ Vier Dinge, die dabei nicht kippen dürfen:
   gemerkt. Die Abfrage ist best-effort — eine ältere RookHub-Version kennt den Endpunkt nicht (404),
   dann stehen eben überall Knöpfe statt Häkchen.
 
+**lichess** (v1.67.0, `/@/<name>/all` und Profil): dieselbe Mechanik, zwei Unterschiede — die Zeile ist
+`article.game-row` mit deckendem `a.game-row__overlay`, dessen Ziel `/<id8><spieler4>` lautet (die Partie-Id sind
+die ersten ACHT Zeichen, dieselben, die `getGameMeta` aus der Adresse liest), und es gibt dort **keine**
+Aktionen-Zelle: der Knopf hängt absolut oben rechts in der Zeile (`position: relative`, 239 px hoch).
+Die Partie kommt aus der Export-API (`fetchLichessGame` — Züge, Spieler, Wertungen, Ergebnis, Datum und
+Bedenkzeit in EINEM Abruf, kein TCN-Umweg). Was je Plattform verschieden ist, steht in `OVERVIEW_SITES`
+(Quelle, Zeilen-Sammler, Kopfdaten-Abruf, Original-Link); der Durchgang selbst ist derselbe.
+
+**Vorgeschichte des lichess-Teils**: der erste Dump fand dort nur die Kopfzeilen-Navigation — `/training`,
+`/practice`, `/streamer`, `/analysis` sind ebenfalls achtstellig und passten auf das Partie-Muster des
+Debug-Skripts, die echten Zeilen auf keines. Gelöst mit `zeilenGruppen` im Debug-Skript (v0.12.0), das Zeilen
+über wiederholte Geschwister findet statt über Links.
+
 **Die Bedenkzeit reist mit** (v1.66.1): `timeControl` im Save-Payload, aus chess.coms `pgnHeaders.TimeControl`
 bzw. dem `[TimeControl]` des lichess-Exports — RookHub ≥ 0.526.0 zeigt daraus „3 + 2" in der Partienliste,
 ältere ignorieren das Feld.
 
-Getestet in `test/chesscom-overview.test.js`: der Uebersichts-Block wird aus `content.js`
+Getestet in `test/uebersicht-knopf.test.js`: der Uebersichts-Block wird aus `content.js`
 ausgeschnitten und gegen ein winziges DOM ausgeführt (Zeilen finden, Zeichnen, Nachladen, Deckel 300,
 Schicken samt `analyze:true`, Fehlerpfade, und dass der Durchgang ohne Token bzw. auf lichess ruht).
 
