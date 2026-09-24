@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.10.1
+// @version      0.11.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
@@ -1184,7 +1184,27 @@
         vorfahren: vorfahren(t.el, 5),
         zeileTag: zeile ? zeile.tagName.toLowerCase() : null,
         zeileKlasse: zeile ? String(zeile.className || '').slice(0, 120) : null,
-        zeileHtml: zeile ? zensiereText(zeile.outerHTML.slice(0, 2500)) : null,
+        // Wie ist die Zeile gebaut? Davon haengt ab, ob ein zusaetzliches Kind das Layout zerreisst
+        // (Raster mit festen Spalten) oder einfach mitlaeuft (Flex).
+        zeileLayout: zeile ? (() => {
+          const cs = getComputedStyle(zeile);
+          const r = zeile.getBoundingClientRect();
+          return {
+            display: cs.display, gridTemplateColumns: cs.gridTemplateColumns.slice(0, 160),
+            flexWrap: cs.flexWrap, position: cs.position, gap: cs.gap,
+            breite: Math.round(r.width), hoehe: Math.round(r.height),
+          };
+        })() : null,
+        zellen: zeile ? [...zeile.children].map((k) => {
+          const r = k.getBoundingClientRect();
+          const cs = getComputedStyle(k);
+          return {
+            tag: k.tagName.toLowerCase(), klasse: String(k.className || '').slice(0, 90),
+            breite: Math.round(r.width), text: (k.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40),
+            display: cs.display, flex: cs.flex,
+          };
+        }) : [],
+        zeileHtml: zeile ? zensiereText(zeile.outerHTML.slice(0, 9000)) : null,
       });
     }
     return {
