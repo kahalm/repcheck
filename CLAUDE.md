@@ -217,6 +217,38 @@ aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupli
   zum Background-Worker (CORS-frei). Beide Pfade identisch außer diesem Fetch (wie `rookhubAnalyzeGame`).
 - **Privacy**: liest nur Zugliste + Seitentitel/URL lokal; sendet ausschließlich an die konfigurierte RookHub-Instanz.
 
+### Partien-Übersicht: je Zeile ein Knopf (v1.66.0, **chess.com**)
+
+In der Partienliste (`/member/<name>/games`, Profilseite) trägt jede Zeile einen eigenen Knopf
+„an RookHub schicken“ — und wo die Partie schon liegt, ein ✓ mit Link auf `{RookHub-URL}/games/{id}`
+(rechnet die Analyse noch, ein ⏳ mit demselben Link). Gewünscht am 24.09.2026; die gesendete Partie
+wird **gleich zur Analyse eingereiht** (`analyze: true` im Save-Payload, RookHub ≥ 0.524.0 — ältere
+Versionen ignorieren das Feld, die Partie ist trotzdem gespeichert).
+
+Vier Dinge, die dabei nicht kippen dürfen:
+- **Der Knopf hängt in der vorhandenen Aktionen-Zelle** (`.game-history-games-actions`, dort stehen
+  schon Herz und Auswahlkästchen). Die Zeile ist ein Grid mit `subgrid`-Spalten (Schnappschuss
+  24.09.2026): ein zusätzliches Kind IM FLUSS würde das Raster verschieben. Die kompakte Variante
+  der Profilseite hat die Zelle nicht — dort hängt er absolut positioniert oben rechts in der Zeile
+  (die ist `position: relative`, das Raster bleibt unberührt).
+- **Der Host ist positioniert** (`.rc-ov { position: relative; z-index: 3 }`) und der Klick stoppt
+  `preventDefault` + `stopPropagation`: die Zeile ist selbst ein `role="button"` und trägt darüber
+  einen absolut positionierten, deckenden Link — ein statisches Element darunter bekommt gar keinen
+  Klick, und ohne das Stoppen navigiert er weg, statt zu schicken.
+- **Nur Zahlen-Ids** (`/game/(live|daily)/(\d+)`): im Schnappschuss standen zwischen den Partielinks
+  auch `/cheating`, `/partners` und `/chesscom`. Die Unterscheidung live/daily entscheidet den
+  Callback-Pfad, aus dem Züge (TCN) und Kopfdaten kommen (`fetchChessComHeaders`).
+- **Ein sparsamer Takt** (`OVERVIEW_SWEEP_MS`, 2,5 s) fasst nachgeladene Zeilen: chess.com blättert
+  ohne Änderung an `<title>` oder Adresse. Ein Durchgang ohne Partiezeilen kostet einen
+  `querySelectorAll` und bricht sofort ab; welche Partien RookHub kennt, wird je Id genau EINMAL
+  erfragt (`POST /api/extension/games/known`, ≤ 300 Ids je Anfrage, Rest im nächsten Durchgang) und
+  gemerkt. Die Abfrage ist best-effort — eine ältere RookHub-Version kennt den Endpunkt nicht (404),
+  dann stehen eben überall Knöpfe statt Häkchen.
+
+Getestet in `test/chesscom-overview.test.js`: der Uebersichts-Block wird aus `content.js`
+ausgeschnitten und gegen ein winziges DOM ausgeführt (Zeilen finden, Zeichnen, Nachladen, Deckel 300,
+Schicken samt `analyze:true`, Fehlerpfade, und dass der Durchgang ohne Token bzw. auf lichess ruht).
+
 ## Sharebar: Link zur aktuellen Line (v1.25.0+, **Extension-only**)
 
 Das **Popup** zeigt oben eine „Sharebar" mit einem öffentlichen Nur-Ansehen-Link
