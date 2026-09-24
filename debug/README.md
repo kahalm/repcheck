@@ -98,6 +98,25 @@ Das Script greift jetzt auch auf `lichess.org`. Neuer Knopf auf beiden Seiten:
     Stelle, an der der Knopf (bzw. das Häkchen) hängt.
   - `spaltenUeberschriften` — was die Seite je Partie zeigt; Vorlage für RookHubs eigene Übersicht.
 
+### 0.12.0: Zeilen finden OHNE Link-Muster (lichess)
+
+Der erste lichess-Dump (24.09.2026, `/@/kahalm/all`) fand **sieben** Partielinks — und alle sieben
+kamen aus der Kopfzeilen-Navigation: `/training`, `/practice`, `/streamer`, `/analysis` sind ebenfalls
+acht Zeichen lang und passten auf das lichess-Muster, die echten Partiezeilen dagegen auf keines.
+Zwei Konsequenzen:
+
+- Das lichess-Muster nimmt jetzt auch die zwölfstellige Spieler-URL (`/<id8><anhang4>`) und schließt
+  die bekannten Seitenpfade über eine Wortliste aus.
+- **`zeilenGruppen`** findet Zeilen unabhängig von Links: die größten Gruppen gleichartiger
+  Geschwister (mindestens vier, je mit mehreren Kindern und etwas Text — damit fällt die Navigation
+  heraus), je mit Layout, Zellen, **allen Links der Zeile samt Ziel** und dem gekürzten HTML. Damit
+  kommt die Zeilen-Struktur auch dann mit, wenn die Partie-Id ganz woanders steht als vermutet.
+- **`linkProben`** — die ersten 30 internen Links mit kurzem Pfad, als Notnagel für den Fall, dass
+  auch das nichts findet.
+
+Gegengeprüft mit Playwright gegen eine nachgebaute lichess-Partienliste UND eine chess.com-Archivzeile:
+beide Male ist die Partiezeile die größte Gruppe, die Kopfzeilen-Navigation fällt heraus.
+
 ### 0.10.1: läuft in der Sandbox (sonst fehlt der Knopf auf lichess)
 
 lichess schickt eine strenge Content-Security-Policy. Mit `@grant none` schleust Tampermonkey das

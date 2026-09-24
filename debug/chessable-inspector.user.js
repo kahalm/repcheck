@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.11.0
+// @version      0.12.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
@@ -1133,15 +1133,26 @@
   const ID_MUSTER = [
     { name: 'chesscom-analysis', re: /^\/analysis\/game\/(?:live|daily)\/(\d+)/ },
     { name: 'chesscom-game', re: /^\/(?:game|live|daily)\/(?:live\/|daily\/)?(\d+)/ },
-    { name: 'lichess-game', re: /^\/([A-Za-z0-9]{8})(?:\/(?:white|black))?$/ },
+    // lichess: 8-stellige Partie-Id, optional mit Spieler-Anhang (12) und/oder Seite.
+    { name: 'lichess-game', re: /^\/([A-Za-z0-9]{8})(?:[A-Za-z0-9]{4})?(?:\/(?:white|black))?$/ },
   ];
+  // Acht Buchstaben sind auf lichess auch „/training", „/practice", „/analysis" … — die Kopfzeile
+  // lieferte im Dump vom 24.09. ALLE Treffer und die echten Partiezeilen keinen einzigen.
+  const LICHESS_KEINE_PARTIE = new Set([
+    'training', 'practice', 'analysis', 'streamer', 'tournament', 'broadcast', 'variant', 'features',
+    'password', 'timeline', 'coaches', 'contact', 'patron', 'account', 'mobile', 'video', 'study',
+    'simul', 'swiss', 'forum', 'team', 'learn', 'editor', 'about', 'inbox', 'ublog', 'opening',
+    'insights', 'coordinate', 'dasher', 'lobby', 'games', 'player', 'login', 'signup', 'search',
+  ]);
 
   function partieLinkId(href) {
     let pfad;
     try { pfad = new URL(href, location.origin).pathname; } catch (e) { return null; }
     for (const m of ID_MUSTER) {
       const t = pfad.match(m.re);
-      if (t) return { quelle: m.name, id: t[1], pfad };
+      if (!t) continue;
+      if (m.name === 'lichess-game' && LICHESS_KEINE_PARTIE.has(t[1].toLowerCase())) continue;
+      return { quelle: m.name, id: t[1], pfad };
     }
     return null;
   }
@@ -1156,6 +1167,63 @@
       kette.push({ tag: p.tagName.toLowerCase(), klasse, id: p.id || undefined, gleichartigeGeschwister: gleichartige });
     }
     return kette;
+  }
+
+  /**
+   * Wiederholte Geschwister — eine Liste erkennt man daran, nicht an ihren Links. Gebraucht, weil auf
+   * lichess KEIN Partielink dem Muster entsprach (Dump 24.09.: sieben Treffer, alle aus der Kopfzeile):
+   * so kommt die Zeilen-Struktur auch dann mit, wenn die Id woanders steht als vermutet.
+   */
+  function wiederholteGruppen(anzahl) {
+    const gruppen = [];
+    for (const el of document.querySelectorAll('div, ul, ol, tbody, section, main, article')) {
+      const kinder = [...el.children];
+      if (kinder.length < 4) continue;
+      const zaehl = new Map();
+      for (const k of kinder) {
+        const key = k.tagName.toLowerCase() + '.' + String(k.className || '');
+        const eintrag = zaehl.get(key) || { n: 0, erstes: k };
+        eintrag.n++;
+        zaehl.set(key, eintrag);
+      }
+      for (const [key, e] of zaehl) {
+        // Nur was wie eine Inhaltszeile aussieht: mehrere Kinder UND genug Text (die Kopfzeilen-
+        // Navigation hat viele gleichartige Geschwister mit einem Wort darin).
+        const text = (e.erstes.textContent || '').trim();
+        if (e.n < 4 || e.erstes.children.length < 2 || text.length < 20) continue;
+        gruppen.push({ key, anzahl: e.n, erstes: e.erstes, container: el });
+      }
+    }
+    gruppen.sort((a, b) => b.anzahl - a.anzahl);
+    const gesehen = new Set();
+    const out = [];
+    for (const g of gruppen) {
+      if (out.length >= anzahl || gesehen.has(g.key)) continue;
+      gesehen.add(g.key);
+      const r = g.erstes.getBoundingClientRect();
+      const cs = getComputedStyle(g.erstes);
+      out.push({
+        containerKlasse: String(g.container.className || '').slice(0, 90),
+        zeileKlasse: g.key.slice(0, 120),
+        anzahl: g.anzahl,
+        layout: { display: cs.display, gridTemplateColumns: cs.gridTemplateColumns.slice(0, 160),
+          flexWrap: cs.flexWrap, position: cs.position, breite: Math.round(r.width), hoehe: Math.round(r.height) },
+        zellen: [...g.erstes.children].map((k) => {
+          const kr = k.getBoundingClientRect();
+          const kcs = getComputedStyle(k);
+          return { tag: k.tagName.toLowerCase(), klasse: String(k.className || '').slice(0, 90),
+            breite: Math.round(kr.width), text: (k.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40),
+            display: kcs.display, position: kcs.position };
+        }),
+        // Alle Links der Zeile samt Ziel — DARIN steckt die Partie-Id, auch wenn das Muster sie nicht kennt.
+        links: [...g.erstes.querySelectorAll('a[href]')].slice(0, 8).map((a) => ({
+          href: a.getAttribute('href').slice(0, 120), klasse: String(a.className || '').slice(0, 60),
+          text: (a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30),
+        })),
+        html: zensiereText(g.erstes.outerHTML.slice(0, 6000)),
+      });
+    }
+    return out;
   }
 
   function uebersichtZeilen() {
@@ -1215,6 +1283,13 @@
       verschiedeneIds: ids.length,
       idsAnfang: ids.slice(0, 8),
       beispiele,
+      // Unabhaengig von den Link-Mustern: die groessten Gruppen gleichartiger Geschwister.
+      zeilenGruppen: wiederholteGruppen(3),
+      // Wonach es auf dieser Seite SONST noch nach Partie aussieht — die ersten internen Links mit
+      // kurzem Pfad, damit ein erfolgloser Lauf trotzdem sagt, wie die Links wirklich heissen.
+      linkProben: [...new Set([...document.querySelectorAll('a[href^="/"]')]
+        .map((a) => a.getAttribute('href'))
+        .filter((h) => h && h.split('/').filter(Boolean).length <= 2))].slice(0, 30),
       // Was die Seite sonst je Zeile zeigt (Genauigkeit, Ergebnis, Zeit) — fuer die RookHub-Uebersicht.
       spaltenUeberschriften: [...document.querySelectorAll('th, [role="columnheader"], [class*="header"] [class*="cell"]')]
         .slice(0, 12).map((e) => (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30)).filter(Boolean),
