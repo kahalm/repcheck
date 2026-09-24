@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.10.0
+// @version      0.10.1
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
 // @match        https://www.chess.com/*
 // @match        https://chess.com/*
 // @match        https://lichess.org/*
-// @grant        none
+// @grant        GM_addStyle
+// @updateURL    https://raw.githubusercontent.com/kahalm/repcheck/master/debug/chessable-inspector.user.js
+// @downloadURL  https://raw.githubusercontent.com/kahalm/repcheck/master/debug/chessable-inspector.user.js
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -488,8 +490,16 @@
 
   function fiberVon(el) {
     if (!el) return null;
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
-    return key ? el[key] : null;
+    // Seit 0.10.1 laeuft das Skript in Tampermonkeys Sandbox (noetig wegen lichess' CSP). In Firefox
+    // liegt davor eine Xray-Sicht, die Fremd-Eigenschaften wie `__reactFiber$…` verbirgt —
+    // `wrappedJSObject` ist der Weg zum echten Element. In Chrome gibt es beides nicht, dort bleibt alles wie gehabt.
+    const ziel = el.wrappedJSObject || el;
+    try {
+      const key = Object.keys(ziel).find((k) => k.startsWith('__reactFiber$'));
+      return key ? ziel[key] : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   /** Props entlang der Fiber-Kette einsammeln — nur flache, plausible Schlüssel/Werte. */

@@ -97,3 +97,17 @@ Das Script greift jetzt auch auf `lichess.org`. Neuer Knopf auf beiden Seiten:
   - `beispiele[].zeileTag/zeileKlasse/zeileHtml` — die Zeile selbst, gekürzt, als Vorlage für die
     Stelle, an der der Knopf (bzw. das Häkchen) hängt.
   - `spaltenUeberschriften` — was die Seite je Partie zeigt; Vorlage für RookHubs eigene Übersicht.
+
+### 0.10.1: läuft in der Sandbox (sonst fehlt der Knopf auf lichess)
+
+lichess schickt eine strenge Content-Security-Policy. Mit `@grant none` schleust Tampermonkey das
+Skript in den Seiten-Kontext — und genau das blockt die CSP, ohne sichtbare Meldung: kein Knopf, kein
+Fehler. **Jedes** `@grant` schaltet Tampermonkey stattdessen in seine Sandbox, deshalb steht dort jetzt
+`GM_addStyle` (benutzt wird es nicht).
+
+Zwei Folgen, beide berücksichtigt:
+- In **Firefox** liegt vor der Sandbox eine Xray-Sicht, die Fremd-Eigenschaften der Seite verbirgt —
+  `__reactFiber$…` wäre unsichtbar und der Chessable-Teil stumm. `fiberVon` geht deshalb über
+  `el.wrappedJSObject`, wo es das gibt (Chrome kennt beides nicht und bleibt unverändert).
+- `@updateURL`/`@downloadURL` zeigen jetzt auf die Raw-Datei, damit Tampermonkey neue Fassungen von
+  selbst findet. Vorher musste man jede Version von Hand nachziehen.
