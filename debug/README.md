@@ -82,3 +82,18 @@ Knopf (die Chessable-Sammler passen auf chess.com nicht):
 
 Anwendung: Partieseite öffnen, warten bis der Analyse-Knopf da ist, Knopf
 drücken — JSON liegt in der Zwischenablage und als Download.
+
+## Was v0.10.0 zusätzlich kann: lichess + Partiezeilen einer Übersicht
+
+Das Script greift jetzt auch auf `lichess.org`. Neuer Knopf auf beiden Seiten:
+
+- **RC-Debug: Partiezeilen** — für „Partie an RookHub schicken" direkt aus der Übersicht
+  (chess.com `/member/<name>/games`, lichess `/@/<name>/all`). Gesammelt wird, was für einen
+  Knopf JE ZEILE nötig ist:
+  - `partieLinks` / `verschiedeneIds` / `idsAnfang` — welche Links auf eine Partie zeigen und
+    welche Partie-IDs die Seite hergibt (chess.com numerisch, lichess achtstellig).
+  - `beispiele[].vorfahren` — die Elternkette des Links mit Klassen und der Zahl gleichartiger
+    Geschwister; die ZEILE ist der erste Vorfahr mit mehreren davon.
+  - `beispiele[].zeileTag/zeileKlasse/zeileHtml` — die Zeile selbst, gekürzt, als Vorlage für die
+    Stelle, an der der Knopf (bzw. das Häkchen) hängt.
+  - `spaltenUeberschriften` — was die Seite je Partie zeigt; Vorlage für RookHubs eigene Übersicht.

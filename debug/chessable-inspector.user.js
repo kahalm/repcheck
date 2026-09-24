@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.9.0
+// @version      0.10.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
 // @match        https://www.chess.com/*
 // @match        https://chess.com/*
+// @match        https://lichess.org/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -40,6 +41,7 @@
   if (document.getElementById(PANEL_ID)) return;
   // Auf chess.com laeuft NUR der chess.com-Sammler (die Chessable-Sammler greifen dort ins Leere).
   const AUF_CHESSCOM = /(^|\.)chess\.com$/i.test(location.hostname);
+  const AUF_LICHESS = /(^|\.)lichess\.org$/i.test(location.hostname);
 
   // ── Datenschutz: nichts Geheimes in den Dump ────────────────────────────
   const GEHEIM_KEY = /(token|jwt|auth|secret|passwor|bearer|credential|cookie|api[-_]?key)/i;
@@ -1113,6 +1115,82 @@
     return ergebnis;
   }
 
+  // ── Uebersichtsseite: wie sind die PARTIEZEILEN gebaut? ─────────────────
+  // Fuer „Partie an RookHub schicken" braucht es je Zeile einen Platz fuer den Knopf und die Partie-Id.
+  // Gesammelt wird deshalb: welche Links zeigen auf eine Partie, wie sieht die Zeile darum aus (Vorfahren
+  // mit Klassen und Geschwisterzahl — die ZEILE ist der Vorfahr, von dem es viele gleichartige gibt), und
+  // das gekuerzte HTML zweier echter Zeilen als Vorlage.
+  const ID_MUSTER = [
+    { name: 'chesscom-analysis', re: /^\/analysis\/game\/(?:live|daily)\/(\d+)/ },
+    { name: 'chesscom-game', re: /^\/(?:game|live|daily)\/(?:live\/|daily\/)?(\d+)/ },
+    { name: 'lichess-game', re: /^\/([A-Za-z0-9]{8})(?:\/(?:white|black))?$/ },
+  ];
+
+  function partieLinkId(href) {
+    let pfad;
+    try { pfad = new URL(href, location.origin).pathname; } catch (e) { return null; }
+    for (const m of ID_MUSTER) {
+      const t = pfad.match(m.re);
+      if (t) return { quelle: m.name, id: t[1], pfad };
+    }
+    return null;
+  }
+
+  function vorfahren(el, tiefe) {
+    const kette = [];
+    for (let p = el.parentElement, i = 0; p && i < tiefe; p = p.parentElement, i++) {
+      const klasse = String(p.className || '').slice(0, 90);
+      const gleichartige = p.parentElement
+        ? [...p.parentElement.children].filter((k) => k.tagName === p.tagName && String(k.className || '') === String(p.className || '')).length
+        : 0;
+      kette.push({ tag: p.tagName.toLowerCase(), klasse, id: p.id || undefined, gleichartigeGeschwister: gleichartige });
+    }
+    return kette;
+  }
+
+  function uebersichtZeilen() {
+    const treffer = [];
+    for (const a of document.querySelectorAll('a[href]')) {
+      const t = partieLinkId(a.getAttribute('href'));
+      if (!t) continue;
+      treffer.push({ ...t, linkKlasse: String(a.className || '').slice(0, 90), text: (a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40), el: a });
+    }
+    // Die ZEILE: der erste Vorfahr mit mehreren gleichartigen Geschwistern — dort haengt spaeter der Knopf.
+    const zeileVon = (el) => {
+      for (let p = el.parentElement, i = 0; p && i < 6; p = p.parentElement, i++) {
+        const gleich = p.parentElement
+          ? [...p.parentElement.children].filter((k) => k.tagName === p.tagName && String(k.className || '') === String(p.className || '')).length
+          : 0;
+        if (gleich >= 3) return p;
+      }
+      return el.parentElement;
+    };
+    const ids = [...new Set(treffer.map((t) => t.id))];
+    const beispiele = [];
+    for (const t of treffer.slice(0, 3)) {
+      const zeile = zeileVon(t.el);
+      beispiele.push({
+        id: t.id, quelle: t.quelle, linkKlasse: t.linkKlasse,
+        vorfahren: vorfahren(t.el, 5),
+        zeileTag: zeile ? zeile.tagName.toLowerCase() : null,
+        zeileKlasse: zeile ? String(zeile.className || '').slice(0, 120) : null,
+        zeileHtml: zeile ? zensiereText(zeile.outerHTML.slice(0, 2500)) : null,
+      });
+    }
+    return {
+      kind: 'uebersicht-zeilen',
+      zeit: new Date().toISOString(),
+      seite: location.hostname + location.pathname,
+      partieLinks: treffer.length,
+      verschiedeneIds: ids.length,
+      idsAnfang: ids.slice(0, 8),
+      beispiele,
+      // Was die Seite sonst je Zeile zeigt (Genauigkeit, Ergebnis, Zeit) — fuer die RookHub-Uebersicht.
+      spaltenUeberschriften: [...document.querySelectorAll('th, [role="columnheader"], [class*="header"] [class*="cell"]')]
+        .slice(0, 12).map((e) => (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30)).filter(Boolean),
+    };
+  }
+
   // ── Ausgabe: Zwischenablage + Datei-Download ────────────────────────────
   function deliver(obj, btn, label) {
     // Fehlerfest: wenn hier etwas wirft (zu grosses JSON, blockierter Download, Clipboard),
@@ -1170,7 +1248,8 @@
     return b;
   }
   // Auf chess.com haben die Chessable-Knoepfe keinen Sinn — nur der eine Sammler.
-  if (AUF_CHESSCOM) {
+  if (AUF_CHESSCOM || AUF_LICHESS) {
+    if (AUF_CHESSCOM) {
     const ccBtn = mkBtn('RC-Debug: chess.com-Snapshot', '#2e7d32');
     ccBtn.title = 'Sammelt Zugliste, Analyse-Knopf und Seitenpfad — die Angaben, an denen haengt, '
       + 'ob RepCheck seine schwebenden Knoepfe einblenden kann.';
@@ -1198,6 +1277,21 @@
     zugBtn.dataset.rcLabel = zugBtn.textContent;
     zugBtn.dataset.rcBg = zugBtn.style.background;
     panel.appendChild(zugBtn);
+    }
+
+    // Uebersichtsseite (chess.com UND lichess): Aufbau der Partiezeilen fuer den Senden-Knopf je Partie.
+    const zeilenBtn = mkBtn('RC-Debug: Partiezeilen', '#6a1b9a');
+    zeilenBtn.title = 'Auf einer Uebersicht (Partien-Archiv/Profil): wie sind die Zeilen gebaut, wo steht die '
+      + 'Partie-Id, wohin passt ein Knopf.';
+    zeilenBtn.addEventListener('click', () => {
+      let data;
+      try { data = uebersichtZeilen(); }
+      catch (e) { meldeFehler(zeilenBtn, 'zeilen: ' + String(e).slice(0, 70)); return; }
+      deliver(data, zeilenBtn, 'kopiert + Download ✓');
+    });
+    zeilenBtn.dataset.rcLabel = zeilenBtn.textContent;
+    zeilenBtn.dataset.rcBg = zeilenBtn.style.background;
+    panel.appendChild(zeilenBtn);
 
     document.body.appendChild(panel);
     return;
