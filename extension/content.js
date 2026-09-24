@@ -1055,8 +1055,6 @@
     btn.addEventListener('click', async () => {
       const currentCfg = await loadRookhubConfig().catch(() => null);
       if (!currentCfg) return;
-      const domMoves = getGameMoves();
-      if (!domMoves.length) return;
       btn.textContent = '…';
       btn.disabled = true;
       const reset = (label, title) => setTimeout(() => {
@@ -1064,8 +1062,17 @@
       }, 1500);
       try {
         const meta = await getGameMeta();
-        // Kanonische Zugliste (lichess-Export) bevorzugen, sonst DOM-Auslese.
-        const moves = (meta.moves && meta.moves.length) ? meta.moves : domMoves;
+        // Kanonische Zugliste (lichess-Export) bevorzugen, sonst DOM-Auslese. Die DOM-Auslese erst HIER,
+        // nicht mehr vor dem Klick-Rumpf: auf chess.coms Analyseseite steht im Review-Tab keine Zugliste
+        // im DOM (gemeldet 2026-09-24), und der frühere Wächter „keine Zuege → return" liess den Knopf
+        // stumm nichts tun. Ohne Zuege gibt es jetzt ein sichtbares Nein mit Grund.
+        const moves = (meta.moves && meta.moves.length) ? meta.moves : getGameMoves();
+        if (!moves.length) {
+          btn.textContent = '✗';
+          btn.title = t('tools.saveNoMoves');
+          reset('💾', t('tools.saveGame'));
+          return;
+        }
         const saved = await rookhubSaveGame(currentCfg, moves, meta);
         const link = buildShareLink(currentCfg, saved);
         let copied = false;

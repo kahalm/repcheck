@@ -292,6 +292,7 @@ const RC_MESSAGES = {
     'tools.searchFen': 'Search Chessable for the FEN before the deviation',
     'tools.copyPgn': 'Copy game PGN',
     'tools.saveGame': 'Save game to RookHub',
+    'tools.saveNoMoves': 'No moves found on this page — open the move list (analysis tab)',
     'tools.saved': 'Game saved',
     'tools.savedWithLink': 'Saved · share link copied',
 
@@ -587,6 +588,7 @@ const RC_MESSAGES = {
     'tools.searchFen': 'FEN vor Abweichung in Chessable suchen',
     'tools.copyPgn': 'Partie-PGN kopieren',
     'tools.saveGame': 'Partie in RookHub speichern',
+    'tools.saveNoMoves': 'Keine Zuege auf dieser Seite gefunden — Zugliste oeffnen (Analyse-Tab)',
     'tools.saved': 'Partie gespeichert',
     'tools.savedWithLink': 'Gespeichert · Teilen-Link kopiert',
     'progress.onRookhub': 'Auf RookHub',
@@ -883,6 +885,7 @@ const RC_MESSAGES = {
     'tools.searchFen': 'Potraži FEN prije odstupanja na Chessableu',
     'tools.copyPgn': 'Kopiraj PGN partije',
     'tools.saveGame': 'Spremi partiju u RookHub',
+    'tools.saveNoMoves': 'Na ovoj stranici nema poteza — otvori popis poteza (kartica analize)',
     'tools.saved': 'Partija spremljena',
     'tools.savedWithLink': 'Spremljeno · poveznica za dijeljenje kopirana',
     'err.noBackground': 'nema odgovora od background workera',

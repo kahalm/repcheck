@@ -41,3 +41,13 @@ test('ein sparsamer Takt bewertet neu, wenn der Knopf erst nach Partieende ersch
   assert.match(content, /const REVIEW_POLL_MS = 2000;/);
   assert.match(content, /setInterval\(refreshFloatingButton, REVIEW_POLL_MS\)/);
 });
+
+test('„Partie speichern" bricht nicht mehr stumm ab, wenn keine Zuege im DOM stehen', () => {
+  // Gemeldet 2026-09-24 auf /analysis/game/live/<id>/review: Knoepfe da, Klick tat gar nichts —
+  // dort rendert chess.com keine Zugliste (Schnappschuss: 0 .node-Knoten).
+  assert.doesNotMatch(content, /if \(!domMoves\.length\) return;/);
+  const save = content.slice(content.indexOf("btn.id = 'repcheck-save-game'"), content.indexOf('function removeFloatingControls'));
+  assert.match(save, /tools\.saveNoMoves/);
+  // Die DOM-Auslese erst NACH getGameMeta: eine kanonische Zugliste (lichess-Export) zaehlt zuerst.
+  assert.ok(save.indexOf('await getGameMeta()') < save.indexOf('getGameMoves()'));
+});

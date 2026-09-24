@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.8.0
+// @version      0.9.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
@@ -1048,6 +1048,71 @@
     };
   }
 
+  // ── chess.com: woher kommen die ZUEGE? ──────────────────────────────────
+  // „Partie speichern" liest die Zuege aus dem DOM. Auf der Analyseseite (Review-Tab) gibt es dort keine
+  // Zugliste — der Knopf konnte also nichts speichern. Dieser Sammler beantwortet, ob chess.coms eigene
+  // Partie-Antwort (dieselbe, aus der RepCheck schon die Kopfzeilen holt) die Zuege mitliefert, und
+  // stellt die DOM-Lesung als Vergleich daneben.
+  function ccSpielId() {
+    const p = location.pathname;
+    const m = p.match(/\/(?:live|daily|game|analysis\/game\/live|analysis\/game\/daily)\/(\d+)/) || p.match(/(\d{6,})/);
+    return m ? m[1] : null;
+  }
+
+  /** SAN-Liste aus der Zugliste im DOM — dieselbe Lesart wie content.js (Knoten `.node`). */
+  function ccDomZuege() {
+    const liste = document.querySelector('.move-list, vertical-move-list, wc-move-list');
+    if (!liste) return null;
+    return [...liste.querySelectorAll('.node')].map((n) => {
+      const klon = n.cloneNode(true);
+      klon.querySelectorAll('svg, style, script, defs, title').forEach((e) => e.remove());
+      const fig = n.querySelector('[data-figurine]');
+      return ((fig ? fig.getAttribute('data-figurine') : '') + klon.textContent.trim())
+        .replace(/^\d+\.+\s*/, '').replace(/[?!]+$/, '').trim();
+    }).filter(Boolean);
+  }
+
+  async function chessComZugquelle() {
+    const id = ccSpielId();
+    const ergebnis = {
+      kind: 'chesscom-moves',
+      zeit: new Date().toISOString(),
+      pfad: location.pathname,
+      spielId: id,
+      domZuege: ccDomZuege(),
+      abrufe: [],
+    };
+    for (const art of ['live', 'daily']) {
+      const url = `https://www.chess.com/callback/${art}/game/${id}`;
+      const eintrag = { art, url };
+      try {
+        const resp = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'include' });
+        eintrag.status = resp.status;
+        if (resp.ok) {
+          const daten = await resp.json();
+          const spiel = daten && daten.game;
+          eintrag.topKeys = Object.keys(daten || {});
+          eintrag.gameKeys = spiel ? Object.keys(spiel) : null;
+          eintrag.pgnHeaders = spiel && spiel.pgnHeaders ? spiel.pgnHeaders : null;
+          // Alles, was nach Zuegen aussieht: Feldname, Typ, Laenge, Anfang.
+          eintrag.zugFelder = {};
+          for (const [k, v] of Object.entries(spiel || {})) {
+            if (!/move|pgn|tcn/i.test(k)) continue;
+            eintrag.zugFelder[k] = typeof v === 'string'
+              ? { typ: 'string', laenge: v.length, anfang: zensiereText(v.slice(0, 400)) }
+              : { typ: Array.isArray(v) ? 'array' : typeof v, laenge: Array.isArray(v) ? v.length : undefined,
+                  anfang: zensiereText(JSON.stringify(v).slice(0, 300)) };
+          }
+        }
+      } catch (e) {
+        eintrag.fehler = String(e).slice(0, 200);
+      }
+      ergebnis.abrufe.push(eintrag);
+      if (eintrag.status === 200) break;   // die passende Art gefunden
+    }
+    return ergebnis;
+  }
+
   // ── Ausgabe: Zwischenablage + Datei-Download ────────────────────────────
   function deliver(obj, btn, label) {
     // Fehlerfest: wenn hier etwas wirft (zu grosses JSON, blockierter Download, Clipboard),
@@ -1118,6 +1183,22 @@
     ccBtn.dataset.rcLabel = ccBtn.textContent;
     ccBtn.dataset.rcBg = ccBtn.style.background;
     panel.appendChild(ccBtn);
+
+    // Zweiter Knopf: woher kommen die Zuege? (fuer „Partie speichern" auf der Analyseseite)
+    const zugBtn = mkBtn('RC-Debug: chess.com-Zugquelle', '#1565c0');
+    zugBtn.title = 'Fragt chess.coms eigene Partie-Antwort ab und stellt sie neben die Zugliste im DOM — '
+      + 'damit „Partie speichern" auch dort funktioniert, wo keine Zugliste steht.';
+    zugBtn.addEventListener('click', async () => {
+      zugBtn.textContent = 'frage chess.com …';
+      let data;
+      try { data = await chessComZugquelle(); }
+      catch (e) { meldeFehler(zugBtn, 'zugquelle: ' + String(e).slice(0, 70)); return; }
+      deliver(data, zugBtn, 'kopiert + Download ✓');
+    });
+    zugBtn.dataset.rcLabel = zugBtn.textContent;
+    zugBtn.dataset.rcBg = zugBtn.style.background;
+    panel.appendChild(zugBtn);
+
     document.body.appendChild(panel);
     return;
   }
