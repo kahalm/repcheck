@@ -23,13 +23,13 @@ Der erste Zug, der nicht im Repertoire steht, wird im Move-List-Panel rot markie
 
 ## Chessable-Token (ab v1.8.0)
 
-Auf `chessable.com` kann RepCheck den eigenen API-Token (JWT) aus dem `localStorage` auslesen und per Knopfdruck in die Zwischenablage kopieren — zur Nutzung in [piratechess](https://github.com/kahalm/piratechess), das damit gekaufte Chessable-Kurse als PGN exportiert. Der Token verlässt den Browser nicht und wird an keinen Server gesendet.
+Auf `chessable.com` kann RepCheck den eigenen API-Token (JWT) aus dem `localStorage` auslesen und per Knopfdruck in die Zwischenablage kopieren — zur Nutzung in [piratechess](https://github.com/kahalm/piratechess), das damit gekaufte Chessable-Kurse als PGN exportiert. Der Token geht nur an chessable.com selbst (als Anmeldung beim Abruf von Kursdaten), an keinen anderen Server.
 
 ## Was die Erweiterung NICHT macht
 
 - Keine Telemetrie. Keine Tracker. Keine Werbung.
-- Keine Verbindung an irgendeinen Server außer chess.com / lichess.org (wo sie läuft) und der von dir aktiv eingetragenen RookHub-URL.
-- Der Chessable-Token wird nur lokal gelesen und **nirgendwohin gesendet**.
+- Keine Verbindung zu anderen Servern als chess.com / lichess.org / chessable.com (wo sie läuft) und RookHub — der Instanz, mit der du dich verbindest (voreingestellt ist `rookhub.oberschmid.homes`, die der Autor betreibt). Ohne Verbindung gehen nur trainierte Chessable-Linien an RookHub, und nur nach deiner Zustimmung.
+- Der Chessable-Token geht **nur an chessable.com selbst**, nie an RookHub.
 - Kein Account, kein Login bei einem fremden Dienst.
 
 Details: [Privacy Policy](./privacy.html).

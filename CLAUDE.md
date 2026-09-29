@@ -493,6 +493,7 @@ Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst b
 
 - **Chrome Web Store**: 5 USD Lifetime-Fee, `web-ext build` → ZIP upload, Privacy-Policy-URL (`PRIVACY.md` auf GitHub Pages hosten), Screenshots 1280×800. Review 1–3 Tage.
 - **Firefox AMO**: kostenlos, `web-ext sign` für AMO-Signatur + Listing. Review meist <24h.
+- **Datenschutzerklärung**: Quelle ist `PRIVACY.md`; `docs/privacy.md` (GitHub Pages, die im Store verlinkte URL) ist derselbe Inhalt mit Jekyll-Kopf. `test/privacy-policy.test.js` hält beide gleich und prüft gegen den Code: jedes Manifest-Recht, die `host_permissions` wortgleich, jeder RookHub-Endpunkt aus dem Code (und keiner, den es nicht mehr gibt) und die voreingestellte Instanz auch im Store-Text (`STORE-LISTING.md`). Neuer Endpunkt oder neues Recht → Erklärung nachziehen, beide Dateien. Den Store-Text in den Dashboards von Hand nachführen.
 
 ### Veroeffentlichungs-Workflow (Stand 2026-06-11)
 

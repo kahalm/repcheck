@@ -31,7 +31,7 @@ Chrome "Summary" must be ≤132 characters. AMO "Summary" allows more but keep i
 > - **Save games** to RookHub (with a shareable link) and **copy the PGN** with one click.
 > - On **chessable.com**: **copy or search the FEN** of the current position and **remember a line** to RookHub.
 >
-> **Privacy:** data is only sent to the RookHub instance you configure yourself — nowhere else.
+> **Privacy:** no telemetry, no ads, no trackers. Data only goes to the RookHub instance you connect. The one-click connection is pre-set to rookhub.oberschmid.homes, which the developer runs — enter your own instance if you prefer. Without a connection, only the Chessable lines you train are sent, and only after you agree once. Details in the privacy policy.
 
 ---
 
