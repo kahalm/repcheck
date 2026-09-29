@@ -34,6 +34,10 @@ name: Release
 # baut `release` und reicht bei AMO/CWS ein. Ein Handstart (workflow_dispatch)
 # baut genau den angegebenen Tag (refs/tags/<tag>), nie den Stand des Branches,
 # auf dem er gestartet wurde; ein nicht vorhandener Tag bricht beim Checkout ab.
+# Nur `test` loest den Tag auf und gibt den geprueften Commit aus (outputs.sha);
+# `release` checkt genau diesen Commit aus, nicht noch einmal den Tag. Wird der
+# Tag waehrend des Laufs neu gesetzt (git tag -f / push -f), geht so trotzdem
+# nur der gepruefte Commit an AMO/CWS.
 
 on:
   push:
@@ -47,10 +51,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      # Mit explizitem ref pinnt actions/checkout nicht auf github.sha, sondern holt das
+      # aktuelle Ziel des Tags. Diesen Commit prueft der Job; release baut genau ihn.
+      - name: Geprüften Commit festhalten
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -78,7 +90,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          ref: ${{ needs.test.outputs.sha }}
+
+      # Ein leerer Output liesse checkout still auf github.sha bzw. den Branch zurueckfallen.
+      - name: Gebaut wird der geprüfte Commit
+        env:
+          SHA: ${{ needs.test.outputs.sha }}
+        run: |
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ -z "$SHA" ] || [ "$HEAD_SHA" != "$SHA" ]; then
+            echo "::error::Checkout $HEAD_SHA ist nicht der gepruefte Commit '$SHA'"
+            exit 1
+          fi
+          echo "Baue den geprueften Commit $SHA"
 
       - uses: actions/setup-node@v4
         with:
@@ -163,11 +187,14 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        # Nur bei echtem Tag-Push — bei manuellem workflow_dispatch (Branch-Ref)
-        # gibt es keinen Tag, das Erstellen wuerde scheitern.
-        if: startsWith(github.ref, 'refs/tags/')
+        # Release fuer den gebauten Tag: beim Tag-Push github.ref_name, beim Handstart die
+        # Eingabe `tag` (vom Checkout in `test` als refs/tags/<tag> aufgeloest und gegen die
+        # Manifest-Version geprueft). Ohne tag_name naehme softprops github.ref_name, beim
+        # Handstart also den Branch oder Tag, von dem aus gestartet wurde.
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: |
             extension/web-ext-artifacts/*.zip
             extension/web-ext-artifacts/*.xpi
