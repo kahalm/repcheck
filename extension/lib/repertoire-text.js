@@ -12,6 +12,11 @@ function tokenizePgn(movetext) {
   movetext = movetext.replace(/;[^\n]*/g, ' ');
   // Remove NAGs like $1, $2
   movetext = movetext.replace(/\$\d+/g, ' ');
+  // Zugnummern, die am Zug kleben, abtrennen: ChessBase, Fritz und SCID exportieren „1.e4" bzw.
+  // „12...Nf6" OHNE Leerzeichen. Ein solches Token beginnt mit einer Ziffer, fiel durch isMoveToken
+  // und wurde still verworfen — alle Weißzüge fehlten. RookHubs PgnMoveTree ersetzt dieselben
+  // Nummern (InlineMoveNumberRegex); hier bleiben sie als eigenes Token „1." erhalten.
+  movetext = movetext.replace(/(^|[\s()])(\d+\.+)(?=\S)/g, '$1$2 ');
   // Normalize whitespace
   movetext = movetext.replace(/\s+/g, ' ').trim();
 
@@ -96,7 +101,9 @@ function parsePgnText(text) {
         pastHeaders = true;
       }
     }
-    const movetext = movetextLines.join(' ').trim();
+    // Mit Zeilenumbruch verbinden: tokenizePgn entfernt „;"-Kommentare bis zum Zeilenende — bei
+    // Leerzeichen kappte ein „;" den ganzen Rest der Partie.
+    const movetext = movetextLines.join('\n').trim();
     if (!movetext) continue;
 
     const tokens = tokenizePgn(movetext);
