@@ -60,6 +60,17 @@ test('tokenizePgn trennt Zugnummern, die am Zug kleben ("1.e4", "12...Nf6")', ()
     ['1.', 'e4', 'c5', '(', '1...', 'e5', '2.', 'Nf3', ')', '2.', 'Nf3']);
 });
 
+// Gegenlese S1-003: Mit (?=\S) ging \.+ einen Punkt zurück, die gespreizte Schwarz-Nummer „1... e5"
+// wurde zu „1.." „." — folgenlos für parsePgnText, aber nicht mehr „die Nummer als eigenes Token".
+test('tokenizePgn lässt gespreizte Zugnummern ("1... e5", "12... Nf6") ganz', () => {
+  assert.deepStrictEqual(tokenizePgn('1. e4 e5 (1... c5 2. Nf3) 12... Nf6'),
+    ['1.', 'e4', 'e5', '(', '1...', 'c5', '2.', 'Nf3', ')', '12...', 'Nf6']);
+  assert.deepStrictEqual(tokenizePgn('1.. e5'), ['1..', 'e5']);
+  assert.deepStrictEqual(tokenizePgn('1...'), ['1...']);
+  assert.deepStrictEqual(tokenizePgn('(1...e5 2.Nf3)2.Nf3'),
+    ['(', '1...', 'e5', '2.', 'Nf3', ')', '2.', 'Nf3']);
+});
+
 test('parsePgnText liest kompakte Zugnummern samt Varianten', () => {
   assert.deepStrictEqual(parsePgnText('1.e4 e5 2.Nf3 Nf6').map(sans), [['e4', 'e5', 'Nf3', 'Nf6']]);
   assert.deepStrictEqual(parsePgnText('[Event "x"]\n\n1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 *\n').map(sans),

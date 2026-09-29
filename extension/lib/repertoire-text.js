@@ -16,7 +16,9 @@ function tokenizePgn(movetext) {
   // „12...Nf6" OHNE Leerzeichen. Ein solches Token beginnt mit einer Ziffer, fiel durch isMoveToken
   // und wurde still verworfen — alle Weißzüge fehlten. RookHubs PgnMoveTree ersetzt dieselben
   // Nummern (InlineMoveNumberRegex); hier bleiben sie als eigenes Token „1." erhalten.
-  movetext = movetext.replace(/(^|[\s()])(\d+\.+)(?=\S)/g, '$1$2 ');
+  // Das Lookahead schließt „." aus: mit (?=\S) ginge \.+ einen Punkt zurück und zerlegte die
+  // gespreizte Schwarz-Nummer „1... e5" in „1.." „.".
+  movetext = movetext.replace(/(^|[\s()])(\d+\.+)(?=[^\s.])/g, '$1$2 ');
   // Normalize whitespace
   movetext = movetext.replace(/\s+/g, ' ').trim();
 
