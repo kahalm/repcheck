@@ -136,12 +136,13 @@ test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien i
 // Kurs 4711: Kapitel 1 mit den Linien 11–13, Kapitel 2 mit 21–22.
 const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
 
-function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame } = {}) {
+// beimAnhaengen(nr, oids) läuft vor jedem ingestLiveInParts-Aufruf (nr ab 1); wirft es, scheitert dieser Anhang.
+function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame, kurs = KURS, beimAnhaengen } = {}) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
   const von = src.indexOf('  async function crawlAndImport(');
   const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
   assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
-  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0 };
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0 };
   let api;
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
@@ -152,10 +153,10 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame } = {}) {
     setStatus: (s) => log.status.push(s),
     cap: { bid: null, courseText: null, lists: {}, games: {}, oidToLid: {} },
     chessableGetChecked: async (p) => {
-      if (p.startsWith('getCourse')) return JSON.stringify({ course: { data: Object.keys(KURS).map((id) => ({ id: Number(id) })) } });
+      if (p.startsWith('getCourse')) return JSON.stringify({ course: { data: Object.keys(kurs).map((id) => ({ id: Number(id) })) } });
       if (p.startsWith('getList')) {
         const lid = /lid=(\d+)/.exec(p)[1];
-        return JSON.stringify({ list: { id: Number(lid), data: KURS[lid].map((o) => ({ id: Number(o) })) } });
+        return JSON.stringify({ list: { id: Number(lid), data: kurs[lid].map((o) => ({ id: Number(o) })) } });
       }
       const oid = /oid=(\d+)/.exec(p)[1];
       log.ablauf.push('hole ' + oid);
@@ -173,6 +174,13 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame } = {}) {
     ingestLiveInParts: async (bid, tgt, name, chapters) => {
       const oids = chapters.flatMap((c) => c.lineOids);
       chapters.forEach((c) => assert.strictEqual(c.lines.length, c.lineOids.length, 'lines/lineOids nicht gepaart'));
+      const nr = ++log.anhaengen;
+      try {
+        if (beimAnhaengen) beimAnhaengen(nr, oids);
+      } catch (e) {
+        log.ablauf.push('scheitert ' + oids.join(','));
+        throw e;
+      }
       log.ablauf.push('anhängen ' + oids.join(','));
       log.angehaengt.push(...oids);
       return { imported: oids.length, linked: 0, parts: 1 };
@@ -181,6 +189,8 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame } = {}) {
     handleUnexpected: async (bid, u, saved) => { log.unerwartet.push({ u, saved }); },
     showNotOwned: () => 'nicht im Konto',
     REPERTOIRE_APPEND_EVERY_MS: everyMs,
+    REPERTOIRE_APPEND_MAX_FAILS: 2,
+    REPERTOIRE_APPEND_RETRY_MS: 0,
   };
   const namen = Object.keys(deps);
   const rumpf = 'let crawling = false, crawlStartedAt = null, cancelRequested = false;\n' + src.slice(von, bis)
@@ -246,4 +256,64 @@ test('S1-006: Buch-Ziel unverändert — ein Stopp schickt nichts über ingest/l
   assert.deepStrictEqual(log.angehaengt, []);
   assert.strictEqual(log.chunks, 0);
   assert.strictEqual(log.status[log.status.length - 1], 'import.aborted');
+});
+
+// Nacharbeit S1-006: der Zwischen-Anhang an der Kapitelgrenze stand ohne try/catch — ein einziger 502 beim Neustart
+// von RookHub brach den ganzen Chessable-Lauf nach Kapitel 1 ab (Kapitel 2 und 3 wurden nie geholt).
+const KURS3 = { 1: ['11', '12', '13'], 2: ['21', '22'], 3: ['31'] };
+const http502 = () => Object.assign(new Error('HTTP 502'), { status: 502 });
+
+test('S1-006: ein scheiternder Zwischen-Anhang bricht den Lauf nicht ab — die nächste Kapitelgrenze holt ihn nach', async () => {
+  const { crawl, log } = ladeCrawl({
+    everyMs: 0, kurs: KURS3,
+    beimAnhaengen: (nr) => { if (nr === 1) throw http502(); },
+  });
+  await crawl();
+  assert.deepStrictEqual(log.ablauf, [
+    'hole 11', 'hole 12', 'hole 13', 'scheitert 11,12,13',
+    'hole 21', 'hole 22', 'anhängen 11,12,13,21,22',
+    'hole 31', 'anhängen 31',
+  ]);
+  assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21', '22', '31'], 'nicht jede Linie genau einmal angehängt');
+  assert.ok(!log.status.some((s) => s.startsWith('import.error')), 'Status meldet einen Fehler');
+  assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":6\}/);
+});
+
+test('S1-006: nur Fehlschläge HINTEREINANDER zählen — ein gelungener Anhang setzt den Zähler zurück', async () => {
+  const { crawl, log } = ladeCrawl({
+    everyMs: 0, kurs: { 1: ['11'], 2: ['21'], 3: ['31'], 4: ['41'] },
+    beimAnhaengen: (nr) => { if (nr === 1 || nr === 3) throw http502(); },
+  });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, ['11', '21', '31', '41']);
+  assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":4\}/);
+});
+
+test('S1-006: RookHub dauerhaft kaputt — nach 2 Fehlschlägen hintereinander wird nicht weiter bei Chessable geholt', async () => {
+  const { crawl, log } = ladeCrawl({ everyMs: 0, kurs: KURS3, beimAnhaengen: () => { throw http502(); } });
+  await crawl();
+  assert.ok(!log.ablauf.includes('hole 31'), 'trotz kaputtem RookHub weiter geholt');
+  assert.deepStrictEqual(log.angehaengt, []);
+  assert.match(log.status[log.status.length - 1], /^import\.error .*HTTP 502/);
+});
+
+test('S1-006: Token ungültig beim Zwischen-Anhang — sofort abbrechen, nicht weiter holen', async () => {
+  const { crawl, log } = ladeCrawl({
+    everyMs: 0, kurs: KURS3,
+    beimAnhaengen: () => { throw Object.assign(new Error('err.tokenInvalid'), { status: 401, tokenInvalid: true }); },
+  });
+  await crawl();
+  assert.ok(!log.ablauf.includes('hole 21'), 'nach „Token ungültig" weiter bei Chessable geholt');
+  assert.match(log.status[log.status.length - 1], /^import\.error .*err\.tokenInvalid/);
+});
+
+test('S1-006: scheitert der Schluss-Anhang einmal, gelingt die Wiederholung — Status „fertig", nicht „Fehler"', async () => {
+  const { crawl, log } = ladeCrawl({
+    everyMs: 60 * 60 * 1000,
+    beimAnhaengen: (nr) => { if (nr === 1) throw http502(); },
+  });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21', '22']);
+  assert.ok(!log.status.some((s) => s.startsWith('import.error')), 'Status meldet einen Fehler, obwohl alles gespeichert ist');
+  assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":5\}/);
 });

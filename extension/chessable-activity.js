@@ -1245,6 +1245,13 @@
   // Zeit vergangen ist. Ein geschlossener Tab kostet dann nur die Linien seit dem letzten Anhängen statt des ganzen
   // Laufs; die Schranke hält die ingest/live-Aufrufe klein, wenn viele kleine Kapitel ohne Pause durchlaufen.
   const REPERTOIRE_APPEND_EVERY_MS = 60000;
+  // Ein Zwischen-Anhang ist best effort: scheitert er (502 beim Neustart oder Deploy von RookHub, piratechess kurz weg),
+  // bleibt der Puffer liegen, und der nächste Versuch kommt an der nächsten Kapitelgrenze nach Ablauf der Schranke oder
+  // beim Schluss-Anhang. Erst so viele Fehlschläge HINTEREINANDER brechen den Lauf ab, damit bei dauerhaft kaputtem
+  // RookHub nicht noch eine Stunde bei Chessable geholt wird. Token ungültig oder keine Verbindung bricht sofort ab.
+  const REPERTOIRE_APPEND_MAX_FAILS = 2;
+  // Pause vor der einen Wiederholung des Schluss-Anhangs (ein Neustart von RookHub dauert Sekunden).
+  const REPERTOIRE_APPEND_RETRY_MS = 5000;
 
   // Welche Linien liegen schon im geteilten RookHub-Cache (piratechess)? Für diese fragt der Crawl kein getGame
   // bei Chessable ab; der Import schickt nur die oid, der Server setzt den Inhalt ein. Jede Störung (RookHub zu
@@ -1465,6 +1472,21 @@
       lastAppendAt = Date.now();
       markCourseFetched();
     };
+    // Wiederholen lohnt nicht, wenn es ohnehin nicht klappen kann: Token ungültig/widerrufen oder RookHub nicht verbunden.
+    const hoffnungslos = (e) => !!(e && (e.tokenInvalid || e.notConnected));
+    let appendFails = 0;   // Zwischen-Anhänge, die hintereinander scheiterten
+    // Zwischen-Anhang an einer Kapitelgrenze, best effort (s. REPERTOIRE_APPEND_MAX_FAILS). Ein Fehlschlag setzt die
+    // Schranke neu: der nächste Versuch kommt frühestens nach REPERTOIRE_APPEND_EVERY_MS, zwei Fehlschläge hintereinander
+    // liegen also mindestens so weit auseinander, und ein kurzer Neustart von RookHub bricht den Lauf nicht ab.
+    const appendBetween = async () => {
+      try {
+        await appendNew();
+        appendFails = 0;
+      } catch (e) {
+        lastAppendAt = Date.now();
+        if (hoffnungslos(e) || ++appendFails >= REPERTOIRE_APPEND_MAX_FAILS) throw e;
+      }
+    };
     // Nach einem Abbruch den Rest sichern (best effort). Liefert, wie viele Linien dieser Lauf insgesamt gesichert hat.
     const saveRest = async () => {
       if (!incremental) return 0;
@@ -1568,7 +1590,7 @@
         const chapter = { chapterJson: listText, lines, lineOids };
         if (incremental) {
           newChapters.push(chapter);
-          if (Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await appendNew();
+          if (Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await appendBetween();
         } else {
           // Ein Kapitel kann für EINEN Request zu groß sein — Kapitel 30 eines Lifetime-Repertoires riss am
           // 2026-09-20 die 48 MB des Endpoints (der Server meldete das als HTTP 500). Darum dieselbe
@@ -1587,9 +1609,17 @@
 
       if (incremental) {
         setStatus(t('import.appending'));
-        await appendNew((part, parts) => {
-          if (parts > 1) setStatus(t('import.appendingPart', { part, parts }));
-        });
+        const onPart = (part, parts) => { if (parts > 1) setStatus(t('import.appendingPart', { part, parts })); };
+        // Schluss-Anhang: einmal wiederholen, bevor der Lauf als gescheitert gilt. Sonst meldete der Status „Fehler",
+        // obwohl die Wiederholung in saveRest alles gespeichert hatte.
+        try {
+          await appendNew(onPart);
+        } catch (e) {
+          if (hoffnungslos(e)) throw e;
+          await sleep(REPERTOIRE_APPEND_RETRY_MS);
+          setStatus(t('import.appending'));
+          await appendNew(onPart);
+        }
         const res = appended;
         const fertig = skipped
           ? t('import.doneAppendedSkipped', { count: res.imported, skipped })
