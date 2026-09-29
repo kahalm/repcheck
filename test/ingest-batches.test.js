@@ -89,7 +89,7 @@ test('gezählt wird in UTF-8-Bytes, nicht in Zeichen (Kommentare mit Umlauten)',
 test('Extension: Mitschnitt, „Kurs holen" und Live-Anhängen schicken über die Portionierung', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
   assert.match(src, /const parts = Crawl\.splitIngestChapters\(chapters\);\s+const courseName = bestCourseName\(bid\);/);
-  assert.match(src, /await ingestLiveInParts\(bid, target, courseName, newChapters/);
+  assert.match(src, /await ingestLiveInParts\(bid, target, bestCourseName\(bid\), batch, onPart\)/);
   assert.match(src, /await ingestLiveInParts\(bid, importTarget, bestCourseName\(bid\), chapters\)/);
   assert.doesNotMatch(src, /await ingest\(bid, chapters, target/, 'Mitschnitt geht noch in einer Anfrage raus');
   assert.doesNotMatch(src, /await ingestLive\(bid, target, courseName, newChapters\)/, '„Kurs holen" geht noch in einer Anfrage raus');
@@ -126,4 +126,124 @@ test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien i
   const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
   assert.match(src, /setStatus\(t\('import\.fetchingChapters', \{ done: li \+ 1, total: lids\.length \}\)\)/);
   assert.match(src, /res\.linked \? fertig \+ ' ' \+ t\('import\.linkedNote', \{ count: res\.linked \}\) : fertig/);
+});
+
+// ─── S1-006: „Kurs holen" (Repertoire) verwirft bei einem Abbruch nichts mehr ─────────────────
+// Bis v1.68.2 sammelte das Repertoire-Ziel alle Linien und schickte sie erst am Ende; nur eine unerwartete
+// Chessable-Antwort sicherte die Teilmenge. Stopp, Chessable-401 oder ein Netzfehler nach 1200 von 1881 Linien
+// (~1 h Pause) verwarfen alles, ein geschlossener Tab ebenso — der nächste Lauf holte alles erneut bei Chessable.
+
+// Kurs 4711: Kapitel 1 mit den Linien 11–13, Kapitel 2 mit 21–22.
+const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
+
+function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame } = {}) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
+  const von = src.indexOf('  async function crawlAndImport(');
+  const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
+  assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0 };
+  let api;
+  const deps = {
+    Crawl: require('../extension/lib/chessable-crawl.js'),
+    t: (k, p) => (p ? k + ' ' + JSON.stringify(p) : k),
+    currentCourseId: () => '4711',
+    newSessionId: () => 'sitzung',
+    fetchImportedOids: async () => ({ oids: [] }),
+    setStatus: (s) => log.status.push(s),
+    cap: { bid: null, courseText: null, lists: {}, games: {}, oidToLid: {} },
+    chessableGetChecked: async (p) => {
+      if (p.startsWith('getCourse')) return JSON.stringify({ course: { data: Object.keys(KURS).map((id) => ({ id: Number(id) })) } });
+      if (p.startsWith('getList')) {
+        const lid = /lid=(\d+)/.exec(p)[1];
+        return JSON.stringify({ list: { id: Number(lid), data: KURS[lid].map((o) => ({ id: Number(o) })) } });
+      }
+      const oid = /oid=(\d+)/.exec(p)[1];
+      log.ablauf.push('hole ' + oid);
+      if (beiGame) beiGame(oid, api);
+      return JSON.stringify({ game: { id: Number(oid) } });
+    },
+    harvestFromList: () => {},
+    harvestFromGame: () => {},
+    sleep: async () => {},
+    crawlPauseMs: () => 0,
+    bestCourseName: () => 'Kurs 4711',
+    ensureProgress: () => {},
+    fetchSharedCachedOids: async () => new Set(),
+    ingestChunk: async () => { log.chunks++; return { imported: 0, chapters: 0 }; },
+    ingestLiveInParts: async (bid, tgt, name, chapters) => {
+      const oids = chapters.flatMap((c) => c.lineOids);
+      chapters.forEach((c) => assert.strictEqual(c.lines.length, c.lineOids.length, 'lines/lineOids nicht gepaart'));
+      log.ablauf.push('anhängen ' + oids.join(','));
+      log.angehaengt.push(...oids);
+      return { imported: oids.length, linked: 0, parts: 1 };
+    },
+    markCourseFetched: () => {},
+    handleUnexpected: async (bid, u, saved) => { log.unerwartet.push({ u, saved }); },
+    showNotOwned: () => 'nicht im Konto',
+    REPERTOIRE_APPEND_EVERY_MS: everyMs,
+  };
+  const namen = Object.keys(deps);
+  const rumpf = 'let crawling = false, crawlStartedAt = null, cancelRequested = false;\n' + src.slice(von, bis)
+    + '\nreturn { crawlAndImport, cancel: () => { cancelRequested = true; } };';
+  api = new Function(...namen, rumpf)(...namen.map((n) => deps[n]));
+  return { crawl: () => api.crawlAndImport(target), log };
+}
+
+test('S1-006: Stopp mitten im Kapitel — die schon geholten Linien werden noch angehängt', async () => {
+  const { crawl, log } = ladeCrawl({ beiGame: (oid, api) => { if (oid === '12') api.cancel(); } });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, ['11', '12'], 'geholte Linien wurden beim Stopp verworfen');
+  assert.ok(!log.ablauf.includes('hole 13'), 'nach dem Stopp weiter geholt');
+  const zuletzt = log.status[log.status.length - 1];
+  assert.match(zuletzt, /^import\.aborted/);
+  assert.match(zuletzt, /import\.unexpected\.saved \{"count":2\}/, 'Status nennt die gesicherten Linien nicht');
+});
+
+test('S1-006: Chessable-401 (kein „unerwartet") — Teilmenge gesichert, Meldung nennt die Zahl', async () => {
+  const { crawl, log } = ladeCrawl({
+    beiGame: (oid) => { if (oid === '22') throw new Error('Chessable HTTP 401'); },
+  });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21'], 'bis zum 401 geholte Linien verworfen');
+  assert.strictEqual(log.unerwartet.length, 0);
+  const zuletzt = log.status[log.status.length - 1];
+  assert.match(zuletzt, /^import\.error .*Chessable HTTP 401/);
+  assert.match(zuletzt, /import\.unexpected\.saved \{"count":4\}/);
+});
+
+test('S1-006: an Kapitelgrenzen wird zwischendurch angehängt — ein geschlossener Tab kostet nicht den ganzen Lauf', async () => {
+  const { crawl, log } = ladeCrawl({ everyMs: 0 });
+  await crawl();
+  assert.deepStrictEqual(log.ablauf, ['hole 11', 'hole 12', 'hole 13', 'anhängen 11,12,13', 'hole 21', 'hole 22', 'anhängen 21,22']);
+  // Die Abschlussmeldung zählt über alle Zwischen-Anhänge.
+  assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":5\}/);
+});
+
+test('S1-006: ohne abgelaufene Schranke bleibt es EIN Anhängen am Ende', async () => {
+  const { crawl, log } = ladeCrawl({ everyMs: 60 * 60 * 1000 });
+  await crawl();
+  assert.deepStrictEqual(log.ablauf.filter((a) => a.startsWith('anhängen')), ['anhängen 11,12,13,21,22']);
+});
+
+test('S1-006: unerwartete Antwort — die Karte zählt Zwischen-Anhang und Rest zusammen', async () => {
+  const { crawl, log } = ladeCrawl({
+    everyMs: 0,
+    beiGame: (oid) => {
+      if (oid !== '22') return;
+      const e = new Error('unerwartet');
+      e.unexpected = { endpoint: 'getGame', oid };
+      throw e;
+    },
+  });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21']);
+  assert.deepStrictEqual(log.unerwartet.map((u) => u.saved), [4]);
+});
+
+test('S1-006: Buch-Ziel unverändert — ein Stopp schickt nichts über ingest/live', async () => {
+  const { crawl, log } = ladeCrawl({ target: 'book', beiGame: (oid, api) => { if (oid === '12') api.cancel(); } });
+  await crawl();
+  assert.deepStrictEqual(log.angehaengt, []);
+  assert.strictEqual(log.chunks, 0);
+  assert.strictEqual(log.status[log.status.length - 1], 'import.aborted');
 });

@@ -135,7 +135,7 @@ test('jeder Text-Schlüssel in Popup und Willkommensseite existiert', () => {
 test('jeder erfolgreiche Chessable-Import hakt „Kurs geholt" ab', () => {
   const zeilen = lies('extension/chessable-activity.js').split('\n');
   const aufrufe = [
-    'await ingestLiveInParts(bid, target, courseName, newChapters',
+    'await ingestLiveInParts(bid, target, bestCourseName(bid), batch, onPart);',
     'await ingestChunk(sessionId, bid, target, courseName, null, true,',
     'await ingest(bid, parts[0], target, courseName);',
     'await ingestLiveInParts(bid, importTarget, bestCourseName(bid), chapters);',
