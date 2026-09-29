@@ -47,6 +47,7 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 | `lib/chesscom-moves.js` | `RepCheckChessCom` | chess.coms TCN-Zugliste → SAN (`decodeTcn`, `sansFromTcn`) — zweite Zugquelle beim Partie-Speichern |
 | `lib/chessable-crawl.js` | `RepCheckCrawl` | Crawl-/Ingest-Helfer (`splitIngestChapters`, `checkChessableResponse`, `looksBanned`, …) |
 | `lib/chessable-feedback.js` | — | Zuordnung der Rückmeldungs-Icons |
+| `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup.js/welcome.js/chessable-activity.js — `test/rookhub-client.test.js` hält alle gleich |
 
 Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
 `content_scripts`) und beim Nachladen aus dem Popup mit injiziert (`executeScript`). Wer eine

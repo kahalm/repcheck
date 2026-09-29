@@ -981,7 +981,7 @@ async function initChessableImport() {
   let st = await ciSend('state');
   if (!st) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['lib/chessable-crawl.js', 'lib/chessable-course-names.js', 'chessable-activity.js'] });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['lib/chessable-crawl.js', 'lib/chessable-course-names.js', 'lib/rookhub-client.js', 'chessable-activity.js'] });
     } catch (e) { /* ignore */ }
     st = await ciSend('state');
   }

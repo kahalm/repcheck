@@ -223,6 +223,15 @@
     });
   }
 
+  // Gemeinsamer RookHub-Client (lib/rookhub-client.js, per Manifest VOR dieser Datei geladen): Kopfzeilen und
+  // Fehlerabbildung an EINER Stelle — ein widerrufener Token heißt „Token ungültig", nicht „HTTP 401".
+  // Bisher laufen die Import-Pfade (ingest, ingest/chunk, ingest/live) darüber.
+  const Rookhub = self.RepCheckRookhub ? self.RepCheckRookhub.create({ t }) : null;
+  function rookhubRequest(path, body) {
+    if (!Rookhub) return Promise.reject(new Error(t('err.libMissing')));
+    return Rookhub.request(path, { method: 'POST', body });
+  }
+
   // Kurs-ID ermitteln. In der isolierten Welt ist der React-Fiber NICHT lesbar und
   // die Practice-URL (/practice/…) traegt keine Kurs-ID — daher bevorzugt die von
   // chessable-fen.js (MAIN-World) gespiegelte ID, sonst URL- bzw. Link-Heuristik.
@@ -1163,23 +1172,7 @@
 
   // ---- Ingest an RookHub (Egress über Background-Worker, CORS-frei; Token bleibt hier) ----
   async function ingest(bid, chapters, target, courseName) {
-    const cfg = await readConfig();
-    if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
-    const baseUrl = String(cfg.url).replace(/\/$/, '');
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({
-        type: 'rookhub-fetch',
-        url: baseUrl + '/api/extension/chessable/ingest',
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ bid, target, courseName, chapters }),
-        expect: 'json',
-      }, (resp) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || t('err.http', { status: (resp && resp.status) || 0 })));
-        resolve(resp.body);
-      });
-    });
+    return rookhubRequest('/api/extension/chessable/ingest', { bid, target, courseName, chapters });
   }
 
   // Chessable drosselt (HTTP 429) bei zu schnellem Holen. Nur retrybare Codes wiederholen; dabei
@@ -1238,23 +1231,8 @@
   // extra: beim finalen Chunk eines vollständig geholten Kurses { courseJson, complete }; bei einem Abbruch
   // { aborted: true } (schließt den Eintrag als abgebrochen, die schon importierten Kapitel bleiben).
   async function ingestChunk(sessionId, bid, target, courseName, chapter, final, extra) {
-    const cfg = await readConfig();
-    if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
-    const baseUrl = String(cfg.url).replace(/\/$/, '');
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({
-        type: 'rookhub-fetch',
-        url: baseUrl + '/api/extension/chessable/ingest/chunk',
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(Object.assign({ sessionId, bid, target, courseName, chapter, final }, extra || {})),
-        expect: 'json',
-      }, (resp) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || t('err.http', { status: (resp && resp.status) || 0 })));
-        resolve(resp.body);
-      });
-    });
+    return rookhubRequest('/api/extension/chessable/ingest/chunk',
+      Object.assign({ sessionId, bid, target, courseName, chapter, final }, extra || {}));
   }
 
   const CRAWL_BACKOFF_BASE_MS = 3000;   // Basis des Backoffs bei Drosselung (6/12/24/30 s, s. chessableGet); der normale Takt kommt aus crawlPauseMs()
@@ -1707,23 +1685,7 @@
   }
 
   async function ingestLive(bid, target, courseName, chapters) {
-    const cfg = await readConfig();
-    if (!cfg || !cfg.url || !cfg.token) throw new Error(t('err.notConnected'));
-    const baseUrl = String(cfg.url).replace(/\/$/, '');
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({
-        type: 'rookhub-fetch',
-        url: baseUrl + '/api/extension/chessable/ingest/live',
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ bid, target, courseName, chapters }),
-        expect: 'json',
-      }, (resp) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (!resp || !resp.ok) return reject(new Error((resp && resp.body && resp.body.message) || t('err.http', { status: (resp && resp.status) || 0 })));
-        resolve(resp.body);
-      });
-    });
+    return rookhubRequest('/api/extension/chessable/ingest/live', { bid, target, courseName, chapters });
   }
 
   // Anhängen in Portionen (Crawl.splitIngestChapters): eine einzelne Anfrage je Import lief am Proxy in 413, siehe
