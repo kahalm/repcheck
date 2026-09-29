@@ -1,6 +1,6 @@
 name: Build extension
 
-# Auf jedem Push/PR die Extension lintens + bauen. Der ZIP wird als Workflow-
+# Auf jedem Push/PR die Unit-Tests laufen lassen, die Extension linten + bauen. Der ZIP wird als Workflow-
 # Artifact angehaengt (90 Tage Aufbewahrung), damit Reviewer/Tester direkt
 # einen frischen Build laden koennen ohne lokal zu bauen.
 
@@ -20,6 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # Die Node-Tests (test/*.test.js, node:test, keine Abhaengigkeiten) laufen vor Lint/Build —
+      # release.yml reicht nur ein, wenn sie gruen sind.
+      - name: Unit-Tests
+        run: npm test
 
       - name: web-ext lint
         run: |

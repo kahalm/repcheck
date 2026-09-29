@@ -28,6 +28,12 @@ name: Release
 #   node extension/get-cws-refresh-token.mjs
 # (siehe Skript-Kopf). CWS erlaubt nur EINE Version gleichzeitig im Review —
 # haengt noch eine, schlaegt der Step (nur als Warnung) fehl.
+#
+# Test-Gate: Der Job `test` laesst die Unit-Tests laufen und prueft, dass der Tag
+# zur `version` in extension/manifest.json passt (v1.2.3 == 1.2.3). Erst danach
+# baut `release` und reicht bei AMO/CWS ein. Ein Handstart (workflow_dispatch)
+# baut genau den angegebenen Tag (refs/tags/<tag>), nie den Stand des Branches,
+# auf dem er gestartet wurde; ein nicht vorhandener Tag bricht beim Checkout ab.
 
 on:
   push:
@@ -39,12 +45,40 @@ on:
         required: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Unit-Tests
+        run: npm test
+
+      - name: Tag passt zur Manifest-Version
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          VERSION="$(node -p "require('./extension/manifest.json').version")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG passt nicht zu extension/manifest.json version $VERSION"
+            exit 1
+          fi
+          echo "Tag $TAG == manifest.json $VERSION"
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
