@@ -31,9 +31,6 @@
   const GAP_CLASS = 'repcheck-gap';
   const IN_REP_CLASS = 'repcheck-in-rep';
   const PANEL_ID = 'repcheck-panel';
-  // Oeffentliche Default-Instanz fuer Erst-Nutzer (Vorbefuellung im Panel +
-  // Registrierungs-Link).
-  const ROOKHUB_DEFAULT_URL = 'https://rookhub.oberschmid.homes';
 
   // ─── State ───────────────────────────────────────────────────────────
   let repertoirePositions = null; // Set<string> of normalized FENs (transposition-aware)
@@ -158,7 +155,8 @@
   }
 
   // Extension-privater Config-Spiegel (chrome.storage.local) — seit v1.19.1 die
-  // maßgebliche Quelle für den TOKEN (siehe saveRookhubConfig).
+  // maßgebliche Quelle für den TOKEN. Geschrieben wird er nur im Extension-Origin
+  // (Popup, Worker), seit v1.68.2 nicht mehr aus dem Seiten-Panel.
   function readLocalRookhubConfig() {
     return new Promise((resolve) => {
       try {
@@ -191,25 +189,6 @@
     // Kein Token — höchstens eine URL (neuer Zustand: IDB hält nur die URL).
     if (local && local.url) return local;
     return (legacy && legacy.url) ? { url: legacy.url } : null;
-  }
-
-  async function saveRookhubConfig(cfg) {
-    // Token NUR extension-privat (chrome.storage.local) persistieren; das
-    // Chessable-Activity-Script (chessable.com-Origin) + der Background-Worker
-    // lesen ihn von dort (origin-übergreifend). In die origin-scoped IndexedDB
-    // (chess.com/lichess, für Host-Skripte lesbar) landet bewusst NUR die URL —
-    // nie der Token. Der Set wird ABGEWARTET, weil der Background-Worker die
-    // erlaubte Ziel-Origin aus chrome.storage.local liest, bevor der erste
-    // Proxy-Fetch (Verbindungs-Check) laeuft.
-    try {
-      if (cfg && cfg.url && cfg.token) {
-        await new Promise((resolve) => {
-          try { chrome.storage.local.set({ rookhubConfig: { url: cfg.url, token: cfg.token } }, resolve); }
-          catch (e) { resolve(); }
-        });
-      }
-    } catch (e) { /* storage nicht verfuegbar — ignorieren */ }
-    return idbPut(IDB_ROOKHUB_STORE, IDB_ROOKHUB_CONFIG_KEY, { url: cfg && cfg.url });
   }
 
   // pgnTexts-Cache (vor 1.6.0): nur noch lesend fuer einmalige Migration zum Position-Set.
@@ -1534,21 +1513,19 @@
   }
 
   // Panel-Markup (reiner String, keine DOM-Nebenwirkungen).
+  // KEINE URL-/Token-Felder (seit v1.68.2): das Panel haengt im DOM von chess.com/lichess, ein
+  // Seiten-Skript koennte dort eine eigene Adresse eintragen und „Verbinden" klicken — der
+  // gespeicherte rkh_-Token ginge dann an diese Adresse, und die Egress-Allowlist des Workers
+  // (Origin von rookhubConfig.url) folgte ihr. Die Verbindung lebt allein im Popup.
   function panelHtml() {
-    const host = ROOKHUB_DEFAULT_URL.replace(/^https?:\/\//, '');
     return `
       <h3>${rcEscHtml(t('panel.heading'))}</h3>
       <div style="margin-bottom: 12px;">
         <strong>${rcEscHtml(t('panel.rookhub'))}</strong><br>
-        <input id="repcheck-rookhub-url" placeholder="https://rookhub.example.com" />
-        <input id="repcheck-rookhub-token" placeholder="rkh_…" type="password" />
+        <span style="font-size:11px;color:#888;">${rcEscHtml(t('panel.connectInPopup'))}</span>
         <div style="margin-top:6px;">
-          <button id="repcheck-rookhub-connect">${rcEscHtml(t('panel.connect'))}</button>
           <button id="repcheck-rookhub-refresh" class="secondary">${rcEscHtml(t('panel.refresh'))}</button>
         </div>
-        <span style="font-size:11px;color:#888;">
-          ${rcEscHtml(t('panel.noAccount'))}<a href="${ROOKHUB_DEFAULT_URL}/register" target="_blank" rel="noopener" style="color:#4a9eff;">${rcEscHtml(t('panel.register', { host }))}</a>${rcEscHtml(t('panel.tokenHint'))}
-        </span>
       </div>
       <hr style="border-color:#444;margin:12px 0;">
       <div style="margin-bottom: 12px;">
@@ -1580,7 +1557,7 @@
     `;
   }
 
-  // RookHub-Felder vorbefuellen (async) + alle Panel-Buttons verdrahten.
+  // Alle Panel-Buttons verdrahten.
   function wirePanelEvents() {
     // Sprachwahl: leerer Wert = Automatik. Der Wert wird GELÖSCHT statt als '' gespeichert,
     // damit die Browsersprache wieder greift.
@@ -1599,22 +1576,6 @@
       });
     }
 
-    // Config laden; ohne vorhandene mit der Default-Instanz vorbelegen, damit
-    // Neu-User nicht erst eine URL suchen muessen.
-    loadRookhubConfig().then(cfg => {
-      const urlInput = document.getElementById('repcheck-rookhub-url');
-      const tokenInput = document.getElementById('repcheck-rookhub-token');
-      if (urlInput) urlInput.value = (cfg && cfg.url) || ROOKHUB_DEFAULT_URL;
-      // Der gespeicherte Token wird bewusst NICHT vorbefuellt: das Panel haengt im
-      // DOM der Seite, jedes Seiten-Skript koennte den Klartext aus dem Input lesen.
-      // Stattdessen zeigt der Platzhalter an, dass einer hinterlegt ist; leer
-      // absenden = gespeicherten Token weiterverwenden (s. Connect-Handler).
-      if (cfg && cfg.token && tokenInput) tokenInput.placeholder = t('panel.tokenSaved');
-    }).catch(() => {
-      const urlInput = document.getElementById('repcheck-rookhub-url');
-      if (urlInput && !urlInput.value) urlInput.value = ROOKHUB_DEFAULT_URL;
-    });
-
     document.getElementById('repcheck-pick-dir')?.addEventListener('click', async () => {
       await pickDirectory();
     });
@@ -1626,23 +1587,7 @@
 
     document.getElementById('repcheck-close').addEventListener('click', togglePanel);
 
-    document.getElementById('repcheck-rookhub-connect')?.addEventListener('click', async () => {
-      const url = (document.getElementById('repcheck-rookhub-url').value || '').trim();
-      const typed = (document.getElementById('repcheck-rookhub-token').value || '').trim();
-      // Leeres Feld = gespeicherten Token beibehalten (er wird aus Sicherheitsgruenden
-      // nicht mehr ins Input vorbefuellt, s. Vorbefuellung oben).
-      const saved = typed ? null : await loadRookhubConfig().catch(() => null);
-      const token = typed || ((saved && saved.token) || '');
-      if (!url || !token) { updateStatusText(t('status.needUrlToken')); return; }
-      try {
-        await saveRookhubConfig({ url, token });
-        updateStatusText(t('status.connecting'));
-        await connectRookHub({ url, token });
-      } catch (e) {
-        updateStatusText(t('status.error', { error: e.message }));
-      }
-    });
-
+    // Nur mit der GESPEICHERTEN Config (Popup/Worker): Adresse und Token kommen nie aus dem DOM.
     document.getElementById('repcheck-rookhub-refresh')?.addEventListener('click', async () => {
       const cfg = await loadRookhubConfig();
       if (!cfg) { updateStatusText(t('status.notConfigured')); return; }

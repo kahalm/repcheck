@@ -1,120 +1,159 @@
 'use strict';
 
-// Der gespeicherte rkh_-Token darf NICHT mehr in das seiten-injizierte
-// Token-Input vorbefuellt werden: das Panel haengt im DOM von chess.com/
-// lichess, jedes Seiten-Skript koennte den Klartext aus dem Input lesen
-// (s. CLAUDE.md „Sicherheit"). Stattdessen zeigt der Platzhalter an, dass ein
-// Token hinterlegt ist, und der Connect-Handler greift bei leerem Feld auf den
-// gespeicherten Token zurueck — der Ablauf fuer den Nutzer bleibt gleich.
+// Das Seiten-Panel („Ordner / PGN auf der Seite…") haengt im DOM von chess.com/lichess. Jedes
+// Skript der Seite (XSS, kompromittiertes Drittskript) sieht es, kann Werte in seine Felder
+// schreiben und Knoepfe per click() ausloesen — die Listener der isolierten Welt bekommen das
+// wie einen echten Klick.
 //
-// Die Panel-Glue-Logik lag frueher doppelt vor (extension/content.js und repcheck.user.js);
-// hand-gespiegelt und in Node nicht als Ganzes ladbar (IIFE + DOM). Die Tests
-// schneiden daher die ECHTEN Codebloecke per stabiler Anker aus beiden Dateien
-// und fuehren sie mit Stubs aus — laufen also gegen den ausgelieferten Code
-// und halten die beiden Spiegel nebenbei synchron.
+// Bis v1.68.1 hatte das Panel URL, Token und „Verbinden": die Seite trug eine eigene Adresse ein,
+// liess das Token-Feld leer und klickte. Der Handler nahm dann den GESPEICHERTEN rkh_-Token,
+// schrieb rookhubConfig auf die fremde Adresse um (die Egress-Allowlist des Workers folgt ihr)
+// und schickte den Token per Bearer dorthin (W1 S1-001). Seit v1.68.2 lebt die Verbindung allein
+// im Popup (Extension-Origin); das Panel behaelt Ordner, PGN, Sprache und „Aktualisieren", und das
+// liest nur die gespeicherte Config.
+//
+// Getestet wird der ausgelieferte Code: panelHtml + wirePanelEvents werden per stabiler Anker aus
+// extension/content.js ausgeschnitten und mit Stubs gegen ein Fake-DOM ausgefuehrt, in dem die
+// „Seite" zu JEDER abgefragten id ein Element liefert — auch zu den alten Feldern.
 
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { RC_LANGS, RC_MESSAGES } = require('../extension/lib/i18n.js');
 
 const ROOT = path.join(__dirname, '..');
-const lies = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-const DATEIEN = ['extension/content.js'];
+const DATEI = 'extension/content.js';
+const QUELLE = fs.readFileSync(path.join(ROOT, DATEI), 'utf8');
 
-function schnipsel(src, vonAnker, bisAnker, datei) {
+function schnipsel(src, vonAnker, bisAnker) {
   const von = src.indexOf(vonAnker);
-  assert.ok(von >= 0, `${datei}: Anker nicht gefunden: ${vonAnker}`);
+  assert.ok(von >= 0, `${DATEI}: Anker nicht gefunden: ${vonAnker}`);
   const bis = src.indexOf(bisAnker, von);
-  assert.ok(bis > von, `${datei}: End-Anker nicht gefunden: ${bisAnker}`);
+  assert.ok(bis > von, `${DATEI}: End-Anker nicht gefunden: ${bisAnker}`);
   return src.slice(von, bis);
 }
 
-// Fuehrt den Vorbefuellungs-Block (loadRookhubConfig().then(…)) einer Datei aus.
-async function fuehreVorbefuellungAus(datei, cfg) {
-  let block = schnipsel(lies(datei), 'loadRookhubConfig().then(cfg => {',
-    "document.getElementById('repcheck-pick-dir')", datei).trimEnd();
-  assert.ok(block.endsWith(';'), `${datei}: Vorbefuellungs-Block endet nicht mit ;`);
-  block = block.slice(0, -1);
-  const inputs = {
-    'repcheck-rookhub-url': { value: '', placeholder: 'https://rookhub.example.com' },
-    'repcheck-rookhub-token': { value: '', placeholder: 'rkh_…' },
-  };
-  const doc = { getElementById: (id) => inputs[id] || null };
-  const fn = new Function('loadRookhubConfig', 'document', 'ROOKHUB_DEFAULT_URL', 't',
-    'return (async () => { await (' + block + '); })();');
-  await fn(async () => cfg, doc, 'https://rookhub.example', (k) => '<' + k + '>');
-  return inputs;
-}
+const PANEL_BLOCK = schnipsel(QUELLE, '// Panel-Markup (reiner String, keine DOM-Nebenwirkungen).',
+  'function togglePanel() {');
 
-// Registriert den Connect-Click-Handler einer Datei mit Stubs und klickt ihn.
-async function klickeVerbinden(datei, { getippt, gespeichert }) {
-  const block = schnipsel(lies(datei), "document.getElementById('repcheck-rookhub-connect')",
-    "document.getElementById('repcheck-rookhub-refresh')", datei).trimEnd();
-  const inputs = {
-    'repcheck-rookhub-url': { value: 'https://rookhub.example' },
-    'repcheck-rookhub-token': { value: getippt || '' },
+const GESPEICHERT = { url: 'https://rookhub.example', token: 'rkh_gespeichert' };
+const FREMD = 'https://evil.example';
+
+// Baut Panel-Funktionen samt Stubs; `doc` ist ein Fake-DOM, das zu jeder id ein Element liefert.
+function ladePanel() {
+  const calls = { save: [], connect: [], storageSet: [], status: [], ids: new Set() };
+  const elemente = new Map();
+  const element = (id) => {
+    if (!elemente.has(id)) {
+      elemente.set(id, {
+        id, value: '', placeholder: '', listeners: [],
+        addEventListener(typ, fn) { this.listeners.push({ typ, fn }); },
+      });
+    }
+    return elemente.get(id);
   };
-  let handler = null;
-  const doc = {
-    getElementById: (id) => (id === 'repcheck-rookhub-connect'
-      ? { addEventListener: (_ev, fn) => { handler = fn; } }
-      : inputs[id] || null),
+  const doc = { getElementById: (id) => { calls.ids.add(id); return element(id); } };
+  const chrome = {
+    storage: { local: {
+      set: (obj, cb) => { calls.storageSet.push(obj); if (cb) cb(); },
+      remove: () => {},
+      get: (_k, cb) => cb({ rookhubConfig: GESPEICHERT }),
+    } },
   };
-  const calls = { status: [], save: [], connect: [] };
-  const fn = new Function('document', 'updateStatusText', 't',
-    'saveRookhubConfig', 'connectRookHub', 'loadRookhubConfig', block);
-  fn(doc,
+  const fn = new Function(
+    't', 'rcEscHtml', 'rcAutoLang', 'repertoirePositions', 'rcGespeicherteSprache', 'document',
+    'chrome', 'self', 'navigator', 'rcApplyLang', 'loadRookhubConfig', 'saveRookhubConfig',
+    'connectRookHub', 'updateStatusText', 'pickDirectory', 'loadRepertoireFromText', 'togglePanel',
+    'ROOKHUB_DEFAULT_URL',
+    "let rcLang = 'en'; let lastGameMovesKey = 'alt';\n" + PANEL_BLOCK +
+    '\nreturn { panelHtml, wirePanelEvents, lastKey: () => lastGameMovesKey };');
+  const api = fn(
+    (k) => '<' + k + '>',
+    (s) => String(s),
+    () => 'en',
+    null,
+    '',
+    doc,
+    chrome,
+    { RepCheckI18n: { resolveLang: () => 'en' } },
+    { languages: ['en'] },
+    () => {},
+    async () => ({ ...GESPEICHERT }),
+    async (c) => { calls.save.push(c); },
+    async (c, opts) => { calls.connect.push({ cfg: c, opts: opts || null }); },
     (s) => calls.status.push(s),
-    (k) => k,
-    async (c) => calls.save.push(c),
-    async (c) => calls.connect.push(c),
-    async () => gespeichert);
-  assert.ok(handler, `${datei}: Connect-Handler nicht registriert`);
-  await handler();
-  return calls;
+    async () => {},
+    async () => {},
+    () => {},
+    'https://rookhub.default');
+  return { api, calls, element, elemente };
 }
 
-for (const datei of DATEIEN) {
-  test(`${datei}: gespeicherter Token wird NICHT ins Input vorbefuellt (nur Platzhalter)`, async () => {
-    const inputs = await fuehreVorbefuellungAus(datei,
-      { url: 'https://rookhub.example', token: 'rkh_geheim' });
-    assert.strictEqual(inputs['repcheck-rookhub-token'].value, '',
-      'Klartext-Token liegt wieder im seiten-lesbaren Input');
-    assert.strictEqual(inputs['repcheck-rookhub-token'].placeholder, '<panel.tokenSaved>');
-    assert.strictEqual(inputs['repcheck-rookhub-url'].value, 'https://rookhub.example');
-  });
+const tick = () => new Promise((r) => setImmediate(r));
 
-  test(`${datei}: ohne gespeicherten Token bleibt der rkh_-Platzhalter stehen`, async () => {
-    const inputs = await fuehreVorbefuellungAus(datei, { url: 'https://rookhub.example' });
-    assert.strictEqual(inputs['repcheck-rookhub-token'].value, '');
-    assert.strictEqual(inputs['repcheck-rookhub-token'].placeholder, 'rkh_…');
-  });
+test('Panel-Markup hat keine URL-/Token-Felder und keinen Verbinden-Knopf', () => {
+  const { api } = ladePanel();
+  const html = api.panelHtml();
+  for (const id of ['repcheck-rookhub-url', 'repcheck-rookhub-token', 'repcheck-rookhub-connect']) {
+    assert.ok(!html.includes(id), `Seiten-Panel enthaelt wieder ${id}`);
+  }
+  assert.ok(!/type="password"/.test(html), 'Seiten-Panel hat wieder ein Passwort-/Token-Feld');
+  // Was bleibt: Hinweis aufs Popup und „Aktualisieren".
+  assert.ok(html.includes('<panel.connectInPopup>'), 'Hinweis auf das Popup fehlt');
+  assert.ok(html.includes('id="repcheck-rookhub-refresh"'), '„Aktualisieren" fehlt');
+});
 
-  test(`${datei}: Verbinden mit leerem Feld nutzt den gespeicherten Token`, async () => {
-    const calls = await klickeVerbinden(datei, {
-      getippt: '',
-      gespeichert: { url: 'https://rookhub.example', token: 'rkh_gespeichert' },
-    });
-    assert.strictEqual(calls.connect.length, 1, 'connectRookHub wurde nicht aufgerufen');
-    assert.strictEqual(calls.connect[0].token, 'rkh_gespeichert');
-    assert.strictEqual(calls.save[0].token, 'rkh_gespeichert');
-    assert.ok(!calls.status.includes('status.needUrlToken'),
-      'leeres Feld + gespeicherter Token darf keinen Fehler ausloesen');
-  });
+test('Seiten-Skript traegt fremde Adresse ein und klickt alles: kein Speichern, kein Token an die fremde Adresse', async () => {
+  const { api, calls, element, elemente } = ladePanel();
+  api.wirePanelEvents();
+  await tick();   // eine etwaige Vorbefuellung abwarten — die Seite schreibt danach
+  // Die „Seite" setzt die alten Felder (auch wenn es sie nicht mehr gibt, koennte sie sie anlegen).
+  element('repcheck-rookhub-url').value = FREMD;
+  element('repcheck-rookhub-token').value = '';
+  assert.ok(!element('repcheck-rookhub-connect').listeners.length,
+    'auf #repcheck-rookhub-connect haengt wieder ein Listener');
+  for (const el of [...elemente.values()]) {
+    for (const { typ, fn } of el.listeners) {
+      if (typ === 'click') await fn({ isTrusted: false });
+    }
+  }
+  assert.deepStrictEqual(calls.save, [], 'Panel hat die RookHub-Config geschrieben');
+  assert.ok(!calls.storageSet.some((o) => o && 'rookhubConfig' in o),
+    'Panel hat rookhubConfig in chrome.storage.local geschrieben');
+  for (const c of calls.connect) {
+    assert.notStrictEqual(c.cfg.url, FREMD, 'Proxy-Aufruf an die fremde Adresse');
+    assert.strictEqual(c.cfg.url, GESPEICHERT.url);
+  }
+  assert.ok(!calls.ids.has('repcheck-rookhub-token'), 'Panel liest wieder ein Token-Feld aus dem Seiten-DOM');
+});
 
-  test(`${datei}: getippter Token gewinnt gegen den gespeicherten`, async () => {
-    const calls = await klickeVerbinden(datei, {
-      getippt: 'rkh_neu',
-      gespeichert: { url: 'https://rookhub.example', token: 'rkh_alt' },
-    });
-    assert.strictEqual(calls.connect[0].token, 'rkh_neu');
-    assert.strictEqual(calls.save[0].token, 'rkh_neu');
-  });
+test('„Aktualisieren" nimmt die gespeicherte Config und fordert refresh an', async () => {
+  const { api, calls, element } = ladePanel();
+  api.wirePanelEvents();
+  await tick();
+  element('repcheck-rookhub-url').value = FREMD;
+  const refresh = element('repcheck-rookhub-refresh').listeners.find((l) => l.typ === 'click');
+  assert.ok(refresh, '„Aktualisieren" ist nicht verdrahtet');
+  await refresh.fn();
+  assert.strictEqual(calls.connect.length, 1);
+  assert.deepStrictEqual(calls.connect[0].cfg, GESPEICHERT);
+  assert.deepStrictEqual(calls.connect[0].opts, { refresh: true });
+  assert.strictEqual(api.lastKey(), '', 'Zug-Cache wird nach dem Aktualisieren nicht geleert');
+});
 
-  test(`${datei}: weder getippt noch gespeichert → Fehlermeldung, kein Connect`, async () => {
-    const calls = await klickeVerbinden(datei, { getippt: '', gespeichert: null });
-    assert.deepStrictEqual(calls.status, ['status.needUrlToken']);
-    assert.strictEqual(calls.connect.length, 0);
-  });
-}
+test('content.js schreibt die RookHub-Config nicht mehr aus dem Seiten-Kontext', () => {
+  assert.ok(!/function saveRookhubConfig\b/.test(QUELLE), 'saveRookhubConfig ist zurueck');
+  for (const id of ['repcheck-rookhub-url', 'repcheck-rookhub-token', 'repcheck-rookhub-connect']) {
+    assert.ok(!QUELLE.includes(id), `content.js referenziert wieder ${id}`);
+  }
+});
+
+test('jeder Text-Schluessel des Panels existiert in allen Sprachen', () => {
+  const keys = [...PANEL_BLOCK.matchAll(/\bt\('([\w.]+)'/g)].map((m) => m[1]);
+  assert.ok(keys.includes('panel.connectInPopup'));
+  for (const lang of RC_LANGS) {
+    const fehlend = keys.filter((k) => !(k in RC_MESSAGES[lang]));
+    assert.deepStrictEqual(fehlend, [], `${lang} fehlen Panel-Schluessel: ${fehlend.join(', ')}`);
+  }
+});

@@ -165,7 +165,7 @@ dessen Origin zur eingetragenen RookHub-Adresse passt.
 ### Verhalten
 - **Pro Review-Page** ein `POST /api/extension/analyze-game` mit `{ moves, kind, refresh }`. Antwort: `{ deviation, gaps, inRepertoire, fenBeforeDeviation, repertoireFileCount, illegalMoveAt }`. Der Move-Cache (`lastGameMovesKey`) verhindert Redundanz-Requests, wenn sich die Zugliste nicht aendert.
 - **„Aktualisieren"** im Panel sendet `refresh: true` und invalidiert damit den serverseitigen Positions-Set-Cache.
-- **Auth**: jeder Request schickt `Authorization: Bearer rkh_…`. Bei 401 wird der Fehler im Status-Text gezeigt; der Token bleibt gespeichert (User muss ihn aktiv im Panel neu eintragen).
+- **Auth**: jeder Request schickt `Authorization: Bearer rkh_…`. Bei 401 wird der Fehler im Status-Text gezeigt; der Token bleibt gespeichert (User muss ihn aktiv im Popup neu eintragen bzw. neu verbinden).
 - **Offline-Fallback**: schlaegt der Server-Call fehl und ein lokales Position-Set aus einer frueheren Session liegt im IDB-Cache (`positionSet`-Key), wird darauf zurueckgegriffen. Ansonsten Fehler-Banner.
 - **Lokaler Modus**: ohne RookHub-Config funktioniert der lokale Folder-/PGN-Mechanismus genauso wie vor 1.3.0 — Position-Set wird vollstaendig im Browser gebaut, persistiert im IDB-Store `rookhub/positionSet`.
 
@@ -371,10 +371,10 @@ eigene Kategorie **„Chessable"** des Trainingsziele-Trackers fließt.
   aufs Brett, oder gewertete `moveNotification`). Reines Offenlassen zählt NICHT.
   Sliding-Idle-Timer (5-s-Takt), Flush alle 60 s (ab ≥10 s) + bei
   `visibilitychange→hidden`/`pagehide`. Häppchen serverseitig auf 3600 s gedeckelt.
-- **RookHub-Config-Sharing** ⚠️: URL+Token liegen in IndexedDB auf chess.com/lichess-
-  Origin — auf chessable.com NICHT lesbar (origin-scoped). Daher spiegelt
-  `saveRookhubConfig` die Config zusätzlich in **`chrome.storage.local`** (Extension)
- . Das Activity-Script liest
+- **RookHub-Config-Sharing** ⚠️: die IndexedDB auf chess.com/lichess-Origin ist auf
+  chessable.com NICHT lesbar (origin-scoped). Die Config liegt deshalb in
+  **`chrome.storage.local`** (Extension, Key `rookhubConfig`), geschrieben von Popup und
+  Worker. Das Activity-Script liest
   sie von dort; ohne Config wird nichts gemessen/gesendet.
 - **Extension**: `chessable-activity.js` läuft in der **isolierten** Welt (braucht
   `chrome.storage` + `chrome.runtime`); Egress CORS-frei über den Background-Worker
@@ -482,10 +482,11 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 
 Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst beibehalten:
 
-- **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`); im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token), `saveRookhubConfig()` schreibt ins IDB nur `{ url }`.
+- **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`); im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token). Content-Scripts schreiben `rookhubConfig` nicht (`saveRookhubConfig()` ist mit v1.68.2 entfallen).
 - **MAIN↔isoliert postMessage-Bridge** (`chessable-fen.js` ↔ `chessable-activity.js`): Empfänger prüfen `e.source === window` **UND** `e.origin === location.origin`. Rest-Risiko (same-origin Page-Skript könnte Bridge-Messages fälschen) ist bewusst akzeptiert — der Token bleibt aus dem Page-Kontext heraus, Impact wäre nur Daten-Injection, kein Token-Diebstahl. Ein Handshake-Nonce hilft hier nicht robust (MAIN-World ist page-beobachtbar).
 - **Background-Egress** (`background.js`): nur `type:'rookhub-fetch'` von `sender.id === chrome.runtime.id`, Ziel-Origin MUSS = `rookhubConfig.url`-Origin, **HTTPS-only** (http nur für `localhost`/`127.0.0.1`), `credentials:'omit'`. Kein offener Proxy.
 - **Ein-Klick-Verbindung** (`background.js` `pairAttempt`): das RookHub-JWT wird nur nach ausdrücklichem Nutzer-Klick, nur aus einem Tab mit passender Ziel-Origin gelesen, nie gespeichert und nur für den einen `POST /api/profile/tokens` verwendet. Persistiert wird ausschliesslich der zurueckgegebene `rkh_`-Token — extension-privat wie bisher. Der Token wird im Popup (Extension-Origin) eingegeben, nicht mehr im Seiten-DOM.
+- **Seiten-Panel ohne URL-/Token-Felder** (v1.68.2): das In-Page-Panel (chess.com/lichess, „Ordner / PGN auf der Seite…") hängt im DOM der Seite. Bis v1.68.1 hatte es noch URL, Token und „Verbinden": ein Seiten-Skript konnte dort eine eigene Adresse eintragen und den Knopf klicken — bei leerem Token-Feld nahm der Handler den gespeicherten `rkh_`-Token, schrieb `rookhubConfig` um (damit folgte auch die Egress-Allowlist) und schickte den Token per Bearer an die fremde Adresse. Das Panel behält nur Ordner, PGN, Sprache und „Aktualisieren" (liest die gespeicherte Config, nie das DOM). `test/rookhub-token-panel.test.js` hält das fest — URL/Token/Verbinden nicht zurück ins Panel holen.
 - **Manifest `host_permissions`**: `https://*/*` + `http://localhost|127.0.0.1` (kein `http://*/*` — verhindert Klartext-Token-Egress + reduziert Store-Review-Reibung).
 - **Packaging**: `web-ext-config.cjs` `ignoreFiles` hält Dev-/CI-Skripte (`*.mjs` CWS-OAuth-Helfer, `*.ps1`) und `web-ext-artifacts/**` aus dem ausgelieferten Paket.
 

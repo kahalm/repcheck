@@ -530,8 +530,8 @@ function renderRepertoireList(items) {
   REP_EL.style.display = 'block';
 }
 
-// Die RookHub-Config wird vom Content-Script auch nach chrome.storage.local
-// gespiegelt (saveRookhubConfig, Key `rookhubConfig`). Das ist hier die
+// Die RookHub-Config liegt in chrome.storage.local (Key `rookhubConfig`, geschrieben
+// von Popup und Worker — seit v1.68.2 nie mehr aus dem Seiten-Panel). Das ist hier die
 // VERLAESSLICHE Quelle: die IndexedDB `RepertoireCheckerDB` ist origin-scoped
 // (chess.com/lichess) und im Popup-Origin (chrome-extension://…) NICHT lesbar —
 // readRookhubStore() liefert hier also nie die Config. chrome.storage.local ist

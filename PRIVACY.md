@@ -22,7 +22,7 @@ Alle Aufrufe tragen deinen Extension-Token (`Authorization: Bearer rkh_…`, Sco
 
 | Wann | Was | Endpunkt |
 |------|-----|----------|
-| Klick auf „Prüfen" (Repertoire-Check mit RookHub) oder Verbinden im Seiten-Panel | SAN-Zugliste der angezeigten Partie | `POST /api/extension/analyze-game` |
+| Klick auf „Prüfen" (Repertoire-Check mit RookHub) oder „Aktualisieren" im Seiten-Panel | SAN-Zugliste der angezeigten Partie | `POST /api/extension/analyze-game` |
 | Klick auf „Partie speichern" (💾) oder in einer Partienliste auf „an RookHub schicken" (↗) | Züge, Spieler, Wertungen, Ergebnis, Datum, Bedenkzeit, Partie-Id und -Adresse | `POST /api/extension/games` |
 | Klick auf 📈 in einer Partienliste | Startet die Analyse einer dort schon gespeicherten Partie | `POST /api/extension/games/{id}/analyze` |
 | **Automatisch ohne Klick**, sobald eine Partienliste offen ist (Archiv oder Profilseite — auch die eines anderen Spielers) | Plattform und die öffentlichen Ids der sichtbaren Partien (keine Züge, keine Namen) — um anzuzeigen, welche schon bei RookHub liegen. Nachgeladene Zeilen werden im 2,5-s-Takt nachgefragt, laufende Analysen alle 30 s | `POST /api/extension/games/known` |
