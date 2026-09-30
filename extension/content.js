@@ -46,10 +46,11 @@
   // self.RepCheckLib. Keine Inline-Kopien mehr (früher hier + userscript + lib
   // dreifach). tokenizePgn/isMoveToken/parseMoveTokens/parsePgnText: PGN→Zugbaum;
   // normalizedFen: 4-Feld-FEN fürs Repertoire-Matching; chessComPlayedAt: Header→ISO;
-  // chessableSearchUrl: globale Chessable-FEN-Such-URL.
+  // chessableSearchUrl: globale Chessable-FEN-Such-URL; lichessGameId: Partie-Id nur aus
+  // echten lichess-Partie-Adressen (nie aus /analysis, /training …).
   const {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
   } = (self.RepCheckLib || {});
 
   // ─── Sprache (geteilte Tabelle, extension/lib/i18n.js) ──────────────
@@ -765,8 +766,10 @@
     };
     try {
       if (site === 'lichess') {
-        const m = location.pathname.match(/^\/([A-Za-z0-9]{8})/);
-        if (m) meta.externalId = m[1];
+        // Nur echte Partie-Adressen: auf dem Analysebrett (/analysis) oder /broadcast/… gibt es keine
+        // Partie-Id — dort bleibt sie null, sonst fielen alle dort gespeicherten Partien bei RookHub
+        // auf einen Datensatz zusammen.
+        meta.externalId = lichessGameId(location.pathname);
       } else {
         const m = location.pathname.match(/\/(?:live|daily|game|analysis\/game\/live)\/(\d+)/)
           || location.pathname.match(/(\d{6,})/);

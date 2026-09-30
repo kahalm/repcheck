@@ -148,11 +148,31 @@ function chessableSearchUrl(fen) {
   return 'https://www.chessable.com/courses/fen/' + encoded + '/';
 }
 
+// lichess-Partie-Id aus dem Pfad der Seite — nur aus echten Partie-Adressen: `/<id8>` oder
+// `/<id8><spieler4>` (Sicht eines Spielers), je optional `/white` bzw. `/black` und ein Schluss-Slash.
+// Achtstellige lichess-Seiten wie `/analysis` oder `/training` passen auf dasselbe Muster und sind
+// ausgeschlossen. Bis v1.68.6 las getGameMeta die ersten acht Zeichen JEDES Pfads (ohne Ende-Anker),
+// auf dem Analysebrett also „analysis", auf `/broadcast/…` „broadcas" — und RookHub legte alle dort
+// gespeicherten Partien eines Nutzers auf EINEN Datensatz (Dedup über User, Quelle, externalId).
+// Keine Partie-Adresse → null (jede Speicherung wird eine eigene Partie).
+function lichessGameId(pathname) {
+  const m = String(pathname || '').match(/^\/([A-Za-z0-9]{8})([A-Za-z0-9]{4})?(?:\/(?:white|black))?\/?$/);
+  if (!m) return null;
+  // Die Liste steht in der Funktion, nicht auf oberster Ebene: die Lib wird auch per executeScript
+  // nachgeladen, und ein zweites `const` im selben Scope wäre ein Fehler.
+  const reserved = [
+    'analysis', 'training', 'practice', 'tutorial', 'insights', 'streamer', 'features',
+    'timeline', 'calendar', 'marathon', 'download', 'settings', 'coaching', 'openings',
+  ];
+  if (reserved.includes((m[1] + (m[2] || '')).toLowerCase())) return null;
+  return m[1];
+}
+
 // Node/CommonJS-Export (im Browser-Content-Script ist `module` undefiniert → übersprungen).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
   };
 }
 
@@ -161,6 +181,6 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof self !== 'undefined') {
   self.RepCheckLib = Object.assign(self.RepCheckLib || {}, {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
   });
 }

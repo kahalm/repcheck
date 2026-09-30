@@ -41,7 +41,7 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 
 | Datei | Global | Inhalt |
 |---|---|---|
-| `lib/repertoire-text.js` | `self.RepCheckLib` | `tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl` |
+| `lib/repertoire-text.js` | `self.RepCheckLib` | `tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl`, `lichessGameId` |
 | `lib/i18n.js` | `self.RepCheckI18n` | Sprachtabelle (siehe „Oberflächensprache") |
 | `lib/chessable-course-names.js` | `self.RepCheckCourseNames` | Kursnamen/Nav-Label/uid-Decode — `rc`-Präfixe, weil Top-Level-Deklarationen in der MAIN-World im `window` der Seite landen |
 | `lib/chesscom-moves.js` | `RepCheckChessCom` | chess.coms TCN-Zugliste → SAN (`decodeTcn`, `sansFromTcn`) — zweite Zugquelle beim Partie-Speichern |
@@ -212,7 +212,12 @@ ein Takt von `REVIEW_POLL_MS` (2 s) neu — zwei `querySelector`, und jede Injek
 — die per Site-Adapter (`getGameMoves`) extrahierte SAN-Hauptlinie + Best-Effort-Metadaten
 (`getGameMeta`: `externalId` aus URL, `result` aus dem Ergebnis-Token der Zugliste, `white`/`black`
 aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupliziert über
-(User, Source, ExternalId). (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
+(User, Source, ExternalId). **lichess-Id nur aus echten Partie-Adressen** (v1.68.7, `lichessGameId` in
+`lib/repertoire-text.js`): `/<id8>` bzw. `/<id8><spieler4>`, optional `/white|/black` — auf dem
+Analysebrett, `/broadcast/…`, `/study/…` und achtstelligen Seiten wie `/training` bleibt sie `null`, jede
+Speicherung dort ist eine eigene Partie. Bis v1.68.6 las eine Regex ohne Ende-Anker die ersten acht Zeichen
+jedes Pfads („analysis", „broadcas"), und alle dort gespeicherten Partien fielen serverseitig auf EINEN
+Datensatz (spätere überschrieben frühere hinter deren Teilen-Link). Test: `test/lichess-game-id.test.js`. (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
 `{ pgn, sourceUrl }` — auf das reichere Format umgestellt, ohne den 📋-Copy-Pfad zu ändern.)
 
 - **Egress**: `rookhubProxy()`
