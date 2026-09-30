@@ -50,9 +50,14 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 | `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) und „Trennen" im Popup (`token/self`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup.js/welcome.js/chessable-activity.js — `test/rookhub-client.test.js` hält alle gleich |
 
 Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
-`content_scripts`) und beim Nachladen aus dem Popup mit injiziert (`executeScript`). Wer eine
-neue Lib anlegt, trägt sie an BEIDEN Stellen ein — `test/chessable-course-names.test.js` prüft
-Manifest-Auslieferung und Lib-Nutzung und schlägt bei einer wiederauferstandenen Inline-Kopie fehl.
+`content_scripts`) — das ist die EINZIGE Stelle, an der sie eingetragen wird. Das Popup lädt in
+Tabs, die vor Installation oder Update offen waren, per `executeScript` genau die Manifest-Liste
+nach (`manifestScripts(consumer)` liest `chrome.runtime.getManifest().content_scripts`, nur die
+isolierte Welt; seit v1.68.12). Bis dahin standen die Nachlade-Listen dreimal von Hand im Popup und
+waren gedriftet (fehlende `lib/chesscom-moves.js`, `lib/i18n.js`, `lib/chessable-feedback.js`,
+`chessable-token.js`). `test/nachlade-listen.test.js` hält Popup und Manifest gleich;
+`test/chessable-course-names.test.js` prüft Manifest-Auslieferung und Lib-Nutzung und schlägt bei
+einer wiederauferstandenen Inline-Kopie fehl.
 
 **Workflow bei einer Logik-Änderung:** nur die Lib ändern → `npm test`. Der frühere Build-Schritt
 (`build/assemble.mjs`, Sentinel-Regionen, `npm run build:userscript`) ist mit dem Userscript

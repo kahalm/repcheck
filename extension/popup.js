@@ -692,6 +692,16 @@ function paintShareState() {
   if (sharePaint) SHARE_STATE.textContent = t(sharePaint.key, sharePaint.params);
 }
 
+// Nachladen in Tabs, die schon vor Installation oder Update offen waren: genau die Dateien, die Chrome über das
+// Manifest lädt (`content_scripts`, isolierte Welt), in derselben Reihenfolge — EINE Quelle statt Kopien. Bis
+// v1.68.11 standen die Listen hier von Hand und fehlten lib/chesscom-moves.js (keine Züge beim Schicken) bzw.
+// lib/i18n.js, lib/chessable-feedback.js und chessable-token.js (rohe Schlüssel, falsche Genauigkeit).
+function manifestScripts(consumer) {
+  const eintrag = (chrome.runtime.getManifest().content_scripts || [])
+    .find((cs) => (cs.world || 'ISOLATED') === 'ISOLATED' && (cs.js || []).includes(consumer));
+  return eintrag ? eintrag.js.slice() : [consumer];
+}
+
 async function ensureContentLoaded(tab) {
   const [precheck] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -700,7 +710,7 @@ async function ensureContentLoaded(tab) {
   if (!precheck || !precheck.result) {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['chess.min.js', 'lib/repertoire-text.js', 'lib/i18n.js', 'content.js'],
+      files: manifestScripts('content.js'),
     });
   }
 }
@@ -1000,7 +1010,7 @@ async function initChessableImport() {
   let st = await ciSend('state');
   if (!st) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['lib/chessable-crawl.js', 'lib/chessable-course-names.js', 'lib/rookhub-client.js', 'chessable-activity.js'] });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: manifestScripts('chessable-activity.js') });
     } catch (e) { /* ignore */ }
     st = await ciSend('state');
   }
@@ -1030,9 +1040,8 @@ async function initChessableImport() {
 
 initChessableImport();
 
-// Triggert die angegebene Aktion im Content-Script. Laedt chess.min.js +
-// content.js nur dann, wenn der Tab sie noch nicht hat (Idempotency-Guard
-// in content.js).
+// Triggert die angegebene Aktion im Content-Script. Laedt content.js samt Libs
+// nur dann nach, wenn der Tab es noch nicht hat (ensureContentLoaded).
 async function triggerInTab(action) {
   const tab = await getActiveTab();
   if (!tab || !tab.url || !/^https:\/\/(www\.chess\.com|lichess\.org)\//.test(tab.url)) {
@@ -1040,19 +1049,8 @@ async function triggerInTab(action) {
     return;
   }
   try {
-    // 1) Pruefen, ob content.js schon geladen ist.
-    const [precheck] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => !!window.__rdc_loaded,
-    });
-    if (!precheck || !precheck.result) {
-      // 2) Lazy-Inject chess.min.js + Shared-Core (RepCheckLib) + content.js (einmalig pro Tab).
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['chess.min.js', 'lib/repertoire-text.js', 'lib/i18n.js', 'content.js'],
-      });
-    }
-    // 3) Aktion ausloesen.
+    await ensureContentLoaded(tab);
+    // Aktion ausloesen.
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       args: [action],

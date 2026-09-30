@@ -130,12 +130,8 @@ test('Auslieferung: die Lib lädt VOR chessable-activity.js, auch beim Nachladen
   const js = chessable.js;
   assert.ok(js.includes('lib/rookhub-client.js'), 'Manifest liefert lib/rookhub-client.js nicht aus');
   assert.ok(js.indexOf('lib/rookhub-client.js') < js.indexOf('chessable-activity.js'));
-  const popup = lies('extension/popup.js');
-  const nachladen = /files: \[([^\]]*'chessable-activity\.js'[^\]]*)\]/.exec(popup);
-  assert.ok(nachladen, 'Nachladeliste für chessable-activity.js nicht gefunden');
-  const liste = nachladen[1];
-  assert.ok(liste.includes("'lib/rookhub-client.js'") && liste.indexOf("'lib/rookhub-client.js'") < liste.indexOf("'chessable-activity.js'"),
-    'Popup lädt lib/rookhub-client.js nicht vor chessable-activity.js nach');
+  // Das Popup lädt die Manifest-Liste nach (test/nachlade-listen.test.js), also auch die Lib in dieser Reihenfolge.
+  assert.match(lies('extension/popup.js'), /files: manifestScripts\('chessable-activity\.js'\)/);
 });
 
 test('Die Import-Pfade bauen den Aufruf nicht mehr von Hand', () => {

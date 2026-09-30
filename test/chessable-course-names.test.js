@@ -126,15 +126,9 @@ test('manifest.json liefert lib/chessable-course-names.js in BEIDEN Welten aus',
   assert.strictEqual(fenEintrag.world, 'MAIN');
 });
 
-test('das Popup injiziert die Lib beim Nachladen von chessable-activity.js mit', () => {
-  // Fallback-Pfad für Tabs, die vor dem Extension-Update geladen wurden: ohne die Lib liefe
-  // chessable-activity.js dort ohne Nav-Label-Filter/uid-Decode.
-  const popup = lies('extension/popup.js');
-  const zeile = popup.split('\n').find((l) => l.includes('executeScript') && l.includes('chessable-activity.js'));
-  assert.ok(zeile, 'kein executeScript-Aufruf für chessable-activity.js gefunden');
-  assert.ok(zeile.includes('lib/chessable-course-names.js'),
-    'lib/chessable-course-names.js fehlt in der Nachlade-Liste des Popups');
-});
+// Das Nachladen aus dem Popup (Tabs, die vor dem Extension-Update geladen wurden) liest seit v1.68.12 die
+// Manifest-Liste — der Manifest-Test oben deckt die Lib damit auch dort ab; test/nachlade-listen.test.js
+// hält Popup und Manifest gleich.
 
 test('die Extension-Laufzeitdateien benutzen die Lib statt eigener Definitionen', () => {
   for (const rel of ['extension/chessable-activity.js', 'extension/chessable-fen.js']) {
