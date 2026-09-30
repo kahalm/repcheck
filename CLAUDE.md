@@ -47,7 +47,7 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 | `lib/chesscom-moves.js` | `RepCheckChessCom` | chess.coms TCN-Zugliste → SAN (`decodeTcn`, `sansFromTcn`) — zweite Zugquelle beim Partie-Speichern |
 | `lib/chessable-crawl.js` | `RepCheckCrawl` | Crawl-/Ingest-Helfer (`splitIngestChapters`, `checkChessableResponse`, `looksBanned`, …) |
 | `lib/chessable-feedback.js` | — | Zuordnung der Rückmeldungs-Icons |
-| `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup.js/welcome.js/chessable-activity.js — `test/rookhub-client.test.js` hält alle gleich |
+| `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) und „Trennen" im Popup (`token/self`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup.js/welcome.js/chessable-activity.js — `test/rookhub-client.test.js` hält alle gleich |
 
 Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
 `content_scripts`) und beim Nachladen aus dem Popup mit injiziert (`executeScript`). Wer eine
@@ -151,7 +151,8 @@ Ablauf in `background.js` (`pairStart` → `pairAttempt`), Zustand in `chrome.st
 2. Offener RookHub-Tab wird wiederverwendet, sonst einer mit `active:false` geöffnet.
 3. Pro Anlauf: Tab-URL gegen die Ziel-Origin prüfen → `chrome.scripting.executeScript` liest
    `localStorage['rookhub_user'].token` (das Anmelde-JWT der RookHub-SPA) → `POST /api/profile/tokens`
-   (`{name:'RepCheck (<Browser>)', scope:'extension'}`) → `rookhubConfig = {url, token}`.
+   (`{name:'RepCheck (<Browser>)', scope:'extension', expiresInDays: 365}`) → `rookhubConfig = {url, token, tokenId}`
+   → Vorgänger-Token derselben Instanz mit dem JWT widerrufen (`revokeOldToken`, s. „Token-Lebenszyklus").
 4. Kein/abgelaufenes JWT → Zustand `waitingLogin`, Tab kommt nach vorn; nach der Anmeldung weckt
    `tabs.onUpdated` den nächsten Anlauf. Das **Popup ist dann längst zu** — deshalb liegt der Ablauf
    im Worker und nicht im Popup, und deshalb steht der Zustand im Storage und nicht im Speicher.
@@ -160,9 +161,31 @@ Ablauf in `background.js` (`pairStart` → `pairAttempt`), Zustand in `chrome.st
    Tab-Schluss als „abgebrochen" und überschreibt den Erfolg (genau dieser Bug war da).
 6. `pairBusy` verhindert, dass Popup-Poll und `tabs.onUpdated` gleichzeitig je einen Token anlegen.
 
-Das JWT wird **nicht** gespeichert — es dient allein diesem einen POST; persistiert wird nur der
-`rkh_`-Token (extension-privat). Gelesen wird es nur nach ausdrücklichem Klick und nur aus einem Tab,
-dessen Origin zur eingetragenen RookHub-Adresse passt.
+Das JWT wird **nicht** gespeichert — es dient allein dem POST und dem Widerruf des Vorgängers; persistiert
+werden nur der `rkh_`-Token und seine Id (extension-privat). Gelesen wird es nur nach ausdrücklichem Klick und
+nur aus einem Tab, dessen Origin zur eingetragenen RookHub-Adresse passt.
+
+### Token-Lebenszyklus (v1.68.11)
+Bis v1.68.10 legte jedes Verbinden einen neuen, **nie ablaufenden** Token an und ließ den alten gültig;
+„Trennen" löschte nur lokal. RookHub deckelt bei 20 Tokens je Konto, danach zeigte das Popup die englische
+Servermeldung roh.
+- **Ablauf**: Tokens gelten 365 Tage (`PAT_EXPIRES_DAYS`); danach 401 → „Token ungültig" → neu verbinden.
+- **Erneut verbinden**: `pairAttemptOnce` speichert ERST den neuen Token samt Id und widerruft DANN den alten
+  derselben Instanz per `DELETE /api/profile/tokens/{id}` mit dem Anmelde-JWT (ein Extension-Token selbst darf
+  `/api/profile` nicht, Scope-Zaun). Reihenfolge: stirbt der Worker dazwischen, bleibt höchstens ein verwaister
+  Token übrig, nie ein widerrufener in der Config. Ohne gespeicherte Id (verbunden vor v1.68.11) sucht
+  `revokeOldToken` ihn über das Präfix (`rkh_` + 8 Zeichen) in `GET /api/profile/tokens` — nur bei genau einem
+  Treffer mit Namen „RepCheck (…)", damit kein von Hand eingetragener Token fällt. Best effort: scheitert der
+  Widerruf, ist das Verbinden trotzdem erfolgreich. `pairStart` behält Token UND Id derselben Instanz bis zum Erfolg.
+- **Deckel**: 400 „Maximum of N tokens" → Fehlercode `tooManyTokens` → `popup.conn.errTooMany` (Popup und
+  Willkommensseite), mit Verweis auf „Tokens in RookHub verwalten".
+- **„Trennen"** (`revokeOwnToken` in popup.js, über `lib/rookhub-client.js`): `DELETE /api/extension/token/self`
+  (RookHub widerruft genau den aufrufenden Token), erst danach wird die Config überschrieben (die Egress-Allowlist
+  hängt an ihr). 2xx oder 401 → „Nicht verbunden"; 404 (ältere RookHub-Version), Netz- oder Worker-Fehler → nur
+  lokal getrennt, `popup.conn.forgetLocalOnly` sagt, dass der Token im Profil gelöscht werden muss.
+  **Deploy-Reihenfolge**: RookHub mit dem Endpunkt vor dem Store-Release; gegen eine ältere Instanz bleibt es beim
+  lokalen Trennen.
+- Test: `test/token-lifecycle.test.js` (Worker als Ganzes in einer vm, „Trennen" mit dem echten Client).
 
 ### Verhalten
 - **Pro Review-Page** ein `POST /api/extension/analyze-game` mit `{ moves, kind, refresh }`. Antwort: `{ deviation, gaps, inRepertoire, fenBeforeDeviation, repertoireFileCount, illegalMoveAt }`. Der Move-Cache (`lastGameMovesKey`) verhindert Redundanz-Requests, wenn sich die Zugliste nicht aendert.
@@ -497,7 +520,7 @@ Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst b
 - **RookHub-Token NIE ins seiten-lesbare IndexedDB.** Content-Scripts teilen die IndexedDB des Page-Origins (chess.com/lichess) → dort abgelegte Secrets sind für Host-/XSS-Skripte lesbar. Der Token liegt daher extension-privat in `chrome.storage.local` (Key `rookhubConfig`); im IDB-Store `rookhub/config` steht **nur die URL**. `loadRookhubConfig()` liest den Token aus dem privaten Store (mit einmaliger Legacy-Migration aus altem IDB-Token). Content-Scripts schreiben `rookhubConfig` nicht (`saveRookhubConfig()` ist mit v1.68.2 entfallen).
 - **MAIN↔isoliert postMessage-Bridge** (`chessable-fen.js` ↔ `chessable-activity.js`): Empfänger prüfen `e.source === window` **UND** `e.origin === location.origin`. Rest-Risiko (same-origin Page-Skript könnte Bridge-Messages fälschen) ist bewusst akzeptiert — der Token bleibt aus dem Page-Kontext heraus, Impact wäre nur Daten-Injection, kein Token-Diebstahl. Ein Handshake-Nonce hilft hier nicht robust (MAIN-World ist page-beobachtbar).
 - **Background-Egress** (`background.js`): nur `type:'rookhub-fetch'` von `sender.id === chrome.runtime.id`, Ziel-Origin MUSS = `rookhubConfig.url`-Origin, **HTTPS-only** (http nur für `localhost`/`127.0.0.1`), `credentials:'omit'`. Kein offener Proxy.
-- **Ein-Klick-Verbindung** (`background.js` `pairAttempt`): das RookHub-JWT wird nur nach ausdrücklichem Nutzer-Klick, nur aus einem Tab mit passender Ziel-Origin gelesen, nie gespeichert und nur für den einen `POST /api/profile/tokens` verwendet. Persistiert wird ausschliesslich der zurueckgegebene `rkh_`-Token — extension-privat wie bisher. Der Token wird im Popup (Extension-Origin) eingegeben, nicht mehr im Seiten-DOM.
+- **Ein-Klick-Verbindung** (`background.js` `pairAttempt`): das RookHub-JWT wird nur nach ausdrücklichem Nutzer-Klick, nur aus einem Tab mit passender Ziel-Origin gelesen, nie gespeichert und nur für den `POST /api/profile/tokens` und den Widerruf des Vorgänger-Tokens derselben Instanz verwendet. Persistiert werden ausschliesslich der zurueckgegebene `rkh_`-Token und seine Id — extension-privat wie bisher. Der Token wird im Popup (Extension-Origin) eingegeben, nicht mehr im Seiten-DOM.
 - **Seiten-Panel ohne URL-/Token-Felder** (v1.68.2): das In-Page-Panel (chess.com/lichess, „Ordner / PGN auf der Seite…") hängt im DOM der Seite. Bis v1.68.1 hatte es noch URL, Token und „Verbinden": ein Seiten-Skript konnte dort eine eigene Adresse eintragen und den Knopf klicken — bei leerem Token-Feld nahm der Handler den gespeicherten `rkh_`-Token, schrieb `rookhubConfig` um (damit folgte auch die Egress-Allowlist) und schickte den Token per Bearer an die fremde Adresse. Das Panel behält nur Ordner, PGN, Sprache und „Aktualisieren" (liest die gespeicherte Config, nie das DOM). `test/rookhub-token-panel.test.js` hält das fest — URL/Token/Verbinden nicht zurück ins Panel holen.
 - **Manifest `host_permissions`**: `https://*/*` + `http://localhost|127.0.0.1` (kein `http://*/*` — verhindert Klartext-Token-Egress + reduziert Store-Review-Reibung).
 - **Packaging**: `web-ext-config.cjs` `ignoreFiles` hält Dev-/CI-Skripte (`*.mjs` CWS-OAuth-Helfer, `*.ps1`) und `web-ext-artifacts/**` aus dem ausgelieferten Paket.

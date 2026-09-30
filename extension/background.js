@@ -102,12 +102,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 //
 // Sicherheit: Das RookHub-JWT wird NUR aus einem Tab gelesen, dessen URL zur gerade
 // eingetragenen RookHub-Origin passt, und nur nach ausdrücklichem Klick. Es wird nicht
-// gespeichert — es dient einzig dem einen POST /api/profile/tokens; persistiert wird
-// allein der zurückgegebene `rkh_`-Token (extension-privat, wie bisher).
+// gespeichert — es dient einzig dem POST /api/profile/tokens und dem Widerruf des Vorgänger-
+// Tokens (s. revokeOldToken); persistiert wird allein der zurückgegebene `rkh_`-Token samt
+// seiner Id (extension-privat, wie bisher).
 
 const PAIR_KEY = 'rookhubPairing';
 const PAIR_TIMEOUT_MS = 10 * 60 * 1000;
 const PAIR_LIVE = ['waiting', 'waitingLogin', 'creating'];
+// Extension-Tokens laufen nach einem Jahr ab (bis v1.68.10: nie); erneuert wird beim nächsten Verbinden.
+const PAT_EXPIRES_DAYS = 365;
 
 function storeGet(key) {
   return new Promise((resolve) => {
@@ -185,8 +188,9 @@ async function readJwtFromTab(tabId) {
   return isUsableJwt(tok) ? tok : null;
 }
 
-// Legt den Extension-Token über die Anmelde-Sitzung an. Fehlercodes 'auth'/'notRookhub'
-// übersetzt das Popup; alles andere ist eine Server-Meldung und wird durchgereicht.
+// Legt den Extension-Token über die Anmelde-Sitzung an und liefert { token, id }. Fehlercodes
+// 'auth'/'notRookhub'/'tooManyTokens' übersetzt das Popup; alles andere ist eine Server-Meldung und
+// wird durchgereicht.
 async function createApiToken(baseUrl, jwt) {
   const label = /Firefox/i.test(navigator.userAgent) ? 'Firefox'
     : /Edg\//i.test(navigator.userAgent) ? 'Edge'
@@ -199,17 +203,45 @@ async function createApiToken(baseUrl, jwt) {
       'Accept': 'application/json',
     },
     credentials: 'omit',
-    body: JSON.stringify({ name: 'RepCheck (' + label + ')', scope: 'extension', expiresInDays: null }),
+    body: JSON.stringify({ name: 'RepCheck (' + label + ')', scope: 'extension', expiresInDays: PAT_EXPIRES_DAYS }),
   });
   const text = await resp.text();
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch (e) { /* HTML/Fehlerseite */ }
   if (resp.status === 401) throw new Error('auth');
   if (resp.status === 404) throw new Error('notRookhub');
+  // Deckel je Konto (RookHub: „Maximum of 20 tokens per user reached.") — übersetzt statt roh englisch.
+  if (resp.status === 400 && body && /^Maximum of \d+ tokens/i.test(String(body.message || ''))) throw new Error('tooManyTokens');
   if (!resp.ok) throw new Error((body && body.message) || ('HTTP ' + resp.status));
   const raw = body && (body.rawToken || body.RawToken);
   if (!raw) throw new Error('notRookhub');
-  return raw;
+  const id = body.id != null ? body.id : body.Id;
+  return { token: raw, id: Number.isInteger(id) ? id : null };
+}
+
+// Widerruft den Vorgänger-Token DIESER Instanz mit dem Anmelde-JWT (DELETE /api/profile/tokens/{id};
+// ein Extension-Token selbst darf das nicht, der Scope-Zaun sperrt /api/profile). Ohne gespeicherte
+// Id (verbunden vor v1.68.11) wird er über das Präfix in der Token-Liste gesucht — nur einer, den die
+// Ein-Klick-Verbindung angelegt hat („RepCheck (…)"), damit kein von Hand eingetragener Token fällt,
+// den der Nutzer noch anderswo benutzt. Best effort: scheitert es, bleibt der alte Token eben gültig,
+// wie bis v1.68.10 — das Verbinden selbst ist davon nie betroffen.
+async function revokeOldToken(baseUrl, jwt, old) {
+  const headers = { 'Authorization': 'Bearer ' + jwt, 'Accept': 'application/json' };
+  try {
+    let id = Number.isInteger(old.tokenId) ? old.tokenId : null;
+    if (id == null) {
+      const resp = await fetch(baseUrl + '/api/profile/tokens', { method: 'GET', headers, credentials: 'omit' });
+      if (!resp.ok) return false;
+      const liste = JSON.parse((await resp.text()) || '[]');
+      const prefix = String(old.token).slice(0, 12);
+      const treffer = Array.isArray(liste) ? liste.filter((x) => x && x.prefix === prefix
+        && x.scope === 'extension' && /^RepCheck \(/.test(String(x.name || ''))) : [];
+      if (treffer.length !== 1 || !Number.isInteger(treffer[0].id)) return false;
+      id = treffer[0].id;
+    }
+    const resp = await fetch(baseUrl + '/api/profile/tokens/' + id, { method: 'DELETE', headers, credentials: 'omit' });
+    return resp.ok || resp.status === 404;   // 404: schon weg (im Profil gelöscht)
+  } catch (e) { return false; }
 }
 
 // Ein Anlauf: Tab prüfen → JWT lesen → Token anlegen. Popup-Poll und tabs.onUpdated können
@@ -248,8 +280,13 @@ async function pairAttemptOnce() {
 
   await pairSet({ state: 'creating' });
   try {
-    const token = await createApiToken(st.url, jwt);
-    await storeSet({ rookhubConfig: { url: st.url, token } });
+    const neu = await createApiToken(st.url, jwt);
+    const cfg = (await storeGet('rookhubConfig')) || {};
+    const alt = (cfg.token && cfg.token !== neu.token && sameOrigin(cfg.url, st.url)) ? cfg : null;
+    // Erst den neuen Token speichern, dann den alten widerrufen: stirbt der Worker dazwischen, bleibt
+    // höchstens ein verwaister Token übrig — nie ein widerrufener in der Config.
+    await storeSet({ rookhubConfig: { url: st.url, token: neu.token, tokenId: neu.id } });
+    if (alt) await revokeOldToken(st.url, jwt, alt);
     setBadge('✓', '#2a8c4a');
     // ERST 'done' festschreiben, DANN den Tab schließen: sonst meldet der onRemoved-Horcher
     // den selbst ausgelösten Tab-Schluss als „abgebrochen" und überschreibt den Erfolg.
@@ -268,10 +305,11 @@ async function pairStart(rawUrl) {
   if (!url) return { state: 'error', error: 'invalid url' };
 
   // Ziel-Origin MUSS vor dem ersten Fetch in der Config stehen — daran hängt die
-  // Egress-Allowlist oben. Ein Token derselben Instanz bleibt bis zum Erfolg erhalten.
+  // Egress-Allowlist oben. Ein Token derselben Instanz bleibt bis zum Erfolg erhalten (samt
+  // Id: nach dem Erfolg widerruft pairAttemptOnce genau ihn).
   const cfg = (await storeGet('rookhubConfig')) || {};
-  const keep = (cfg.url && cfg.token && sameOrigin(cfg.url, url)) ? cfg.token : null;
-  await storeSet({ rookhubConfig: keep ? { url, token: keep } : { url } });
+  const keep = (cfg.url && cfg.token && sameOrigin(cfg.url, url)) ? cfg : null;
+  await storeSet({ rookhubConfig: keep ? { url, token: keep.token, tokenId: keep.tokenId } : { url } });
 
   // Offenen RookHub-Tab wiederverwenden — wer schon angemeldet dort steht, merkt vom
   // ganzen Vorgang nichts. Sonst einen im Hintergrund öffnen.

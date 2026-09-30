@@ -93,6 +93,7 @@ function renderPair(st) {
       stopPairPoll();
       if (st.error === 'auth') setConn('popup.conn.errAuth');
       else if (st.error === 'notRookhub') setConn('popup.conn.errNotRookhub');
+      else if (st.error === 'tooManyTokens') setConn('popup.conn.errTooMany');
       else if (st.error === 'invalid url') setConn('popup.conn.needUrl');
       else setConn('popup.conn.failed', { error: st.error || '?' });
       break;

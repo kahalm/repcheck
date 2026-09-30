@@ -4,7 +4,7 @@
 // (`rookhub-fetch`: CORS-frei, Egress-Allowlist); hier wird nur die Nachricht gebaut und die Antwort ausgewertet.
 //
 // Stand: die drei Import-Pfade in chessable-activity.js (ingest, ingest/chunk, ingest/live) laufen hierüber. Die
-// übrigen Aufrufer (Best-effort-Pfade in chessable-activity.js, rookhubProxy in content.js, popup.js) folgen mit
+// übrigen Aufrufer (Best-effort-Pfade in chessable-activity.js, rookhubProxy in content.js, popup.js bis auf „Trennen") folgen mit
 // der Zerlegung von chessable-activity.js/content.js; die Standard-Adresse hält test/rookhub-client.test.js in
 // allen Dateien gleich.
 

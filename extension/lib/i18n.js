@@ -83,6 +83,8 @@ const RC_MESSAGES = {
     'popup.conn.needToken': 'Please enter a token.',
     'popup.conn.errAuth': 'Not signed in to RookHub (or the session expired).',
     'popup.conn.errNotRookhub': 'No RookHub found at this address.',
+    'popup.conn.errTooMany': 'Your RookHub account has reached its token limit. Delete unused tokens in your profile (“Manage tokens in RookHub”), then connect again.',
+    'popup.conn.forgetLocalOnly': 'Disconnected here only — RookHub could not revoke the token. Delete it in your profile (“Manage tokens in RookHub”).',
     'popup.conn.pagePanel': 'Folder / PGN on the page…',
 
     // — Popup: Chessable-Token —
@@ -400,6 +402,8 @@ const RC_MESSAGES = {
     'popup.conn.needToken': 'Bitte einen Token eintragen.',
     'popup.conn.errAuth': 'Nicht bei RookHub angemeldet (oder die Sitzung ist abgelaufen).',
     'popup.conn.errNotRookhub': 'Unter dieser Adresse ist kein RookHub erreichbar.',
+    'popup.conn.errTooMany': 'Dein RookHub-Konto hat die Höchstzahl an Tokens erreicht. Lösche nicht mehr benutzte in deinem Profil („Tokens in RookHub verwalten“) und verbinde dann erneut.',
+    'popup.conn.forgetLocalOnly': 'Nur hier getrennt — RookHub konnte den Token nicht widerrufen. Lösche ihn in deinem Profil („Tokens in RookHub verwalten“).',
     'popup.conn.pagePanel': 'Ordner / PGN auf der Seite…',
 
     'popup.chessable.heading': 'Chessable-Token',
@@ -705,6 +709,8 @@ const RC_MESSAGES = {
     'popup.conn.needToken': 'Unesi token.',
     'popup.conn.errAuth': 'Nisi prijavljen na RookHub (ili je sesija istekla).',
     'popup.conn.errNotRookhub': 'Na toj adresi nema RookHuba.',
+    'popup.conn.errTooMany': 'Tvoj RookHub račun dosegao je najveći broj tokena. Izbriši one koje više ne koristiš u svom profilu („Upravljaj tokenima u RookHubu“), pa se ponovno poveži.',
+    'popup.conn.forgetLocalOnly': 'Odspojeno samo ovdje — RookHub nije mogao opozvati token. Izbriši ga u svom profilu („Upravljaj tokenima u RookHubu“).',
     'popup.conn.pagePanel': 'Mapa / PGN na stranici…',
     'popup.chessable.heading': 'Chessable token',
     'popup.chessable.copy': 'Kopiraj token',

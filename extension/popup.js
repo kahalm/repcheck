@@ -199,11 +199,27 @@ document.getElementById('conn-save').addEventListener('click', async () => {
   }
 });
 
+// „Trennen" widerruft den Token auch in RookHub (DELETE /api/extension/token/self — ein Extension-Token darf nur
+// sich selbst widerrufen). `true`, wenn er dort nicht mehr gilt: widerrufen (2xx) oder ohnehin ungültig (401).
+// Eine ältere RookHub-Version kennt den Endpunkt nicht (404), ohne Netz geht es auch nicht — dann wird nur hier
+// getrennt, und der Nutzer erfährt, dass er den Token im Profil löschen muss. Vor dem Überschreiben der Config
+// aufrufen: der Worker lässt den Abruf nur zur eingetragenen Origin durch.
+async function revokeOwnToken(cfg) {
+  if (!self.RepCheckRookhub.isConnected(cfg)) return true;
+  try {
+    await self.RepCheckRookhub.create({ t }).request('/api/extension/token/self', { method: 'DELETE', cfg });
+    return true;
+  } catch (e) {
+    return !!(e && e.tokenInvalid);
+  }
+}
+
 document.getElementById('conn-forget').addEventListener('click', async () => {
   const url = normalizeRookhubUrl(CONN_URL.value) || ROOKHUB_DEFAULT_URL;
+  const widerrufen = await revokeOwnToken(await readRawRookhubConfig());
   await writeRookhubConfig({ url });   // URL behalten, Token weg
   CONN_TOKEN.value = '';
-  setConnState('popup.conn.notConnected');
+  setConnState(widerrufen ? 'popup.conn.notConnected' : 'popup.conn.forgetLocalOnly');
   refreshStatus();
 });
 
@@ -257,6 +273,7 @@ function renderPairState(st) {
       // Bekannte Fälle übersetzt, alles andere als Server-/Netzmeldung durchreichen.
       if (st.error === 'auth') setConnState('popup.conn.errAuth');
       else if (st.error === 'notRookhub') setConnState('popup.conn.errNotRookhub');
+      else if (st.error === 'tooManyTokens') setConnState('popup.conn.errTooMany');
       else setConnState('popup.conn.failed', { error: st.error || '?' });
       break;
     default:
