@@ -194,7 +194,7 @@ test('Zähler hängen an den echten Chessable-Ankern (Dumps 13.09.), nicht an ge
   assert.ok(src.includes("'.progressVisuals'"), 'Kapitel-Zähler nicht neben Chessables Zähler');
   assert.ok(src.includes("'h1.courseUI-bookChapter'"), 'Kurs-Summe fehlt');
   assert.ok(src.includes("'#mainBooksList .bookHome[data-bid]'"), 'Startseite zählt nicht über die Kurskarten');
-  assert.ok(src.includes('if (!COURSE_PAGE_RE.test(location.pathname)) return;'), 'getCourse auf der Startseite nicht verhindert');
+  assert.ok(src.includes('if (!CourseId || !CourseId.COURSE_PAGE_RE.test(location.pathname)) return;'), 'getCourse auf der Startseite nicht verhindert');
   assert.ok(src.includes('annotateDom(); annotateHome();'), 'Startseiten-Zähler nicht an den DOM-Observer gehängt');
 });
 

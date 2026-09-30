@@ -770,6 +770,11 @@ function showCiWarn() {
   titel.textContent = t('import.warn.title');
   teile.push(titel);
   const absatz = (text) => { const d = document.createElement('div'); d.textContent = text; teile.push(d); };
+  // Welcher Kurs geholt wird, steht in der Box selbst — bestätigt wird genau dieser (S1-012).
+  const st = lastCiState;
+  if (st && st.onCourse && st.bid) {
+    absatz(st.courseName ? t('import.warn.course', { name: st.courseName }) : t('import.warn.courseId', { id: st.bid }));
+  }
   absatz(t('import.warn.body'));
   absatz(t('import.warn.own'));
   absatz(t('import.warn.confirm'));

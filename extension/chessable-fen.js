@@ -241,15 +241,23 @@
 
   // ---------- Chessable search URL ----------
 
+  // Kurs-ID: URL > React-Fiber > erster Kurs-Link (geteilte Datei lib/chessable-course-id.js, per Manifest
+  // VOR dieser Datei in der MAIN-World geladen). Bis v1.68.13 kam hier der erste Kurs-Link VOR dem Fiber —
+  // auf einer Seite mit Brett und fremden Kurs-Links (Menüs) gewann der Link. Ohne Lib: keine ID.
+  const CourseId = self.RepCheckCourseId || null;
+  function courseIdInfo() {
+    if (!CourseId) return { id: null, source: null };
+    return CourseId.resolveCourseId({
+      pathname: location.pathname,
+      fiberId: boardFiberCourseId,
+      links: () => Array.from(document.querySelectorAll('a[href*="/course/"]'), (a) => a.getAttribute('href') || ''),
+    });
+  }
   function currentCourseId() {
-    const urlM = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
-    if (urlM) return urlM[1];
+    return courseIdInfo().id;
+  }
 
-    for (const a of document.querySelectorAll('a[href*="/course/"]')) {
-      const m = /\/course\/(\d+)(?:\/|$)/.exec(a.getAttribute('href') || '');
-      if (m) return m[1];
-    }
-
+  function boardFiberCourseId() {
     const anchor = document.getElementById('board') || document.querySelector('[data-square]');
     if (anchor) {
       let fiber = getReactFiber(anchor);
@@ -1545,16 +1553,20 @@
 
   // Kurs-ID (+ Name) an die isolierte Welt (chessable-activity.js) spiegeln: dort ist der
   // React-Fiber nicht lesbar und die Practice-URL (/practice/…) traegt keine Kurs-ID.
+  // `courseIdSource` sagt, woher die ID stammt — nur eine per Fiber aufgeloeste macht dort eine
+  // Seite zur Kursseite (eine Link-ID auf der Startseite nicht).
   // Nur bei Aenderung posten (kein Spam); deckt initiales Laden + SPA-Navigation ab.
   let lastBroadcastCourseId = null;
   let lastBroadcastCourseName = null;
+  let lastBroadcastCourseIdSource = null;
   function broadcastCourseId() {
-    const id = currentCourseId();
+    const { id, source } = courseIdInfo();
     const name = currentCourseName();
-    if (id === lastBroadcastCourseId && name === lastBroadcastCourseName) return;
+    if (id === lastBroadcastCourseId && name === lastBroadcastCourseName && source === lastBroadcastCourseIdSource) return;
     lastBroadcastCourseId = id;
     lastBroadcastCourseName = name;
-    window.postMessage({ __repcheck: 'course-id', courseId: id, courseName: name }, location.origin);
+    lastBroadcastCourseIdSource = source;
+    window.postMessage({ __repcheck: 'course-id', courseId: id, courseIdSource: source, courseName: name }, location.origin);
   }
   broadcastCourseId();
   setInterval(broadcastCourseId, 5000);

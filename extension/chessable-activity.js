@@ -60,6 +60,7 @@
   let courseKind = null;       // RepertoireKind (vom Server, z. B. "Opening") oder null = unbekannt
   let lookedUpCourseId = null; // verhindert Doppel-Lookups bei unveraenderter Kurs-ID
   let bridgedCourseId = null;  // Kurs-ID aus chessable-fen.js (MAIN-World, liest den React-Fiber)
+  let bridgedCourseIdSource = null; // woher chessable-fen.js sie hat: 'url' | 'fiber' | 'link' (lib/chessable-course-id.js)
   let bridgedCourseName = null; // Kursname aus chessable-fen.js (best-effort, nur Anzeige)
 
   const now = () => Date.now();
@@ -232,26 +233,34 @@
     return Rookhub.request(path, { method: 'POST', body });
   }
 
-  // Kurs-ID ermitteln. In der isolierten Welt ist der React-Fiber NICHT lesbar und
-  // die Practice-URL (/practice/…) traegt keine Kurs-ID — daher bevorzugt die von
-  // chessable-fen.js (MAIN-World) gespiegelte ID, sonst URL- bzw. Link-Heuristik.
+  // Kurs-ID ermitteln (geteilte Datei lib/chessable-course-id.js, per Manifest VOR dieser Datei geladen):
+  // URL > React-Fiber > erster Kurs-Link. In der isolierten Welt ist der Fiber NICHT lesbar und die
+  // Practice-URL (/practice/…) traegt keine Kurs-ID — die Fiber-ID spiegelt chessable-fen.js (MAIN-World)
+  // hierher; nur eine dort per Fiber aufgeloeste ID zaehlt als Fiber (URL und Links sieht diese Datei selbst).
+  const CourseId = self.RepCheckCourseId || null;
   let stickyCourseId = null;  // letzte sicher erkannte Kurs-ID der Sitzung (SPA-Luecken ueberbruecken)
-  function currentCourseId() {
-    const direct = (() => {
-      if (bridgedCourseId) return bridgedCourseId;
-      const m = /\/courses?\/(\d+)(?:\/|$)/.exec(location.pathname);
-      if (m) return m[1];
-      for (const a of document.querySelectorAll('a[href*="/course/"]')) {
-        const am = /\/course\/(\d+)(?:\/|$)/.exec(a.getAttribute('href') || '');
-        if (am) return am[1];
-      }
-      return null;
-    })();
+  function courseIdInfo() {
+    if (!CourseId) return { id: null, source: null };
+    const r = CourseId.resolveCourseId({
+      pathname: location.pathname,
+      fiberId: bridgedCourseIdSource === 'fiber' ? bridgedCourseId : null,
+      links: () => Array.from(document.querySelectorAll('a[href*="/course/"]'), (a) => a.getAttribute('href') || ''),
+    });
     // Sticky: auf der Practice-Seite verschwinden die Kurs-Links je nach SPA-Zustand — dann galt
     // die Minute bisher als „ohne Kurs" (~60 % der Haeppchen). Die zuletzt erkannte ID bleibt
     // gueltig, bis eine ANDERE erkannt wird; gezaehlt wird ohnehin nur bei vorhandenem Brett.
-    if (direct) stickyCourseId = direct;
-    return direct || stickyCourseId;
+    if (r.id) stickyCourseId = r.id;
+    return r;
+  }
+  function currentCourseId() {
+    return courseIdInfo().id || stickyCourseId;
+  }
+  // Kurs-ID nur, wenn die Seite EINEN aktuellen Kurs hat (Kursseite laut Pfad oder ID aus URL/Fiber) —
+  // für „Kurs holen" und das Popup. Auf der Startseite fiele currentCourseId() auf die erste Kurskarte
+  // zurück; die Trainingszeit-Zuordnung darf das (Brett nötig), ein Crawl mit Bannrisiko nicht.
+  function pageCourseId() {
+    const r = courseIdInfo();
+    return CourseId && CourseId.isOnCourse(location.pathname, r.source) ? (r.id || stickyCourseId) : null;
   }
 
   // chessable-fen.js (MAIN-World) spiegelt die per React-Fiber aufgeloeste Kurs-ID hierher.
@@ -263,6 +272,8 @@
     if (e.source !== window || e.origin !== location.origin || !e.data || e.data.__repcheck !== 'course-id') return;
     const id = e.data.courseId;
     bridgedCourseId = (id != null && /^\d+$/.test(String(id))) ? String(id) : null;
+    const src = e.data.courseIdSource;
+    bridgedCourseIdSource = (bridgedCourseId && (src === 'url' || src === 'fiber' || src === 'link')) ? src : null;
     const name = e.data.courseName;
     bridgedCourseName = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 200) : null;
   });
@@ -1447,7 +1458,8 @@
   // hängt über `ingest/live` an. Das ist ein Unterschied im Lebenszyklus, keine doppelte Logik.
   async function crawlAndImport(target) {
     if (crawling) return; crawling = true; crawlStartedAt = Date.now(); cancelRequested = false;
-    const bid = currentCourseId();
+    // Nur auf einer Kursseite (S1-012): sonst hieße bid die erste Kurskarte der Startseite.
+    const bid = pageCourseId();
     const sessionId = newSessionId();
     // Zwei getrennte Fragen, die früher EIN Schalter waren: was wird geholt, und wie wird es geschickt.
     const skipKnown = true;                    // beide Ziele überspringen, was schon auf RookHub liegt
@@ -1771,8 +1783,6 @@
   // Struktur via getCourse?includeVariations (1 Call, oids je Kapitel), importierte oids via RookHub.
   // ======================================================================================
   let progressBid = null, progressStruct = null, importedOids = new Set(), progressAt = 0;
-  // Seiten, auf denen es EINEN aktuellen Kurs gibt (Übersicht, Kapitel, Practice, Learn).
-  const COURSE_PAGE_RE = /^\/(?:course|practice|learn)\/\d+/;
   const PROGRESS_TTL = 60000;
   let progressFetching = false;
 
@@ -1799,7 +1809,7 @@
     // Nur auf Kursseiten: auf der Startseite fiel currentCourseId() auf den ERSTEN Kurs-Link zurück und löste
     // ein getCourse für einen beliebigen Kurs aus (im Netzwerk-Mitschnitt vom 13.09. belegt). Die Startseite
     // hat ihre eigenen Zähler (annotateHome).
-    if (!COURSE_PAGE_RE.test(location.pathname)) return;
+    if (!CourseId || !CourseId.COURSE_PAGE_RE.test(location.pathname)) return;
     const bid = currentCourseId();
     if (!bid) return;
     // Ohne RookHub-Config gibt es nichts anzuzeigen (fetchImportedOids liefert dann null) — dann
@@ -2005,7 +2015,7 @@
   }
 
   function importState() {
-    const bid = currentCourseId();
+    const bid = pageCourseId();   // Startseite: kein Kurs, „Kurs holen" bleibt gesperrt
     return {
       onCourse: !!bid,
       bid: bid || null,

@@ -147,7 +147,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame, kurs = KUR
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
     t: (k, p) => (p ? k + ' ' + JSON.stringify(p) : k),
-    currentCourseId: () => '4711',
+    pageCourseId: () => '4711',
     newSessionId: () => 'sitzung',
     fetchImportedOids: async () => ({ oids: [] }),
     setStatus: (s) => log.status.push(s),
