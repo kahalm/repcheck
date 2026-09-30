@@ -281,7 +281,7 @@ const RC_MESSAGES = {
     'check.inRepWithGaps': 'In repertoire ✓ ({gaps})',
     'check.fullyInRep': 'Game fully within repertoire ✓',
     'check.noMoves': 'No moves found',
-    'check.noRepertoire': 'No repertoire loaded — click ⚙ to set one up',
+    'check.noRepertoire': 'No repertoire loaded — set one up in the RepCheck popup under “Settings” (RookHub or folder/PGN)',
     'check.white': 'White',
     'check.black': 'Black',
 
@@ -588,7 +588,7 @@ const RC_MESSAGES = {
     'check.inRepWithGaps': 'Im Repertoire ✓ ({gaps})',
     'check.fullyInRep': 'Partie vollständig im Repertoire ✓',
     'check.noMoves': 'Keine Züge gefunden',
-    'check.noRepertoire': 'Kein Repertoire geladen — ⚙ klicken zum Einrichten',
+    'check.noRepertoire': 'Kein Repertoire geladen — im RepCheck-Popup unter „Einstellungen“ einrichten (RookHub oder Ordner/PGN)',
     'check.white': 'Weiß',
     'check.black': 'Schwarz',
 
@@ -896,7 +896,7 @@ const RC_MESSAGES = {
     'check.inRepWithGaps': 'U repertoaru ✓ ({gaps})',
     'check.fullyInRep': 'Partija je u cijelosti u repertoaru ✓',
     'check.noMoves': 'Nema pronađenih poteza',
-    'check.noRepertoire': 'Nijedan repertoar nije učitan — klikni ⚙ za postavljanje',
+    'check.noRepertoire': 'Nijedan repertoar nije učitan — postavi ga u RepCheck skočnom prozoru pod „Postavke“ (RookHub ili mapa/PGN)',
     'check.white': 'Bijeli',
     'check.black': 'Crni',
     'tools.check': 'Provjeri trenutnu partiju u odnosu na repertoar',

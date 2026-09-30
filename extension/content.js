@@ -1480,14 +1480,6 @@
     if (el) el.textContent = text;
   }
 
-  // Seit v1.14.0 (nur EXTENSION): der frühere ⚙-Indikator (Status + Settings-
-  // Öffner) ist entfernt. Einstellungen laufen ausschließlich über das Popup
-  // („Einstellungen"); das Prüf-Ergebnis bleibt direkt in der Zugliste farblich
-  // markiert (highlightDeviation). showBanner bleibt als No-op, damit die
-  // bestehenden Aufrufer unverändert bleiben.
-  // showBanner ist hier ein No-op (Einstellungen laufen über das Popup).
-  function showBanner(_message, _type) { /* extension: kein ⚙-Banner mehr */ }
-
   function highlightDeviation(index, gaps, inRepertoire) {
     document.querySelectorAll(`.${DEVIATION_CLASS}`).forEach(el => el.classList.remove(DEVIATION_CLASS));
     document.querySelectorAll(`.${GAP_CLASS}`).forEach(el => el.classList.remove(GAP_CLASS));
@@ -1629,6 +1621,26 @@
   // Source-Priority: RookHub-Config vorhanden → Server-seitige Analyse (POST analyze-game).
   // Sonst lokales Position-Set (Folder/PGN-Paste). Bei RookHub-Fehler fallback aufs
   // lokale Set, falls vorhanden (Offline-Modus).
+  //
+  // Das Ergebnis steht in der Zugliste (highlightDeviation). Scheitert die Pruefung (keine Zuege,
+  // RookHub-Fehler inkl. 401 „Token ungueltig", kein Repertoire), zeigt der ♟-Knopf ✗ und den
+  // uebersetzten Grund im title, nach CHECK_FAIL_MS wieder ♟ — wie 💾. Bis v1.68.7 liefen diese Faelle
+  // in showBanner, seit v1.14.0 ein No-op: der Klick endete stumm.
+  const CHECK_FAIL_MS = 3000;
+  let checkFailTimer = null;
+  function flagCheckFailed(message) {
+    injectFloatingButton();
+    const btn = document.getElementById('repcheck-floating');
+    if (!btn) return;
+    btn.textContent = '✗';
+    btn.title = message;
+    clearTimeout(checkFailTimer);
+    checkFailTimer = setTimeout(() => {
+      btn.textContent = '♟';
+      btn.title = t('tools.check');
+    }, CHECK_FAIL_MS);
+  }
+
   function renderAnalysis(gameMoves, analysis) {
     const deviationIdx = analysis.deviation;
     const gaps = analysis.gaps || [];
@@ -1637,23 +1649,7 @@
     lastDeviationFen = analysis.fenBeforeDeviation
       || (deviationIdx >= 0 ? fenBeforeMove(gameMoves, deviationIdx) : null);
 
-    if (deviationIdx >= 0) {
-      const moveNum = Math.floor(deviationIdx / 2) + 1;
-      const color = deviationIdx % 2 === 0 ? t('check.white') : t('check.black');
-      // Mit und ohne Zugumstellungs-Anhang sind ZWEI Meldungen, kein zusammengesetzter Satz:
-      // in anderen Sprachen sitzt der Zusatz nicht zwingend am Satzende.
-      const san = gameMoves[deviationIdx];
-      showBanner(gaps.length > 0
-        ? t('check.outOfRepWithGaps', { move: moveNum, color, san, gaps: t('check.transpositions', { count: gaps.length }) })
-        : t('check.outOfRep', { move: moveNum, color, san }), 'deviation');
-      highlightDeviation(deviationIdx, gaps, inRepertoire);
-    } else if (gaps.length > 0) {
-      showBanner(t('check.inRepWithGaps', { gaps: t('check.transpositions', { count: gaps.length }) }), 'in-repertoire');
-      highlightDeviation(-1, gaps, inRepertoire);
-    } else {
-      showBanner(t('check.fullyInRep'), 'in-repertoire');
-      highlightDeviation(-1, [], inRepertoire);
-    }
+    highlightDeviation(deviationIdx >= 0 ? deviationIdx : -1, gaps, inRepertoire);
     syncChessableButton();
     syncSaveButton();
   }
@@ -1662,7 +1658,7 @@
     if (!isReviewPage()) return;
     const gameMoves = getGameMoves();
     if (gameMoves.length === 0) {
-      showBanner(t('check.noMoves'), 'no-repertoire');
+      flagCheckFailed(t('check.noMoves'));
       return;
     }
     const key = gameMoves.join('\x00');
@@ -1678,7 +1674,7 @@
       } catch (e) {
         console.warn('[RepertoireChecker] RookHub analyze failed:', e);
         if (!repertoirePositions) {
-          showBanner(t('status.error', { error: e.message }), 'no-repertoire');
+          flagCheckFailed(t('status.error', { error: e.message }));
           return;
         }
         // Fallback aufs lokale Set (Offline / Cache aus frueherer Session).
@@ -1686,7 +1682,7 @@
     }
 
     if (!repertoirePositions) {
-      showBanner(t('check.noRepertoire'), 'no-repertoire');
+      flagCheckFailed(t('check.noRepertoire'));
       return;
     }
     renderAnalysis(gameMoves, analyzeGame(gameMoves));
