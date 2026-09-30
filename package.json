@@ -5,5 +5,8 @@
   "description": "Dev-Tooling + Unit-Tests für die reine RepCheck-Logik. NICHT Teil des ausgelieferten Add-ons.",
   "scripts": {
     "test": "node --test"
+  },
+  "devDependencies": {
+    "web-ext": "10.7.0"
   }
 }

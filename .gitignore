@@ -4,3 +4,4 @@ extension/__pycache__/
 *.xpi
 *.crx
 .DS_Store
+node_modules/

@@ -517,7 +517,7 @@ Der Background-Worker hat `host_permissions: ["https://*/*"]` und ist nicht an P
 
 - **Chrome**: `chrome://extensions/` → „Entwicklermodus" → „Entpackt laden" → `extension/`
 - **Firefox**: `about:debugging#/runtime/this-firefox` → „Temporäres Add-on" → `extension/manifest.json`
-- **Empfohlen**: `web-ext run` (Auto-Reload). Voraussetzung: `npm install -g web-ext`.
+- **Empfohlen**: `web-ext run` (Auto-Reload). Voraussetzung: `npm ci` im Repo-Wurzelverzeichnis (web-ext in der Version aus `package-lock.json`, dieselbe wie in der CI; Aufruf aus `extension/` als `../node_modules/.bin/web-ext`) oder `npm install -g web-ext`.
 
 ## Sicherheit (v1.19.1+ — nicht zurückbauen)
 
@@ -543,6 +543,8 @@ Security-Review-Härtungen. Beim Ändern der betroffenen Stellen bitte bewusst b
 erhoehen (siehe „Versioning" oben).
 
 **Test-Gate (seit 2026-09-29)**: `build.yml` lässt auf jedem Push/PR `npm test` laufen. In `release.yml` hängt der Einreich-Job an einem Job `test` (`needs: test`), der `npm test` ausführt und abbricht, wenn der Tag nicht `v` + `version` aus `extension/manifest.json` ist. Ein Handstart (workflow_dispatch) baut genau den eingegebenen Tag (`refs/tags/<tag>`), nicht den Branch, auf dem er gestartet wurde. Nur `test` löst den Tag auf und gibt den geprüften Commit aus (`outputs.sha`); `release` checkt genau diesen Commit aus (`needs.test.outputs.sha`) und bricht ab, wenn der Checkout davon abweicht. Ein während des Laufs neu gesetzter Tag (`git tag -f`) kann so keinen ungeprüften Commit in die Stores bringen. Das GitHub-Release hängt am Tag (`tag_name`: beim Handstart die Eingabe, sonst `github.ref_name`). `test/ci-workflows.test.js` hält das fest.
+
+**Lieferkette (S1-010)**: web-ext ist devDependency mit exakter Version in `package.json` + `package-lock.json`; beide Workflows holen es mit `npm ci --ignore-scripts` und rufen `../node_modules/.bin/web-ext` auf — nie mehr `npx web-ext@latest` (lief bis dahin mit den AMO-Secrets und dem Schreib-Token jeweils die neueste Version samt frisch aufgelöster Abhängigkeiten). Ein web-ext-Update ist ein bewusster Commit (`npm install --save-dev --save-exact web-ext@<version>`). Alle Actions sind auf Commit-SHAs gepinnt (Kommentar = Tag), jedes `actions/checkout` hat `persist-credentials: false`, beide Workflows haben oben `permissions: contents: read` (Schreibrecht nur für das GitHub-Release), die AMO-Keys gehen als `WEB_EXT_API_KEY`/`WEB_EXT_API_SECRET` per env an `web-ext sign`, nicht als Argument. `test/ci-workflows.test.js` hält auch das fest.
 
 **Firefox AMO — das Add-on ist LISTED (öffentliche addons.mozilla.org-Seite,
 NICHT self-hosted).**

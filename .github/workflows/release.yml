@@ -38,6 +38,15 @@ name: Release
 # `release` checkt genau diesen Commit aus, nicht noch einmal den Tag. Wird der
 # Tag waehrend des Laufs neu gesetzt (git tag -f / push -f), geht so trotzdem
 # nur der gepruefte Commit an AMO/CWS.
+#
+# Lieferkette: web-ext kommt aus package-lock.json (devDependency mit exakter
+# Version, `npm ci --ignore-scripts`), nie als `npx web-ext@latest` — sonst liefe
+# beim naechsten Tag ungeprueft die jeweils neueste Version samt Abhaengigkeiten
+# mit den AMO-Secrets und dem Schreib-Token. Actions sind auf Commit-SHAs
+# gepinnt (Kommentar = Tag), checkout legt keinen Token in .git/config ab
+# (persist-credentials: false), die AMO-Keys gehen per env (WEB_EXT_API_KEY/
+# WEB_EXT_API_SECRET) statt als Argument an web-ext. Ein web-ext-Update ist ein
+# bewusster Commit: `npm install --save-dev --save-exact web-ext@<version>`.
 
 on:
   push:
@@ -48,15 +57,20 @@ on:
         description: 'Tag to release (e.g. v1.3.1)'
         required: true
 
+# Nur lesen; Schreibrecht bekommt allein der Job, der das GitHub-Release anlegt.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          persist-credentials: false
 
       # Mit explizitem ref pinnt actions/checkout nicht auf github.sha, sondern holt das
       # aktuelle Ziel des Tags. Diesen Commit prueft der Job; release baut genau ihn.
@@ -64,7 +78,7 @@ jobs:
         id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 
@@ -88,9 +102,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.test.outputs.sha }}
+          persist-credentials: false
 
       # Ein leerer Output liesse checkout still auf github.sha bzw. den Branch zurueckfallen.
       - name: Gebaut wird der geprüfte Commit
@@ -104,31 +119,35 @@ jobs:
           fi
           echo "Baue den geprueften Commit $SHA"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
+
+      # web-ext genau in der Version aus package-lock.json (Integritaets-Hashes), ohne
+      # Install-Skripte der Abhaengigkeiten.
+      - name: web-ext aus dem Lockfile
+        run: npm ci --ignore-scripts
 
       - name: Build (unsigned)
         run: |
           cd extension
-          npx --yes web-ext@latest build --config=web-ext-config.cjs --overwrite-dest
+          ../node_modules/.bin/web-ext build --config=web-ext-config.cjs --overwrite-dest
 
       - name: Submit to Firefox AMO listing (if secrets configured)
+        # web-ext liest --api-key/--api-secret aus WEB_EXT_API_KEY/WEB_EXT_API_SECRET.
         env:
-          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
-          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
         run: |
-          if [ -z "$AMO_API_KEY" ] || [ -z "$AMO_API_SECRET" ]; then
+          if [ -z "$WEB_EXT_API_KEY" ] || [ -z "$WEB_EXT_API_SECRET" ]; then
             echo "AMO secrets not set — skipping AMO submission"
             exit 0
           fi
           cd extension
-          npx --yes web-ext@latest sign \
+          ../node_modules/.bin/web-ext sign \
             --config=web-ext-config.cjs \
             --channel=listed \
-            --approval-timeout=0 \
-            --api-key="$AMO_API_KEY" \
-            --api-secret="$AMO_API_SECRET" || \
+            --approval-timeout=0 || \
             echo "::warning::AMO submission failed — continuing release with unsigned ZIP only"
 
       - name: Submit to Chrome Web Store (if secrets configured)
@@ -192,7 +211,7 @@ jobs:
         # Manifest-Version geprueft). Ohne tag_name naehme softprops github.ref_name, beim
         # Handstart also den Branch oder Tag, von dem aus gestartet wurde.
         if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           files: |
