@@ -1,21 +1,18 @@
-// RepCheck — Opening Repertoire Deviation Checker — Content script.
+// RepCheck — Opening Repertoire Deviation Checker — Content script fuer chess.com und lichess.
 //
-// Hauptlogik im Browser-Extension-Kontext
-// angepasst: RookHub-Fetches laufen ueber den Background-Service-Worker
-// (`background.js`), damit CORS unabhaengig von der RookHub-Server-Policy
-// klappt. IndexedDB-Layout (DB `RepertoireCheckerDB`) ist identisch — User
-// koennen vom Userscript zur Extension wechseln, ohne URL/Token erneut zu
-// hinterlegen.
+// Hauptlogik der Extension auf den Partie-Seiten. RookHub-Fetches laufen ueber den
+// Background-Service-Worker (`background.js`), damit CORS unabhaengig von der RookHub-Server-Policy
+// klappt. Das IndexedDB-Layout (DB `RepertoireCheckerDB`) ist seit der Userscript-Zeit unveraendert.
 
 (function () {
   'use strict';
 
-  // Seit v1.4.8: Content-Script wird NICHT mehr automatisch geladen. Das
-  // Popup injiziert chess.min.js + content.js erst auf Klick via
-  // chrome.scripting.executeScript. Der Guard hier verhindert doppelte
-  // Initialisierung bei wiederholtem Klick im selben Tab.
+  // Das Manifest laedt dieses Skript (mit chess.min.js und den Libs davor) auf JEDER chess.com- und
+  // lichess-Seite (`content_scripts`). Das Popup injiziert es per chrome.scripting.executeScript nur
+  // nach, wenn ein Tab es noch nicht hat (etwa ein Tab, der schon vor Installation oder Update der
+  // Extension offen war). Der Guard verhindert dann die doppelte Initialisierung.
   if (window.__rdc_loaded) {
-    return; // Funktionen liegen schon auf window.__rdc; Popup ruft sie direkt.
+    return; // Funktionen liegen schon auf window.__rdc_loaded; das Popup ruft sie direkt.
   }
 
   // ─── Constants ───────────────────────────────────────────────────────
@@ -1758,12 +1755,19 @@
     if (!document.getElementById(PANEL_ID)) togglePanel();
   }
 
+  // Die Version kommt aus dem Manifest, der einzigen Versionsquelle (CLAUDE.md „Versioning"). Bis
+  // v1.68.9 standen hier zwei von Hand gepflegte Literale (version „1.17.0", Log „v1.12.0"), die
+  // niemand nachzog. Ohne Erweiterungs-Kontext (kein chrome.runtime) bleibt es bei '?'.
+  const EXT_VERSION = (() => {
+    try { return chrome.runtime.getManifest().version; } catch (e) { return '?'; }
+  })();
+
   window.__rdc_loaded = {
     runCheck: rdcRunCheck,
     openSettings: rdcOpenSettings,
     refreshButton: refreshFloatingButton,
     getCurrentLine: rdcGetCurrentLine,
-    version: '1.17.0',   // mit manifest.json/@version synchron halten
+    version: EXT_VERSION,
   };
 
   // ─── Lightweight SPA-Navigation Watch ───────────────────────────────
@@ -1798,5 +1802,5 @@
   refreshFloatingButton();
   syncOverviewGames();
 
-  console.log('[RepertoireChecker] Extension v1.12.0 loaded');
+  console.log('[RepertoireChecker] Extension v' + EXT_VERSION + ' loaded');
 })();

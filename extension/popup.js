@@ -1,6 +1,8 @@
 // Popup-Logik: zeigt den Cache-Status und triggert das Content-Script auf
-// Klick. Seit v1.4.8 wird das Content-Script NICHT mehr automatisch in
-// chess.com-Tabs geladen, sondern erst hier via chrome.scripting.executeScript.
+// Klick. content.js laedt das Manifest auf jeder chess.com- und lichess-Seite
+// (`content_scripts`); das Popup injiziert es per chrome.scripting.executeScript
+// nur nach, wenn ein Tab es noch nicht hat (etwa ein Tab, der schon vor
+// Installation oder Update der Extension offen war).
 
 const STATUS_EL = document.getElementById('status');
 const ERROR_EL = document.getElementById('error-hint');
