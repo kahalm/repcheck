@@ -1,8 +1,10 @@
-// Popup-Logik: zeigt den Cache-Status und triggert das Content-Script auf
+// Popup-Logik: zeigt den Repertoire-Status und triggert das Content-Script auf
 // Klick. content.js laedt das Manifest auf jeder chess.com- und lichess-Seite
 // (`content_scripts`); das Popup injiziert es per chrome.scripting.executeScript
 // nur nach, wenn ein Tab es noch nicht hat (etwa ein Tab, der schon vor
 // Installation oder Update der Extension offen war).
+// Button-Einstellungen und „Erste Schritte" stehen in popup-settings.js (popup.html
+// laedt es nach dieser Datei).
 
 const STATUS_EL = document.getElementById('status');
 const ERROR_EL = document.getElementById('error-hint');
@@ -319,100 +321,6 @@ CONN_PAIR.addEventListener('click', async () => {
   }
 })();
 
-// ─── Chessable-Button-Einstellungen (pro Button/Anzeige ein-/ausblendbar) ──────
-// Persistiert in chrome.storage.local `chessableButtons`; chessable-activity.js spiegelt es live
-// an chessable-fen.js (MAIN-World), das die Leiste unten rechts entsprechend zeigt/versteckt.
-// Seit v1.59.0 ist dort ALLES aus, bis es hier eingeschaltet wird — nur ein gespeichertes `true` zählt.
-const CB_KEYS = ['copyFen', 'analyse', 'searchFen', 'refresh', 'remember', 'fullscreen', 'pool', 'feedback'];
-function cbEl(k) { return document.getElementById('cb-' + k); }
-function loadChessableButtons() {
-  if (!chrome.storage || !chrome.storage.local) return;
-  chrome.storage.local.get('chessableButtons', (res) => {
-    const s = (res && res.chessableButtons) || {};
-    for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.checked = s[k] === true; }
-  });
-}
-function saveChessableButtons() {
-  const s = {};
-  for (const k of CB_KEYS) { const el = cbEl(k); s[k] = el ? el.checked : false; }
-  // Eine gespeicherte Auswahl erledigt auch den Update-Hinweis „Buttons jetzt aus".
-  try { chrome.storage.local.set({ chessableButtons: s, rcButtonsNotice: 'done' }); } catch (e) {}
-}
-for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.addEventListener('change', saveChessableButtons); }
-loadChessableButtons();
-
-// ─── Erste Schritte + Hinweis „Buttons jetzt aus" (v1.59.0) ─────────────
-// Die Checkliste gibt es nur nach einer FRISCHEN Installation (background.js setzt `rcOnboarding: 'active'`)
-// und nur, bis alles erledigt oder sie weggeklickt ist. Bestehende Nutzer brauchen keine Einführung; sie
-// bekommen nach dem Update einmal den Hinweis, dass die Chessable-Buttons jetzt aus sind
-// (`rcButtonsNotice: 'pending'`). Erledigt heißt: verbunden = Token in `rookhubConfig`; Kurs geholt =
-// `rcCourseFetched` (setzt chessable-activity.js nach einem erfolgreichen Import); Buttons gewählt =
-// `chessableButtons` wurde je gespeichert (auch „alles aus" ist eine Wahl).
-const ONB_BOX = document.getElementById('onboarding');
-const NOTICE_BOX = document.getElementById('buttons-notice');
-const ONB_STORAGE_KEYS = ['rcOnboarding', 'rcButtonsNotice', 'rcCourseFetched', 'chessableButtons', 'rookhubConfig'];
-
-function onboardingState(s) {
-  const steps = {
-    connect: !!(s && s.rookhubConfig && s.rookhubConfig.token),
-    course: !!(s && s.rcCourseFetched === true),
-    buttons: !!(s && s.chessableButtons),
-  };
-  const allDone = steps.connect && steps.course && steps.buttons;
-  return {
-    steps,
-    showChecklist: !!(s && s.rcOnboarding === 'active') && !allDone,
-    showNotice: !!(s && s.rcButtonsNotice === 'pending'),
-  };
-}
-
-function openWelcomePage(section) {
-  chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') + (section ? '#' + section : '') });
-}
-
-function setLocal(obj) { try { chrome.storage.local.set(obj); } catch (e) {} }
-
-function focusSettings(id) {
-  showSettings(true);
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ block: 'nearest' });
-}
-
-function renderOnboarding(s) {
-  const st = onboardingState(s);
-  ONB_BOX.style.display = st.showChecklist ? 'block' : 'none';
-  for (const k of Object.keys(st.steps)) {
-    const li = document.getElementById('onb-' + k);
-    if (li) li.classList.toggle('done', st.steps[k]);
-  }
-  NOTICE_BOX.style.display = st.showNotice ? 'block' : 'none';
-}
-
-function refreshOnboarding() {
-  if (!chrome.storage || !chrome.storage.local) return;
-  chrome.storage.local.get(ONB_STORAGE_KEYS, (s) => renderOnboarding(s || {}));
-}
-
-function onClick(id, fn) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('click', (e) => { e.preventDefault(); fn(); });
-}
-onClick('onb-connect-link', () => focusSettings('rookhub-conn'));
-onClick('onb-course-link', () => openWelcomePage('usage'));
-onClick('onb-buttons-link', () => focusSettings('chessable-settings'));
-onClick('onb-welcome', () => openWelcomePage());
-onClick('open-welcome', () => openWelcomePage());
-onClick('onb-close', () => setLocal({ rcOnboarding: 'dismissed' }));
-onClick('notice-choose', () => { setLocal({ rcButtonsNotice: 'done' }); focusSettings('chessable-settings'); });
-onClick('notice-ok', () => setLocal({ rcButtonsNotice: 'done' }));
-
-if (chrome.storage && chrome.storage.onChanged) {
-  chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === 'local' && ONB_STORAGE_KEYS.some((k) => ch[k])) refreshOnboarding();
-  });
-}
-refreshOnboarding();
-
 // ─── Kurs holen: Pause zwischen Chessable-Abrufen ─────────────────────
 // chessable-activity.js wartet zwischen zwei Abrufen eine zufällige Zeit im Bereich `crawlDelay`
 // (chrome.storage.local, {minMs,maxMs}) und führt Änderungen live nach. Der Standard 2,5–3,5 s ist die
@@ -460,40 +368,6 @@ showCrawlDelay(CrawlLib.normalizeCrawlDelay(null));
 paintCrawlSettings();
 if (chrome.storage && chrome.storage.local) {
   chrome.storage.local.get('crawlDelay', (r) => showCrawlDelay(CrawlLib.normalizeCrawlDelay(r && r.crawlDelay)));
-}
-
-function readRookhubStore() {
-  return new Promise((resolve) => {
-    const req = indexedDB.open('RepertoireCheckerDB', 2);
-    req.onerror = () => resolve({ config: null, cache: null });
-    // Muss dem Schema in content.js openIDB() entsprechen — sonst legt das Popup
-    // die DB ohne den rookhub-Store an und content.js bekommt keinen Upgrade-
-    // Trigger mehr, weil die Version schon stimmt.
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
-      if (!db.objectStoreNames.contains('rookhub')) db.createObjectStore('rookhub');
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('rookhub')) {
-        db.close();
-        resolve({ config: null, cache: null });
-        return;
-      }
-      const tx = db.transaction('rookhub', 'readonly');
-      const store = tx.objectStore('rookhub');
-      const getCfg = store.get('config');
-      const getCache = store.get('cache');
-      let pending = 2;
-      const out = { config: null, cache: null };
-      const done = () => { if (--pending === 0) { db.close(); resolve(out); } };
-      getCfg.onsuccess = () => { out.config = getCfg.result || null; done(); };
-      getCfg.onerror = done;
-      getCache.onsuccess = () => { out.cache = getCache.result || null; done(); };
-      getCache.onerror = done;
-    };
-  });
 }
 
 // Holt die Repertoire-Liste vom RookHub-Server via Background-Worker (CORS-frei).
@@ -551,10 +425,9 @@ function renderRepertoireList(items) {
 
 // Die RookHub-Config liegt in chrome.storage.local (Key `rookhubConfig`, geschrieben
 // von Popup und Worker — seit v1.68.2 nie mehr aus dem Seiten-Panel). Das ist hier die
-// VERLAESSLICHE Quelle: die IndexedDB `RepertoireCheckerDB` ist origin-scoped
-// (chess.com/lichess) und im Popup-Origin (chrome-extension://…) NICHT lesbar —
-// readRookhubStore() liefert hier also nie die Config. chrome.storage.local ist
-// dagegen extension-weit.
+// EINZIGE Quelle: die IndexedDB `RepertoireCheckerDB` ist origin-scoped (chess.com/lichess)
+// und im Popup-Origin (chrome-extension://…) leer. Bis v1.68.12 öffnete das Popup sie
+// trotzdem und legte dabei nur eine leere DB im Extension-Origin an.
 function readRookhubConfigFromStorage() {
   return new Promise((resolve) => {
     if (!chrome.storage || !chrome.storage.local) { resolve(null); return; }
@@ -578,15 +451,7 @@ function paintStatus() {
 }
 
 async function refreshStatus() {
-  let store;
-  try {
-    store = await readRookhubStore();
-  } catch {
-    store = { config: null, cache: null };
-  }
-  // chrome.storage.local-Spiegel hat Vorrang vor der (im Popup-Origin leeren) IDB.
-  const config = (await readRookhubConfigFromStorage()) || store.config;
-  const { cache } = store;
+  const config = await readRookhubConfigFromStorage();
 
   if (config && config.url && config.token) {
     setStatus('status', 'popup.rookhub.loading');
@@ -601,12 +466,6 @@ async function refreshStatus() {
     } catch (e) {
       setStatus('status error', 'popup.rookhub.error', { error: e.message });
     }
-    return;
-  }
-
-  if (cache && cache.count > 0) {
-    const ago = Math.round((Date.now() - (cache.savedAt || 0)) / 60000);
-    setStatus('status loaded', 'popup.local.loaded', { count: cache.count, min: ago });
     return;
   }
 

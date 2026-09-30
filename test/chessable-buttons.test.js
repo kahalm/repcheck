@@ -5,7 +5,7 @@
 // komplett aus — sichtbar wird ein Element erst, wenn es jemand im Popup einschaltet.
 //
 // Getestet wird der ausgelieferte Code: die Funktionen werden per stabiler Anker aus
-// extension/popup.js bzw. extension/chessable-fen.js ausgeschnitten und mit Stubs ausgefuehrt
+// extension/popup-settings.js (bis v1.68.12 popup.js) bzw. extension/chessable-fen.js ausgeschnitten und mit Stubs ausgefuehrt
 // (dieselbe Technik wie test/rookhub-connect.test.js).
 
 const test = require('node:test');
@@ -27,8 +27,8 @@ function schnipsel(src, vonAnker, bisAnker, datei) {
 // ─── Popup: Checkboxen ──────────────────────────────────────────────────
 
 function ladePopup(gespeichert) {
-  const block = schnipsel(lies('extension/popup.js'),
-    'const CB_KEYS = [', 'for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.addEventListener', 'extension/popup.js');
+  const block = schnipsel(lies('extension/popup-settings.js'),
+    'const CB_KEYS = [', 'for (const k of CB_KEYS) { const el = cbEl(k); if (el) el.addEventListener', 'extension/popup-settings.js');
   const elemente = {};
   const document = {
     getElementById: (id) => (elemente[id] = elemente[id] || { checked: false }),

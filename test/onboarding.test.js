@@ -56,10 +56,10 @@ test('Update ab 1.59.0, Browser-Update oder fehlende Vorversion: nichts', () => 
   ]) assert.deepStrictEqual(BG.onboardingPlan(d), {}, JSON.stringify(d));
 });
 
-// ─── popup.js: Checkliste und Hinweis ──────────────────────────────────────
+// ─── popup-settings.js: Checkliste und Hinweis (bis v1.68.12 in popup.js) ──
 
-const onboardingState = new Function(schnipsel(lies('extension/popup.js'),
-  'function onboardingState(s) {', 'function openWelcomePage(', 'extension/popup.js')
+const onboardingState = new Function(schnipsel(lies('extension/popup-settings.js'),
+  'function onboardingState(s) {', 'function openWelcomePage(', 'extension/popup-settings.js')
   + '\nreturn onboardingState;')();
 
 test('Checkliste: neuer Nutzer ohne Erledigtes sieht alle drei Schritte offen', () => {
@@ -103,13 +103,13 @@ function cbKeys(datei) {
   return new Function('return ' + m[1])();
 }
 
-test('welcome.js und popup.js kennen dieselben Button-Schlüssel', () => {
-  assert.deepStrictEqual(cbKeys('extension/welcome.js'), cbKeys('extension/popup.js'));
+test('welcome.js und popup-settings.js kennen dieselben Button-Schlüssel', () => {
+  assert.deepStrictEqual(cbKeys('extension/welcome.js'), cbKeys('extension/popup-settings.js'));
 });
 
 test('welcome.html: jede Checkbox gehört zu CB_KEYS, keine ist vorab angehakt', () => {
   const inputs = [...lies('extension/welcome.html').matchAll(/<input\b[^>]*\bid="cb-(\w+)"[^>]*>/g)];
-  assert.deepStrictEqual(inputs.map((m) => m[1]).sort(), [...cbKeys('extension/popup.js')].sort());
+  assert.deepStrictEqual(inputs.map((m) => m[1]).sort(), [...cbKeys('extension/popup-settings.js')].sort());
   for (const m of inputs) assert.doesNotMatch(m[0], /\bchecked\b/, `cb-${m[1]} darf nicht vorab angehakt sein`);
 });
 
@@ -121,7 +121,7 @@ test('jeder Text-Schlüssel in Popup und Willkommensseite existiert', () => {
       if (!(m[1] in en)) fehlend.push(`${datei}: ${m[1]}`);
     }
   }
-  for (const datei of ['extension/popup.js', 'extension/welcome.js']) {
+  for (const datei of ['extension/popup.js', 'extension/popup-settings.js', 'extension/welcome.js']) {
     for (const m of lies(datei).matchAll(/\b(?:t|setConn|setConnState)\('([\w.]+)'/g)) {
       if (!(m[1] in en)) fehlend.push(`${datei}: ${m[1]}`);
     }

@@ -56,10 +56,6 @@ const RC_MESSAGES = {
     },
     'popup.rookhub.noOpenings': 'RookHub connected · no opening repertoires',
     'popup.rookhub.error': 'RookHub: {error}',
-    'popup.local.loaded': {
-      one: 'Local: {count} opening loaded ({min} min ago)',
-      other: 'Local: {count} openings loaded ({min} min ago)',
-    },
     'popup.none': 'No repertoire loaded yet',
 
     // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
@@ -375,10 +371,6 @@ const RC_MESSAGES = {
     },
     'popup.rookhub.noOpenings': 'RookHub verbunden · keine Opening-Repertoires',
     'popup.rookhub.error': 'RookHub: {error}',
-    'popup.local.loaded': {
-      one: 'Lokal: {count} Eröffnung geladen (vor {min} min)',
-      other: 'Lokal: {count} Eröffnungen geladen (vor {min} min)',
-    },
     'popup.none': 'Noch kein Repertoire geladen',
 
     // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
@@ -681,11 +673,6 @@ const RC_MESSAGES = {
     },
     'popup.rookhub.noOpenings': 'RookHub povezan · nema repertoara otvaranja',
     'popup.rookhub.error': 'RookHub: {error}',
-    'popup.local.loaded': {
-      one: 'Lokalno: učitano {count} otvaranje (prije {min} min)',
-      few: 'Lokalno: učitana {count} otvaranja (prije {min} min)',
-      other: 'Lokalno: učitano {count} otvaranja (prije {min} min)',
-    },
     'popup.none': 'Još nije učitan nijedan repertoar',
 
     // — Popup: RookHub-Verbindung (einzige Eingabestelle, auf JEDEM Tab erreichbar) —
