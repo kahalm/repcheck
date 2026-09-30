@@ -27,15 +27,23 @@ name: Release
 # eingereicht. Den refresh_token erzeugst du einmalig lokal mit
 #   node extension/get-cws-refresh-token.mjs
 # (siehe Skript-Kopf). CWS erlaubt nur EINE Version gleichzeitig im Review —
-# haengt noch eine, schlaegt der Step (nur als Warnung) fehl.
+# haengt noch eine, scheitert der Job `cws`.
+#
+# Jobs: test → build → (github-release | amo | cws). Die drei letzten laufen
+# unabhaengig voneinander: ein Store-Fehler laesst das GitHub-Release stehen,
+# macht aber den Lauf ROT (GitHub schickt dann die uebliche Fehler-Mail). Bis
+# v1.68.13 endeten Store-Fehler in `|| echo ::warning::` bzw. `exit 0`, der
+# Lauf war gruen, und niemand reichte nach. Nachreichen (z. B. wenn das
+# CWS-Review der Vorversion durch ist): im Actions-Lauf „Re-run failed jobs" —
+# nimmt denselben geprueften Commit und dieselbe ZIP (Artefakt 90 Tage).
 #
 # Test-Gate: Der Job `test` laesst die Unit-Tests laufen und prueft, dass der Tag
 # zur `version` in extension/manifest.json passt (v1.2.3 == 1.2.3). Erst danach
-# baut `release` und reicht bei AMO/CWS ein. Ein Handstart (workflow_dispatch)
+# baut `build` die ZIP, und erst dann wird eingereicht. Ein Handstart (workflow_dispatch)
 # baut genau den angegebenen Tag (refs/tags/<tag>), nie den Stand des Branches,
 # auf dem er gestartet wurde; ein nicht vorhandener Tag bricht beim Checkout ab.
 # Nur `test` loest den Tag auf und gibt den geprueften Commit aus (outputs.sha);
-# `release` checkt genau diesen Commit aus, nicht noch einmal den Tag. Wird der
+# `build` und `amo` checken genau diesen Commit aus, nicht noch einmal den Tag. Wird der
 # Tag waehrend des Laufs neu gesetzt (git tag -f / push -f), geht so trotzdem
 # nur der gepruefte Commit an AMO/CWS.
 #
@@ -96,11 +104,11 @@ jobs:
           fi
           echo "Tag $TAG == manifest.json $VERSION"
 
-  release:
+  # Baut die ZIP aus dem geprueften Commit und reicht sie als Artefakt an die
+  # Folge-Jobs weiter. Keine Secrets, kein Schreibrecht.
+  build:
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -133,6 +141,71 @@ jobs:
           cd extension
           ../node_modules/.bin/web-ext build --config=web-ext-config.cjs --overwrite-dest
 
+      # 90 Tage: so lange laesst sich ein gescheiterter Store-Job mit derselben ZIP nachholen.
+      - name: ZIP an die Folge-Jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: extension-zip
+          path: extension/web-ext-artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 90
+
+  # Legt das GitHub-Release an. Haengt NICHT an den Store-Jobs: scheitert AMO oder
+  # CWS, bleibt das Release stehen, der Lauf wird trotzdem rot.
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: ZIP aus dem Build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension-zip
+          path: extension/web-ext-artifacts
+
+      - name: Create GitHub Release
+        # Release fuer den gebauten Tag: beim Tag-Push github.ref_name, beim Handstart die
+        # Eingabe `tag` (vom Checkout in `test` als refs/tags/<tag> aufgeloest und gegen die
+        # Manifest-Version geprueft). Ohne tag_name naehme softprops github.ref_name, beim
+        # Handstart also den Branch oder Tag, von dem aus gestartet wurde.
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            extension/web-ext-artifacts/*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+
+  # AMO signiert aus dem Quellverzeichnis (web-ext sign baut selbst), deshalb
+  # derselbe geprüfte Commit wie in build. Scheitert die Einreichung, ist der Job rot.
+  amo:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.test.outputs.sha }}
+          persist-credentials: false
+
+      - name: Eingereicht wird der geprüfte Commit
+        env:
+          SHA: ${{ needs.test.outputs.sha }}
+        run: |
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ -z "$SHA" ] || [ "$HEAD_SHA" != "$SHA" ]; then
+            echo "::error::Checkout $HEAD_SHA ist nicht der gepruefte Commit '$SHA'"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+
+      - name: web-ext aus dem Lockfile
+        run: npm ci --ignore-scripts
+
       - name: Submit to Firefox AMO listing (if secrets configured)
         # web-ext liest --api-key/--api-secret aus WEB_EXT_API_KEY/WEB_EXT_API_SECRET.
         env:
@@ -144,19 +217,33 @@ jobs:
             exit 0
           fi
           cd extension
-          ../node_modules/.bin/web-ext sign \
+          if ! ../node_modules/.bin/web-ext sign \
             --config=web-ext-config.cjs \
             --channel=listed \
-            --approval-timeout=0 || \
-            echo "::warning::AMO submission failed — continuing release with unsigned ZIP only"
+            --approval-timeout=0; then
+            echo "::error::AMO-Einreichung fehlgeschlagen — GitHub-Release steht, AMO nachreichen („Re-run failed jobs“ oder Dev Hub)"
+            exit 1
+          fi
+
+  # Laedt genau die ZIP aus build hoch. Scheitert OAuth, Upload oder Publish, ist der Job rot.
+  cws:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZIP aus dem Build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: extension-zip
+          path: extension/web-ext-artifacts
 
       - name: Submit to Chrome Web Store (if secrets configured)
         # Direkt gegen die Chrome Web Store API v1.1 statt der
         # chrome-webstore-upload-cli — deren Flags/Env-Vars/Pflichtfelder haben
         # sich zwischen Major-Versionen mehrfach geaendert (v4 verlangte zuletzt
         # ein "publisherId"). curl+jq sind auf ubuntu-latest vorhanden.
-        # Ablauf: OAuth-Refresh → Upload (PUT) → Publish (POST). Fehler sind
-        # weiche Warnungen (z. B. wenn schon eine Version im Review haengt).
+        # Ablauf: OAuth-Refresh → Upload (PUT) → Publish (POST). Jeder Fehler macht
+        # den Job rot (z. B. wenn schon eine Version im Review haengt) — das
+        # GitHub-Release haengt nicht daran.
         env:
           EXTENSION_ID: ${{ secrets.CWS_APP_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
@@ -184,16 +271,16 @@ jobs:
           if [ -z "$ACCESS_TOKEN" ]; then
             # Nur die Fehlerfelder loggen (kein Token/Secret in der Antwort) — verrät die Ursache
             # (invalid_client = ID/Secret falsch, invalid_grant = Refresh-Token passt nicht/widerrufen).
-            echo "::warning::CWS: OAuth-Refresh fehlgeschlagen ($(echo "$TOKEN_RESP" | jq -rc '{error, error_description}')) — Chrome uebersprungen"
-            exit 0
+            echo "::error::CWS: OAuth-Refresh fehlgeschlagen ($(echo "$TOKEN_RESP" | jq -rc '{error, error_description}'))"
+            exit 1
           fi
           UPLOAD=$(curl -sS -X PUT -T "$ZIP" \
             -H "Authorization: Bearer $ACCESS_TOKEN" -H "x-goog-api-version: 2" \
             "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID?uploadType=media")
           echo "Upload-Antwort: $UPLOAD"
           if [ "$(echo "$UPLOAD" | jq -r '.uploadState // empty')" != "SUCCESS" ]; then
-            echo "::warning::CWS-Upload nicht SUCCESS — Publish uebersprungen"
-            exit 0
+            echo "::error::CWS-Upload nicht SUCCESS (haengt noch eine Version im Review? Danach „Re-run failed jobs“)"
+            exit 1
           fi
           PUBLISH=$(curl -sS -X POST -H "Authorization: Bearer $ACCESS_TOKEN" \
             -H "x-goog-api-version: 2" -H "Content-Length: 0" \
@@ -202,20 +289,6 @@ jobs:
           if echo "$PUBLISH" | jq -e '.status | index("OK")' >/dev/null 2>&1; then
             echo "Chrome Web Store: Version eingereicht/veroeffentlicht."
           else
-            echo "::warning::CWS-Publish nicht OK (evtl. noch im Review): $PUBLISH"
+            echo "::error::CWS-Publish nicht OK (evtl. noch im Review): $PUBLISH"
+            exit 1
           fi
-
-      - name: Create GitHub Release
-        # Release fuer den gebauten Tag: beim Tag-Push github.ref_name, beim Handstart die
-        # Eingabe `tag` (vom Checkout in `test` als refs/tags/<tag> aufgeloest und gegen die
-        # Manifest-Version geprueft). Ohne tag_name naehme softprops github.ref_name, beim
-        # Handstart also den Branch oder Tag, von dem aus gestartet wurde.
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
-            extension/web-ext-artifacts/*.zip
-            extension/web-ext-artifacts/*.xpi
-          generate_release_notes: true
-          fail_on_unmatched_files: false
