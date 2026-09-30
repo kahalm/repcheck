@@ -311,8 +311,11 @@
   }
 
   /**
-   * Welche dieser Partien liegen schon bei RookHub? Leeres Ergebnis heisst „keine Auskunft" — eine
-   * aeltere RookHub-Version kennt den Endpunkt nicht (404), dann bleiben eben alle Knoepfe stehen.
+   * Welche dieser Partien liegen schon bei RookHub? `[]` heisst „keine davon" — auch bei einer aelteren
+   * RookHub-Version, die den Endpunkt nicht kennt (404), dann bleiben eben alle Knoepfe stehen. `null`
+   * heisst „keine Auskunft" (Netzfehler, 401, 5xx, kaputte Antwort): der Aufrufer merkt sich dann nichts
+   * und fragt spaeter erneut. Bis v1.68.8 war auch das `[]`, und ein kurzer 502 liess jede Zeile bis zum
+   * Neuladen als „nicht bei RookHub" stehen (↗ statt ✓/📈).
    */
   async function rookhubKnownGames(cfg, source, ids) {
     if (!cfg || !cfg.url || !cfg.token || !ids.length) return [];
@@ -328,9 +331,10 @@
         body: JSON.stringify({ source, externalIds: ids }),
         expect: 'json',
       });
-      return resp && resp.ok && Array.isArray(resp.body) ? resp.body : [];
+      if (resp && resp.status === 404) return [];
+      return resp && resp.ok && Array.isArray(resp.body) ? resp.body : null;
     } catch (e) {
-      return [];
+      return null;
     }
   }
 
@@ -1224,6 +1228,13 @@
   // jedem Durchgang; ein eigener Versand traegt seinen Treffer direkt ein.
   const overviewSeen = new Map();
   let overviewBusy = false;
+  // Gibt RookHub keine Auskunft (rookhubKnownGames → null), traegt der Durchgang nichts ein und fragt
+  // erneut — fruehestens nach OVERVIEW_RETRY_BASE_MS, bei jedem weiteren Fehlschlag doppelt so spaet
+  // (hoechstens OVERVIEW_RETRY_MAX_MS), damit ein ausgefallenes RookHub nicht alle 2,5 s gefragt wird.
+  const OVERVIEW_RETRY_BASE_MS = 5000;
+  const OVERVIEW_RETRY_MAX_MS = 120000;
+  let overviewRetryAt = 0;
+  let overviewFailures = 0;
 
   // Alle Partiezeilen der Seite mit ihrer chess.com-Id. Nur ZAHLEN-Ids: zwischen den Partielinks des
   // Schnappschusses standen auch /cheating, /partners und /chesscom. `slot` = die vorhandene
@@ -1446,16 +1457,25 @@
         const status = overviewAnalysisStatus(st);
         return (status === 'pending' || status === 'running') && now - (st.checkedAt || 0) >= OVERVIEW_RUNNING_RECHECK_MS;
       });
-      if (faellig.length) {
+      if (faellig.length && now >= overviewRetryAt) {
         // Der Endpunkt nimmt hoechstens 300 Ids; der Rest kommt im naechsten Durchgang.
         const batch = faellig.slice(0, 300);
         const known = await rookhubKnownGames(cfg, site.source, batch);
-        const found = new Map();
-        for (const g of known) {
-          const ext = g && (g.externalId || g.ExternalId);
-          if (ext) found.set(String(ext), { id: g.id || g.Id, analysis: g.analysis || g.Analysis || null, checkedAt: now });
+        if (known === null) {
+          // Keine Auskunft: nichts eintragen — sonst hiesse jede Zeile bis zum Neuladen „nicht bei
+          // RookHub", und eine laufende Analyse spraenge von ⏳ auf ↗. Spaeter erneut, mit Backoff.
+          overviewFailures++;
+          overviewRetryAt = now + Math.min(OVERVIEW_RETRY_MAX_MS, OVERVIEW_RETRY_BASE_MS * 2 ** (overviewFailures - 1));
+        } else {
+          overviewFailures = 0;
+          overviewRetryAt = 0;
+          const found = new Map();
+          for (const g of known) {
+            const ext = g && (g.externalId || g.ExternalId);
+            if (ext) found.set(String(ext), { id: g.id || g.Id, analysis: g.analysis || g.Analysis || null, checkedAt: now });
+          }
+          for (const id of batch) overviewSeen.set(id, found.get(id) || null);
         }
-        for (const id of batch) overviewSeen.set(id, found.get(id) || null);
       }
       for (const entry of entries) {
         if (!overviewSeen.has(entry.id)) continue;   // erst im naechsten Durchgang erfragt

@@ -250,7 +250,12 @@ Vier Dinge, die dabei nicht kippen dürfen:
   `querySelectorAll` und bricht sofort ab; welche Partien RookHub kennt, wird je Id genau EINMAL
   erfragt (`POST /api/extension/games/known`, ≤ 300 Ids je Anfrage, Rest im nächsten Durchgang) und
   gemerkt. Die Abfrage ist best-effort — eine ältere RookHub-Version kennt den Endpunkt nicht (404),
-  dann stehen eben überall Knöpfe statt Häkchen.
+  dann stehen eben überall Knöpfe statt Häkchen. **Keine Auskunft ist nicht „keine davon"** (v1.68.9):
+  bei Netzfehler, 401, 5xx oder kaputter Antwort liefert `rookhubKnownGames` `null`, der Durchgang merkt
+  sich nichts (keine Zeile bekommt ↗, eine laufende Analyse behält ⏳) und fragt erneut — frühestens nach
+  5 s, bei jedem weiteren Fehlschlag doppelt so spät, höchstens alle 2 min (`OVERVIEW_RETRY_BASE_MS`/
+  `…_MAX_MS`). Bis v1.68.8 war auch das `[]`, und ein kurzer 502 ließ jede Zeile bis zum Neuladen als
+  „nicht bei RookHub" stehen. Test: `test/uebersicht-knopf.test.js`.
 
 **lichess** (v1.67.0, `/@/<name>/all` und Profil): dieselbe Mechanik, zwei Unterschiede — die Zeile ist
 `article.game-row` mit deckendem `a.game-row__overlay`, dessen Ziel `/<id8><spieler4>` lautet (die Partie-Id sind

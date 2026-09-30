@@ -494,8 +494,98 @@ test('„In RookHub analysieren" geht ueber die Extension-Flaeche (das API-Token
   assert.match(fn, /too-many-open/);
 });
 
-test('„known" ist best-effort: eine aeltere RookHub-Version liefert einfach keine Haekchen', () => {
+// „known" unterscheidet „keine davon" ([]) von „keine Auskunft" (null). Ausgefuehrt wird die AUSGELIEFERTE
+// Funktion mit gestubbtem rookhubProxy.
+function ladeKnownGames(proxy) {
   const fn = content.slice(content.indexOf('async function rookhubKnownGames('), content.indexOf('function buildShareLink('));
   assert.match(fn, /\/api\/extension\/games\/known/);
-  assert.match(fn, /catch \(e\) \{\s*return \[\];/);
+  const rufe = [];
+  const known = new Function('rookhubProxy', fn + '\nreturn rookhubKnownGames;')(async (req) => { rufe.push(req); return proxy(req); });
+  return { known, rufe };
+}
+const CFG = { url: 'https://rookhub.example/', token: 'rkh_x' };
+
+test('„known" ist best-effort: eine aeltere RookHub-Version (404) liefert einfach keine Haekchen', async () => {
+  const { known, rufe } = ladeKnownGames(async () => ({ ok: false, status: 404 }));
+  assert.deepEqual(await known(CFG, 'chess.com', ['1']), []);
+  assert.equal(rufe[0].url, 'https://rookhub.example/api/extension/games/known');
+  assert.deepEqual(JSON.parse(rufe[0].body), { source: 'chess.com', externalIds: ['1'] });
+});
+
+test('„known": die Antwort des Servers geht durch', async () => {
+  const body = [{ externalId: '1', id: 7, analysis: null }];
+  const { known } = ladeKnownGames(async () => ({ ok: true, status: 200, body }));
+  assert.deepEqual(await known(CFG, 'chess.com', ['1', '2']), body);
+});
+
+// Review 2026-09-29, S1-021: bis v1.68.8 war jeder Fehler ein [] — „keine davon" —, und die Uebersicht
+// merkte sich den ganzen Stapel bis zum Neuladen als „nicht bei RookHub".
+test('„known": 502, 401, Netzfehler oder kaputte Antwort heissen „keine Auskunft" (null), nicht „keine davon"', async () => {
+  const faelle = {
+    '502': async () => ({ ok: false, status: 502, error: 'Bad Gateway' }),
+    '401': async () => ({ ok: false, status: 401 }),
+    'Netzfehler': async () => ({ ok: false, error: 'Failed to fetch' }),
+    'Worker weg': async () => { throw new Error('runtime error'); },
+    'kein Array': async () => ({ ok: true, status: 200, body: { title: 'Wartung' } }),
+  };
+  for (const [name, proxy] of Object.entries(faelle)) {
+    const { known } = ladeKnownGames(proxy);
+    assert.strictEqual(await known(CFG, 'chess.com', ['1']), null, name);
+  }
+});
+
+test('RookHub antwortet beim ersten Durchgang mit 502: nichts gemerkt, der naechste fragt mit Backoff erneut', async () => {
+  const gespeichert = zeile('1');
+  const neu = zeile('2');
+  let antworten = [null, null, [{ externalId: '1', id: 7, analysis: { status: 'done' } }]];
+  const { api, ruf, uhr } = aufbau([gespeichert, neu], {
+    rookhubKnownGames: async (cfg, source, ids) => { ruf.known.push({ source, ids }); return antworten.shift(); },
+  });
+
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 1);
+  assert.equal(host(gespeichert), null, 'ohne Auskunft kein ↗ — die Partie liegt vielleicht laengst bei RookHub');
+  assert.equal(host(neu), null);
+
+  uhr.jetzt += 2_500;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 1, 'innerhalb der Wartezeit keine neue Abfrage');
+
+  uhr.jetzt += 2_500;                                       // 5 s nach dem ersten Fehlschlag
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 2, 'nach 5 s erneut gefragt');
+  assert.deepEqual(ruf.known[1].ids, ['1', '2'], 'dieselben Ids noch einmal');
+  assert.equal(host(gespeichert), null);
+
+  uhr.jetzt += 5_000;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 2, 'zweiter Fehlschlag: die Wartezeit verdoppelt sich (10 s)');
+
+  uhr.jetzt += 5_000;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 3);
+  assert.equal(inhalt(gespeichert).textContent, '✓', 'jetzt mit Auskunft: Haken statt ↗');
+  assert.equal(analyse(gespeichert).textContent, '📈');
+  assert.equal(inhalt(neu).tag, 'button');
+  assert.equal(inhalt(neu).title, 'overview.send');
+
+  uhr.jetzt += 60_000;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 3, 'nach dem Erfolg ist alles gemerkt');
+});
+
+test('scheitert die Nachfrage einer laufenden Analyse, bleibt die Sanduhr (kein Sprung auf ↗)', async () => {
+  const row = zeile('1');
+  let antworten = [[{ externalId: '1', id: 7, analysis: { status: 'running', analyzed: 10, total: 100 } }], null];
+  const { api, ruf, uhr } = aufbau([row], {
+    rookhubKnownGames: async (cfg, source, ids) => { ruf.known.push({ source, ids }); return antworten.shift() || null; },
+  });
+  await api.syncOverviewGames();
+  assert.equal(analyse(row).textContent, '⏳');
+
+  uhr.jetzt += 30_000;
+  await api.syncOverviewGames();
+  assert.equal(ruf.known.length, 2, 'die laufende wird nachgefragt');
+  assert.equal(inhalt(row).textContent, '✓', 'weiter als gespeichert gezeigt');
+  assert.equal(analyse(row).textContent, '⏳');
 });
