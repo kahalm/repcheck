@@ -555,10 +555,15 @@ function paintShareState() {
 // Manifest lädt (`content_scripts`, isolierte Welt), in derselben Reihenfolge — EINE Quelle statt Kopien. Bis
 // v1.68.11 standen die Listen hier von Hand und fehlten lib/chesscom-moves.js (keine Züge beim Schicken) bzw.
 // lib/i18n.js, lib/chessable-feedback.js und chessable-token.js (rohe Schlüssel, falsche Genauigkeit).
+// Firefox liefert content_scripts[].js in getManifest() absolut ('moz-extension://<uuid>/content.js'), Chrome
+// relativ; executeScript({ files }) nimmt in Firefox aber nur relative Pfade. Deshalb relativ vergleichen UND
+// relativ zurückgeben (bis v1.68.14 griff der Vergleich in Firefox nie → nur content.js nachgeladen).
 function manifestScripts(consumer) {
+  const base = chrome.runtime.getURL('');
+  const rel = (p) => (p.startsWith(base) ? p.slice(base.length) : p.replace(/^\//, ''));
   const eintrag = (chrome.runtime.getManifest().content_scripts || [])
-    .find((cs) => (cs.world || 'ISOLATED') === 'ISOLATED' && (cs.js || []).includes(consumer));
-  return eintrag ? eintrag.js.slice() : [consumer];
+    .find((cs) => (cs.world || 'ISOLATED') === 'ISOLATED' && (cs.js || []).map(rel).includes(consumer));
+  return eintrag ? eintrag.js.map(rel) : [consumer];
 }
 
 async function ensureContentLoaded(tab) {
