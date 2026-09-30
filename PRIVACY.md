@@ -1,6 +1,6 @@
 # Privacy Policy — RepCheck — Opening Repertoire Deviation Checker
 
-**Stand**: 2026-09-29 · **Geprüft gegen Version der Erweiterung**: 1.68.0
+**Stand**: 2026-10-01 · **Geprüft gegen Version der Erweiterung**: 1.68.15
 
 ## Kurz gesagt
 - Die Erweiterung läuft auf chess.com, lichess.org und chessable.com. **Ohne RookHub-Verbindung** vergleicht sie auf chess.com/lichess rein lokal (Repertoire aus einem PGN-Ordner oder eingefügtem Text) und sendet nichts an RookHub. Die einzige Ausnahme sind trainierte Chessable-Linien, und die nur nach deiner ausdrücklichen Zustimmung (Abschnitt „Ohne Verbindung").
@@ -23,9 +23,9 @@ Alle Aufrufe tragen deinen Extension-Token (`Authorization: Bearer rkh_…`, Sco
 | Wann | Was | Endpunkt |
 |------|-----|----------|
 | Klick auf „Prüfen" (Repertoire-Check mit RookHub) oder „Aktualisieren" im Seiten-Panel | SAN-Zugliste der angezeigten Partie | `POST /api/extension/analyze-game` |
-| Klick auf „Partie speichern" (💾) oder in einer Partienliste auf „an RookHub schicken" (↗) | Züge, Spieler, Wertungen, Ergebnis, Datum, Bedenkzeit, Partie-Id und -Adresse | `POST /api/extension/games` |
+| Klick auf „Partie speichern" (💾) oder in einer Partienliste auf „an RookHub schicken" (↗) | Züge, Spieler, Wertungen, Ergebnis, Datum, Bedenkzeit, Partie-Id (nur bei echten Partie-Adressen, nicht auf dem lichess-Analysebrett) und -Adresse | `POST /api/extension/games` |
 | Klick auf 📈 in einer Partienliste | Startet die Analyse einer dort schon gespeicherten Partie | `POST /api/extension/games/{id}/analyze` |
-| **Automatisch ohne Klick**, sobald eine Partienliste offen ist (Archiv oder Profilseite — auch die eines anderen Spielers) | Plattform und die öffentlichen Ids der sichtbaren Partien (keine Züge, keine Namen) — um anzuzeigen, welche schon bei RookHub liegen. Nachgeladene Zeilen werden im 2,5-s-Takt nachgefragt, laufende Analysen alle 30 s | `POST /api/extension/games/known` |
+| **Automatisch ohne Klick**, sobald eine Partienliste offen ist (Archiv oder Profilseite — auch die eines anderen Spielers) | Plattform und die öffentlichen Ids der sichtbaren Partien (keine Züge, keine Namen) — um anzuzeigen, welche schon bei RookHub liegen. Nachgeladene Zeilen werden im 2,5-s-Takt nachgefragt, laufende Analysen alle 30 s; scheitert eine Abfrage, fragt sie frühestens nach 5 s erneut, bei weiteren Fehlschlägen seltener (höchstens alle 2 min) | `POST /api/extension/games/known` |
 | Popup: Teilen-Link | Zugfolge und Titel der aktuellen Stellung | `POST /api/extension/share-line` |
 | Popup öffnen, Verbindung von Hand prüfen | Liest die Liste deiner Eröffnungsrepertoires | `GET /api/extension/repertoires` |
 

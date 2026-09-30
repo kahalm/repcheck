@@ -54,7 +54,9 @@ Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
 `content_scripts`) — das ist die EINZIGE Stelle, an der sie eingetragen wird. Das Popup lädt in
 Tabs, die vor Installation oder Update offen waren, per `executeScript` genau die Manifest-Liste
 nach (`manifestScripts(consumer)` liest `chrome.runtime.getManifest().content_scripts`, nur die
-isolierte Welt; seit v1.68.12). Bis dahin standen die Nachlade-Listen dreimal von Hand im Popup und
+isolierte Welt; seit v1.68.12 — Firefox liefert die Manifest-Pfade absolut als `moz-extension://…`,
+`manifestScripts` vergleicht und liefert sie relativ, seit v1.68.15). Bis dahin standen die
+Nachlade-Listen dreimal von Hand im Popup und
 waren gedriftet (fehlende `lib/chesscom-moves.js`, `lib/i18n.js`, `lib/chessable-feedback.js`,
 `chessable-token.js`). `test/nachlade-listen.test.js` hält Popup und Manifest gleich;
 `test/chessable-course-names.test.js` prüft Manifest-Auslieferung und Lib-Nutzung und schlägt bei
