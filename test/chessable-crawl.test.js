@@ -139,7 +139,7 @@ test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
   assert.ok(src.includes("'/api/extension/chessable/cached-lines'"), 'Cache-Endpoint fehlt');
   assert.ok(src.includes('await fetchSharedCachedOids(wanted)'), 'Crawl fragt den geteilten Cache nicht ab');
   assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); fromShared++;'), 'gecachte Linie wird nicht übersprungen');
-  assert.ok(src.includes('{ chapterJson: listText, lines, lineOids }'), 'Crawl schickt keine lineOids');
+  assert.ok(src.includes('lineOids: lineOids.slice(sentUpTo)') && src.includes('lineOids: lineOids.slice(pushedUpTo)'), 'Crawl schickt keine lineOids');
   // `complete` nur bei einem VOLLSTÄNDIGEN Lauf: nach einem Teil-Import hat dieser Lauf die
   // übersprungenen Linien gar nicht geholt, piratechess dürfte den Kurs also nicht als Ganzes cachen.
   assert.ok(src.includes('{ courseJson: courseText, complete: !partial, partial }'),

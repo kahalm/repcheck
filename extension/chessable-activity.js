@@ -1594,6 +1594,14 @@
         // Inhalt (null) aus dem geteilten Cache.
         const lines = [], lineOids = [];
         let sentUpTo = 0;   // Buch: so viele Linien dieses Kapitels liegen schon bei RookHub
+        let pushedUpTo = 0; // Repertoire: so viele Linien dieses Kapitels liegen schon in newChapters (bzw. sind angehängt)
+        // Repertoire: das noch nicht Gesammelte dieses Kapitels in den Anhänge-Puffer legen (gleiches chapterJson —
+        // der Live-Append ordnet über die oid zu, ein Kapitel in mehreren Stücken ist dort kein Problem).
+        const pushRest = () => {
+          if (!incremental || pushedUpTo >= lines.length) return;
+          newChapters.push({ chapterJson: listText, lines: lines.slice(pushedUpTo), lineOids: lineOids.slice(pushedUpTo) });
+          pushedUpTo = lines.length;
+        };
         // Buch: was von diesem Kapitel noch nicht gesendet ist, als Teil(e) schicken. Ein Kapitel kann für EINEN
         // Request zu groß sein (Kapitel 30 eines Lifetime-Repertoires riss am 2026-09-20 die 48 MB des Endpoints) —
         // darum dieselbe Byte-Schranke wie beim Mitschnitt; alle Teile tragen denselben chapterKey.
@@ -1615,7 +1623,7 @@
         for (const oid of oids) {
           if (cancelRequested) {
             // Die schon geholten Linien dieses Kapitels sichern: Repertoire hängt sie an, das Buch schickt den Rest.
-            if (incremental && lines.length) newChapters.push({ chapterJson: listText, lines, lineOids });
+            pushRest();
             await rescueBookPart();
             const saved = await saveRest();
             setStatus(saved ? t('import.aborted') + ' ' + t('import.unexpected.saved', { count: saved }) : t('import.aborted'));
@@ -1634,7 +1642,7 @@
             } catch (e) {
               // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen, egal woran der Abruf
               // scheiterte (unerwartete Antwort, Chessable-401, Netzfehler; Abbruch-Zweig unten).
-              if (incremental && lines.length) newChapters.push({ chapterJson: listText, lines, lineOids });
+              pushRest();
               await rescueBookPart();
               throw e;
             }
@@ -1643,11 +1651,17 @@
           if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
           done++; setStatus(fortschritt());
           if (!incremental && Date.now() - lastBookPartAt >= BOOK_PART_EVERY_MS) { await sendBookPart(); setStatus(fortschritt()); }
+          // Repertoire: auch MITTEN im Kapitel anhängen, wenn die Frist um ist — vorher nur an Kapitelgrenzen, und bei
+          // einem großen Kapitel kam bei RookHub eine Viertelstunde lang nichts an (gemeldet 07.10.2026).
+          if (incremental && Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS && lines.length > pushedUpTo) {
+            pushRest();
+            await appendBetween();
+            setStatus(fortschritt());
+          }
         }
         if (!lines.length) continue;
-        const chapter = { chapterJson: listText, lines, lineOids };
         if (incremental) {
-          newChapters.push(chapter);
+          pushRest();
           if (Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await appendBetween();
         } else {
           await sendBookPart();   // der Rest des Kapitels (oder das ganze, wenn es in unter einer Minute geholt war)

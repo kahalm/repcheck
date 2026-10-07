@@ -229,10 +229,13 @@ test('S1-006: Chessable-401 (kein „unerwartet") — Teilmenge gesichert, Meldu
   assert.match(zuletzt, /import\.unexpected\.saved \{"count":4\}/);
 });
 
-test('S1-006: an Kapitelgrenzen wird zwischendurch angehängt — ein geschlossener Tab kostet nicht den ganzen Lauf', async () => {
+// Seit v1.70.1 auch MITTEN im Kapitel (gemeldet 07.10.2026: ein großes Kapitel lieferte eine Viertelstunde lang nichts).
+// Mit Frist 0 heißt das: nach jeder Linie.
+test('Repertoire: nach Ablauf der Frist wird zwischendurch angehängt, auch mitten im Kapitel', async () => {
   const { crawl, log } = ladeCrawl({ everyMs: 0 });
   await crawl();
-  assert.deepStrictEqual(log.ablauf, ['hole 11', 'hole 12', 'hole 13', 'anhängen 11,12,13', 'hole 21', 'hole 22', 'anhängen 21,22']);
+  assert.deepStrictEqual(log.ablauf, ['hole 11', 'anhängen 11', 'hole 12', 'anhängen 12', 'hole 13', 'anhängen 13',
+    'hole 21', 'anhängen 21', 'hole 22', 'anhängen 22']);
   // Die Abschlussmeldung zählt über alle Zwischen-Anhänge.
   assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":5\}/);
 });
@@ -293,15 +296,17 @@ test('Buch: ein Chessable-Fehler mitten im Kapitel — das schon Geholte geht no
 const KURS3 = { 1: ['11', '12', '13'], 2: ['21', '22'], 3: ['31'] };
 const http502 = () => Object.assign(new Error('HTTP 502'), { status: 502 });
 
-test('S1-006: ein scheiternder Zwischen-Anhang bricht den Lauf nicht ab — die nächste Kapitelgrenze holt ihn nach', async () => {
+test('S1-006: ein scheiternder Zwischen-Anhang bricht den Lauf nicht ab — der nächste Anhang holt ihn nach', async () => {
   const { crawl, log } = ladeCrawl({
     everyMs: 0, kurs: KURS3,
     beimAnhaengen: (nr) => { if (nr === 1) throw http502(); },
   });
   await crawl();
   assert.deepStrictEqual(log.ablauf, [
-    'hole 11', 'hole 12', 'hole 13', 'scheitert 11,12,13',
-    'hole 21', 'hole 22', 'anhängen 11,12,13,21,22',
+    'hole 11', 'scheitert 11',
+    'hole 12', 'anhängen 11,12',
+    'hole 13', 'anhängen 13',
+    'hole 21', 'anhängen 21', 'hole 22', 'anhängen 22',
     'hole 31', 'anhängen 31',
   ]);
   assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21', '22', '31'], 'nicht jede Linie genau einmal angehängt');
