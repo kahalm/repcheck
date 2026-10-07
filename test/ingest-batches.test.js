@@ -142,7 +142,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
   const von = src.indexOf('  async function crawlAndImport(');
   const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
   assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
-  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [] };
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [], berichte: [] };
   let api;
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
@@ -195,6 +195,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
     },
     markCourseFetched: () => {},
     handleUnexpected: async (bid, u, saved) => { log.unerwartet.push({ u, saved }); },
+    reportCrawlError: (bid, tgt, lauf, message) => { log.berichte.push({ bid, tgt, phase: lauf.phase, fetched: lauf.fetched, sent: lauf.sent, message }); },
     showNotOwned: () => 'nicht im Konto',
     REPERTOIRE_APPEND_EVERY_MS: everyMs,
     BOOK_PART_EVERY_MS: bookEveryMs,
@@ -368,4 +369,37 @@ test('Kursstruktur-Cache: der zweite Lauf holt getCourse und getList nicht noch 
   await zweiter.crawl();
   assert.deepStrictEqual(zweiter.log.abrufe.filter((a) => a !== 'getGame'), [], 'Struktur kam erneut von Chessable');
   assert.ok(zweiter.log.abrufe.includes('getGame'), 'die Linien selbst werden weiter geholt');
+});
+
+// Gewünscht 07.10.2026: jeder sonstige Abbruch geht an RookHub (Log + Admin-Nachricht) — Stopp und unerwartete Antwort
+// haben ihren eigenen Weg und erzeugen keinen zweiten Bericht.
+test('Abbruch-Bericht: ein Chessable-401 wird mit Phase und Zählern gemeldet', async () => {
+  const { crawl, log } = ladeCrawl({ target: 'book', beiGame: (oid) => { if (oid === '13') throw new Error('Chessable HTTP 401'); } });
+  await crawl();
+  assert.strictEqual(log.berichte.length, 1);
+  const b = log.berichte[0];
+  assert.deepStrictEqual([b.bid, b.tgt, b.phase, b.message], ['4711', 'book', 'lines', 'Chessable HTTP 401']);
+  assert.strictEqual(b.fetched, 2, 'zwei Linien waren geholt');
+  assert.strictEqual(b.sent, 2, 'die Rettung hat sie noch abgeliefert');
+});
+
+test('Abbruch-Bericht: ein scheiternder Versand meldet Phase „sending"', async () => {
+  const { crawl, log } = ladeCrawl({ target: 'book', bookEveryMs: 0, beimChunk: (nr) => { if (nr === 2) throw new Error('RepCheck was updated or reloaded'); } });
+  await crawl();
+  assert.strictEqual(log.berichte.length, 1);
+  assert.strictEqual(log.berichte[0].phase, 'sending');
+  assert.match(log.berichte[0].message, /updated or reloaded/);
+});
+
+test('Abbruch-Bericht: Stopp und unerwartete Antwort erzeugen keinen zusätzlichen Bericht', async () => {
+  const stopp = ladeCrawl({ target: 'book', beiGame: (oid, api) => { if (oid === '12') api.cancel(); } });
+  await stopp.crawl();
+  assert.deepStrictEqual(stopp.log.berichte, []);
+  const unerwartet = ladeCrawl({ beiGame: (oid) => {
+    if (oid !== '12') return;
+    const e = new Error('unerwartet'); e.unexpected = { endpoint: 'getGame', oid }; throw e;
+  } });
+  await unerwartet.crawl();
+  assert.deepStrictEqual(unerwartet.log.berichte, []);
+  assert.strictEqual(unerwartet.log.unerwartet.length, 1);
 });

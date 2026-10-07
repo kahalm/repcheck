@@ -1357,6 +1357,40 @@
     return u.endpoint + wo + (u.status !== 200 ? ` · HTTP ${u.status}` : '') + (was ? ` · ${was}` : '');
   }
 
+  // Grob „Firefox 143" / „Chrome 141" / „Edge 141" — für die Admins reicht Browser und Hauptversion, kein User-Agent.
+  function coarseBrowser() {
+    const ua = String((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+    const m = ua.match(/Firefox\/(\d+)/) || ua.match(/Edg\/(\d+)/) || ua.match(/Chrome\/(\d+)/);
+    if (!m) return null;
+    const name = m[0].startsWith('Firefox') ? 'Firefox' : m[0].startsWith('Edg') ? 'Edge' : 'Chrome';
+    return name + ' ' + m[1];
+  }
+
+  // „Kurs holen" brach mit einem Fehler OHNE Chessable-Anteil ab (RookHub ≥ 0.696.0): Log + Admin-Nachricht. Bewusst über
+  // chrome.runtime direkt statt über den RookHub-Client — dessen Ausfall war am 07.10.2026 genau der Fehler, der nie
+  // ankam. Best effort, ohne Antwort an den Nutzer.
+  async function reportCrawlError(bid, target, lauf, message) {
+    try {
+      const cfg = await readConfig();
+      if (!cfg || !cfg.url || !cfg.token || !bid) return;
+      let version = null;
+      try { version = chrome.runtime.getManifest().version; } catch (e) { /* ohne Version */ }
+      chrome.runtime.sendMessage({
+        type: 'rookhub-fetch',
+        url: String(cfg.url).replace(/\/$/, '') + '/api/extension/chessable/crawl-error',
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + cfg.token, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          bid: String(bid), courseName: (bestCourseName(bid) || '').slice(0, 300) || null, target,
+          phase: lauf ? lauf.phase : null, message: String(message || '').slice(0, 1000),
+          linesFetched: lauf ? lauf.fetched : null, linesSent: lauf ? lauf.sent : null,
+          extensionVersion: version, browser: coarseBrowser(),
+        }),
+        expect: 'json',
+      }, () => { void chrome.runtime.lastError; });
+    } catch (e) { /* abgehängt oder ohne Verbindung — dann gibt es keinen Weg mehr */ }
+  }
+
   // Meldung an RookHub (best effort). Ergebnis: Antwort des Servers ({ banned, adminNotified }) oder null.
   async function reportUnexpected(bid, courseName, u) {
     const cfg = await readConfig();
@@ -1541,6 +1575,8 @@
     // Nur fürs inkrementelle Anhängen gesammelt: geholt, aber noch nicht angehängt. Außerhalb des try, damit JEDER
     // Abbruch (Stopp, unerwartete Antwort, Chessable-401, Netzfehler) die bis dahin geholten Linien noch speichern
     // kann — sonst müsste ein erneuter Lauf sie wieder bei Chessable holen.
+    // Wo der Lauf steht und wie weit er kam — geht bei einem Abbruch mit der Fehlermeldung an RookHub (reportCrawlError).
+    const lauf = { phase: 'start', fetched: 0, sent: 0 };
     const newChapters = [];
     const appended = { imported: 0, linked: 0, lines: 0 };   // Summe der in diesem Lauf schon angehängten Linien
     let lastAppendAt = Date.now();
@@ -1549,8 +1585,10 @@
     const appendNew = async (onPart) => {
       if (!newChapters.length) return;
       const batch = newChapters.slice();
+      lauf.phase = 'sending';
       const res = await ingestLiveInParts(bid, target, bestCourseName(bid), batch, onPart);
       newChapters.splice(0, batch.length);
+      lauf.sent += batch.reduce((n, c) => n + c.lineOids.length, 0);
       appended.imported += res.imported;
       appended.linked += res.linked;
       appended.lines += batch.reduce((n, c) => n + c.lineOids.length, 0);
@@ -1594,6 +1632,7 @@
       // der Server ab, dass eine Kollision der Positionsnummer nichts über die Identität aussagt.
       const partial = skipKnown && already.size > 0;
 
+      lauf.phase = 'structure';
       setStatus(t('import.fetchingStructure'));
       let courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await listCacheGet(`${bid}:course`);
       if (courseText == null) {
@@ -1608,6 +1647,7 @@
         const lid = lids[li];
         if (cancelRequested) { setStatus(t('import.aborted')); return; }
         // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
+        lauf.phase = 'chapters';
         setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
         const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
         let listText = fromCapture ? cap.lists[lid] : await listCacheGet(`${bid}:${lid}`);
@@ -1668,11 +1708,14 @@
           if (incremental || sentUpTo >= lines.length) return;
           const rest = { chapterJson: listText, lines: lines.slice(sentUpTo), lineOids: lineOids.slice(sentUpTo) };
           const teile = Crawl.splitIngestChapters([rest]).flat();
+          lauf.phase = 'sending';
           for (let pi = 0; pi < teile.length; pi++) {
             if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
             await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
             bookOpen = true;
           }
+          lauf.sent += lines.length - sentUpTo;
+          lauf.phase = 'lines';
           sentUpTo = lines.length;
           lastBookPartAt = Date.now();
         };
@@ -1697,7 +1740,9 @@
           }
           if (!g) {
             try {
+              lauf.phase = 'lines';
               g = await chessableGetChecked(`getGame?lng=en&oid=${oid}`, 'game', { oid: String(oid) });
+              lauf.fetched++;
             } catch (e) {
               // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen, egal woran der Abruf
               // scheiterte (unerwartete Antwort, Chessable-401, Netzfehler; Abbruch-Zweig unten).
@@ -1774,6 +1819,9 @@
         failMsg = t('import.error', { error: (err && err.message) || err });
         if (saved) failMsg += ' ' + t('import.unexpected.saved', { count: saved });
         setStatus(failMsg);
+        // Jeder sonstige Abbruch geht an RookHub (Log + Admin-Nachricht) — auch und gerade, wenn der Versand an RookHub
+        // selbst das Problem war: der Bericht nimmt den direkten Kanal, nicht den RookHub-Client (07.10.2026).
+        reportCrawlError(bid, target, lauf, (err && err.message) || String(err));
       }
     } finally {
       if (bookOpen) {

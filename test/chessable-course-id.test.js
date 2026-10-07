@@ -80,6 +80,7 @@ function ladeActivity(pathname, links) {
     lastStatus: '',
     progressSummary: () => null,
     progressStruct: null,
+    reportCrawlError: () => {},
     progressBid: null,
     suggestedTarget: () => null,
     t: (k, p) => (p ? k + ' ' + JSON.stringify(p) : k),
