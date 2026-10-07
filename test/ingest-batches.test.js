@@ -137,12 +137,12 @@ test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien i
 const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
 
 // beimAnhaengen(nr, oids) läuft vor jedem ingestLiveInParts-Aufruf (nr ab 1); wirft es, scheitert dieser Anhang.
-function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame, kurs = KURS, beimAnhaengen } = {}) {
+function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000, beiGame, kurs = KURS, beimAnhaengen, beimChunk } = {}) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
   const von = src.indexOf('  async function crawlAndImport(');
   const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
   assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
-  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0 };
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [] };
   let api;
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
@@ -170,7 +170,14 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame, kurs = KUR
     bestCourseName: () => 'Kurs 4711',
     ensureProgress: () => {},
     fetchSharedCachedOids: async () => new Set(),
-    ingestChunk: async () => { log.chunks++; return { imported: 0, chapters: 0 }; },
+    ingestChunk: async (sid, bid, tgt, name, chapter, final, extra) => {
+      log.chunks++;
+      if (beimChunk) beimChunk(log.chunks, chapter, extra);
+      log.teile.push(chapter ? { oids: chapter.lineOids.slice(), key: extra && extra.chapterKey }
+        : { final: true, aborted: !!(extra && extra.aborted) });
+      if (chapter) log.ablauf.push('teil ' + chapter.lineOids.join(','));
+      return { imported: 0, chapters: 0 };
+    },
     ingestLiveInParts: async (bid, tgt, name, chapters) => {
       const oids = chapters.flatMap((c) => c.lineOids);
       chapters.forEach((c) => assert.strictEqual(c.lines.length, c.lineOids.length, 'lines/lineOids nicht gepaart'));
@@ -189,6 +196,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, beiGame, kurs = KUR
     handleUnexpected: async (bid, u, saved) => { log.unerwartet.push({ u, saved }); },
     showNotOwned: () => 'nicht im Konto',
     REPERTOIRE_APPEND_EVERY_MS: everyMs,
+    BOOK_PART_EVERY_MS: bookEveryMs,
     REPERTOIRE_APPEND_MAX_FAILS: 2,
     REPERTOIRE_APPEND_RETRY_MS: 0,
   };
@@ -250,12 +258,34 @@ test('S1-006: unerwartete Antwort — die Karte zählt Zwischen-Anhang und Rest 
   assert.deepStrictEqual(log.unerwartet.map((u) => u.saved), [4]);
 });
 
-test('S1-006: Buch-Ziel unverändert — ein Stopp schickt nichts über ingest/live', async () => {
+// Buch-Ziel (v1.70.0): ein Stopp schickt die schon geholten Linien des laufenden Kapitels noch als Teil — über
+// ingest/chunk mit dem chapterKey des Kapitels, nie über ingest/live —, danach schließt der Abbruch-Chunk die Sitzung.
+test('Buch: ein Stopp liefert das schon Geholte des Kapitels noch ab und schließt die Sitzung', async () => {
   const { crawl, log } = ladeCrawl({ target: 'book', beiGame: (oid, api) => { if (oid === '12') api.cancel(); } });
   await crawl();
-  assert.deepStrictEqual(log.angehaengt, []);
-  assert.strictEqual(log.chunks, 0);
-  assert.strictEqual(log.status[log.status.length - 1], 'import.aborted');
+  assert.deepStrictEqual(log.angehaengt, [], 'das Buch hängt nie über ingest/live an');
+  assert.deepStrictEqual(log.teile, [{ oids: ['11', '12'], key: '1' }, { final: true, aborted: true }]);
+  assert.ok(!log.ablauf.includes('hole 13'), 'nach dem Stopp weiter geholt');
+});
+
+// Anlass 07.10.2026: ein Abbruch mitten im vierten Kapitel eines Taktikkurses verwarf alles schon Geholte davon.
+test('Buch: ein Kapitel geht nach Ablauf der Frist in Teilen raus — alle mit demselben chapterKey', async () => {
+  const { crawl, log } = ladeCrawl({ target: 'book', bookEveryMs: 0 });
+  await crawl();
+  const kapitel = log.teile.filter((x) => !x.final);
+  assert.deepStrictEqual(kapitel.map((x) => x.oids.join(',')), ['11', '12', '13', '21', '22', '31'].slice(0, kapitel.length));
+  assert.ok(kapitel.length >= 3, 'je Linie ein Teil, weil die Frist 0 ist');
+  assert.deepStrictEqual([...new Set(kapitel.filter((x) => x.oids[0].startsWith('1')).map((x) => x.key))], ['1']);
+  assert.ok(log.teile[log.teile.length - 1].final && !log.teile[log.teile.length - 1].aborted, 'Abschluss-Chunk fehlt');
+  const alle = kapitel.flatMap((x) => x.oids);
+  assert.strictEqual(new Set(alle).size, alle.length, 'eine Linie wurde doppelt geschickt');
+});
+
+test('Buch: ein Chessable-Fehler mitten im Kapitel — das schon Geholte geht noch raus, dann der Fehler', async () => {
+  const { crawl, log } = ladeCrawl({ target: 'book', beiGame: (oid) => { if (oid === '13') throw new Error('Chessable HTTP 401'); } });
+  await crawl();
+  assert.deepStrictEqual(log.teile[0], { oids: ['11', '12'], key: '1' });
+  assert.match(log.status.join(' | '), /Chessable HTTP 401/);
 });
 
 // Nacharbeit S1-006: der Zwischen-Anhang an der Kapitelgrenze stand ohne try/catch — ein einziger 502 beim Neustart

@@ -1274,6 +1274,11 @@
   // Zeit vergangen ist. Ein geschlossener Tab kostet dann nur die Linien seit dem letzten Anhängen statt des ganzen
   // Laufs; die Schranke hält die ingest/live-Aufrufe klein, wenn viele kleine Kapitel ohne Pause durchlaufen.
   const REPERTOIRE_APPEND_EVERY_MS = 60000;
+  // Buch-Ziel: ein Kapitel geht nicht mehr erst vollständig raus, sondern spätestens nach dieser Zeit in Teilen (gleicher
+  // chapterKey — RookHub ≥ 0.495.0 hält die Kapitelnummer und schiebt nur die Liniennummer weiter, wie bei den
+  // Byte-Teilen). Anlass 07.10.2026: ein Abbruch mitten im vierten Kapitel eines Taktikkurses warf alles weg, was davon
+  // schon geholt war; jetzt kostet er höchstens die letzte Minute.
+  const BOOK_PART_EVERY_MS = 60000;
   // Ein Zwischen-Anhang ist best effort: scheitert er (502 beim Neustart oder Deploy von RookHub, piratechess kurz weg),
   // bleibt der Puffer liegen, und der nächste Versuch kommt an der nächsten Kapitelgrenze nach Ablauf der Schranke oder
   // beim Schluss-Anhang. Erst so viele Fehlschläge HINTEREINANDER brechen den Lauf ab, damit bei dauerhaft kaputtem
@@ -1583,14 +1588,35 @@
       const fortschritt = () => (fromShared
         ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
         : t('import.fetchingLines', { done, total: toFetch }));
+      let lastBookPartAt = Date.now();
       for (const { lid, listText, oids } of lists) {
         // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
         // Inhalt (null) aus dem geteilten Cache.
         const lines = [], lineOids = [];
+        let sentUpTo = 0;   // Buch: so viele Linien dieses Kapitels liegen schon bei RookHub
+        // Buch: was von diesem Kapitel noch nicht gesendet ist, als Teil(e) schicken. Ein Kapitel kann für EINEN
+        // Request zu groß sein (Kapitel 30 eines Lifetime-Repertoires riss am 2026-09-20 die 48 MB des Endpoints) —
+        // darum dieselbe Byte-Schranke wie beim Mitschnitt; alle Teile tragen denselben chapterKey.
+        const sendBookPart = async () => {
+          if (incremental || sentUpTo >= lines.length) return;
+          const rest = { chapterJson: listText, lines: lines.slice(sentUpTo), lineOids: lineOids.slice(sentUpTo) };
+          const teile = Crawl.splitIngestChapters([rest]).flat();
+          for (let pi = 0; pi < teile.length; pi++) {
+            if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
+            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
+            bookOpen = true;
+          }
+          sentUpTo = lines.length;
+          lastBookPartAt = Date.now();
+        };
+        // Beim Abbruch (Stopp, Chessable-Fehler) das schon Geholte noch abliefern — best effort: ist RookHub oder die
+        // Erweiterung selbst weg, scheitert das eben auch.
+        const rescueBookPart = async () => { try { await sendBookPart(); } catch (e) { /* der eigentliche Fehler zählt */ } };
         for (const oid of oids) {
           if (cancelRequested) {
-            // Die schon geholten Linien dieses Kapitels und alles noch nicht Angehängte sichern (nur Repertoire).
+            // Die schon geholten Linien dieses Kapitels sichern: Repertoire hängt sie an, das Buch schickt den Rest.
             if (incremental && lines.length) newChapters.push({ chapterJson: listText, lines, lineOids });
+            await rescueBookPart();
             const saved = await saveRest();
             setStatus(saved ? t('import.aborted') + ' ' + t('import.unexpected.saved', { count: saved }) : t('import.aborted'));
             return;
@@ -1609,12 +1635,14 @@
               // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen, egal woran der Abruf
               // scheiterte (unerwartete Antwort, Chessable-401, Netzfehler; Abbruch-Zweig unten).
               if (incremental && lines.length) newChapters.push({ chapterJson: listText, lines, lineOids });
+              await rescueBookPart();
               throw e;
             }
             await sleep(crawlPauseMs());
           }
           if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
           done++; setStatus(fortschritt());
+          if (!incremental && Date.now() - lastBookPartAt >= BOOK_PART_EVERY_MS) { await sendBookPart(); setStatus(fortschritt()); }
         }
         if (!lines.length) continue;
         const chapter = { chapterJson: listText, lines, lineOids };
@@ -1622,16 +1650,7 @@
           newChapters.push(chapter);
           if (Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await appendBetween();
         } else {
-          // Ein Kapitel kann für EINEN Request zu groß sein — Kapitel 30 eines Lifetime-Repertoires riss am
-          // 2026-09-20 die 48 MB des Endpoints (der Server meldete das als HTTP 500). Darum dieselbe
-          // Byte-Schranke wie beim Mitschnitt/Repertoire; die Teile tragen denselben chapterKey und bleiben
-          // serverseitig EIN Kapitel (RookHub ≥ 0.495.0).
-          const teile = Crawl.splitIngestChapters([chapter]).flat();
-          for (let pi = 0; pi < teile.length; pi++) {
-            if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
-            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
-            bookOpen = true;
-          }
+          await sendBookPart();   // der Rest des Kapitels (oder das ganze, wenn es in unter einer Minute geholt war)
         }
         sent++;
       }

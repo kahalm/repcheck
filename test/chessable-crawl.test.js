@@ -152,7 +152,7 @@ test('Buch-Crawl: ein zu großes Kapitel geht in byte-begrenzten Teilen raus (ni
   // Chunk-Endpoints; RookHub meldete das als HTTP 500. Der Buch-Zweig muss dieselbe Schranke nutzen wie
   // Mitschnitt und Repertoire — und die Teile per chapterKey als EIN Kapitel kennzeichnen.
   const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
-  assert.ok(src.includes('Crawl.splitIngestChapters([chapter]).flat()'), 'Buch-Kapitel wird nicht nach Bytes geteilt');
+  assert.ok(src.includes('Crawl.splitIngestChapters([rest]).flat()'), 'Buch-Kapitel wird nicht nach Bytes geteilt');
   assert.ok(src.includes('chapterKey: String(lid)'), 'Teile tragen keinen chapterKey');
   assert.ok(!/await ingestChunk\(sessionId, bid, target, courseName, chapter, false\)/.test(src),
     'ungeteilter Kapitel-Chunk noch vorhanden');
