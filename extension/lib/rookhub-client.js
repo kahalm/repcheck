@@ -22,14 +22,16 @@
   // Vorher wurde daraus „Nicht mit RookHub verbunden" (gemeldet 07.10.2026 mitten in „Kurs holen") — die
   // Verbindung war aber in Ordnung, nur die Seite musste neu geladen werden.
   function contextInvalidated(c, error) {
-    try { if (!c || !c.runtime || !c.runtime.id) return true; } catch (e) { return true; }
+    // Ohne API-Objekt ist das KEIN Neuladen, sondern ein Aufrufer, der seine API nicht mitgegeben hat.
+    if (!c) return false;
+    try { if (!c.runtime || !c.runtime.id) return true; } catch (e) { return true; }
     return /context invalidated/i.test(String((error && error.message) || error || ''));
   }
   function isConnected(cfg) { return !!(cfg && cfg.url && cfg.token); }
 
   // Die Config liegt extension-weit in chrome.storage.local (`rookhubConfig`, geschrieben von Popup und Worker).
   function readConfig(chromeApi) {
-    const c = chromeApi || root.chrome;
+    const c = chromeApi || root.chrome || (typeof chrome !== 'undefined' ? chrome : undefined);
     return new Promise((resolve) => {
       try {
         c.storage.local.get('rookhubConfig', (r) => resolve((r && r.rookhubConfig) || null));
@@ -69,7 +71,8 @@
   function create(options) {
     const o = options || {};
     const t = typeof o.t === 'function' ? o.t : (k) => k;
-    const chromeApi = () => o.chrome || root.chrome;
+    // In Firefox-Content-Scripts ist `root` (self) das Fenster der Seite und trägt kein `chrome` — dann der globale Bezeichner.
+    const chromeApi = () => o.chrome || root.chrome || (typeof chrome !== 'undefined' ? chrome : undefined);
 
     function send(msg) {
       return new Promise((resolve, reject) => {

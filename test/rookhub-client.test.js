@@ -211,3 +211,14 @@ test('request: abgehaengtes Content-Script (Erweiterung neu geladen) meldet das,
   const ohne = fakeChrome({ cfg: { url: 'https://rookhub.example' } });
   await assert.rejects(Rookhub.create({ t, chrome: ohne.chrome }).request('/x', { body: {} }), (e) => e.notConnected === true);
 });
+
+// Gemeldet 07.10.2026: jeder Buch-Teil scheiterte, während die direkten chrome.runtime-Aufrufe derselben Datei
+// durchgingen. In Firefox-Content-Scripts ist `self` das Fenster der Seite, `self.chrome` fehlt — der Client fand keine
+// API und meldete „Erweiterung neu geladen". Das Content-Script gibt `chrome` jetzt mit; ohne API-Objekt ist es nie ein Neuladen.
+test('Client: chrome wird ausdrücklich mitgegeben, und „kein API-Objekt" ist kein „neu geladen"', () => {
+  const src = lies('extension/chessable-activity.js');
+  assert.match(src, /self\.RepCheckRookhub\.create\(\{ t, chrome: typeof chrome !== 'undefined' \? chrome : undefined \}\)/);
+  assert.strictEqual(Rookhub.contextInvalidated(undefined), false);
+  assert.strictEqual(Rookhub.contextInvalidated({ runtime: {} }), true, 'abgehängt: API da, aber ohne id');
+  assert.strictEqual(Rookhub.contextInvalidated({ runtime: { id: 'x' } }), false);
+});

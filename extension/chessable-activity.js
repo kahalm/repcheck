@@ -227,7 +227,10 @@
   // Gemeinsamer RookHub-Client (lib/rookhub-client.js, per Manifest VOR dieser Datei geladen): Kopfzeilen und
   // Fehlerabbildung an EINER Stelle — ein widerrufener Token heißt „Token ungültig", nicht „HTTP 401".
   // Bisher laufen die Import-Pfade (ingest, ingest/chunk, ingest/live) darüber.
-  const Rookhub = self.RepCheckRookhub ? self.RepCheckRookhub.create({ t }) : null;
+  // `chrome` ausdrücklich mitgeben: in Firefox-Content-Scripts ist `self` das Fenster der SEITE, `self.chrome` gibt es
+  // dort nicht — der Client fand dann keine Extension-API und hielt das für „Erweiterung neu geladen" (07.10.2026:
+  // jeder Buch-Teil scheiterte, während die direkten chrome.runtime-Aufrufe derselben Datei durchgingen).
+  const Rookhub = self.RepCheckRookhub ? self.RepCheckRookhub.create({ t, chrome: typeof chrome !== 'undefined' ? chrome : undefined }) : null;
   function rookhubRequest(path, body) {
     if (!Rookhub) return Promise.reject(new Error(t('err.libMissing')));
     return Rookhub.request(path, { method: 'POST', body });
