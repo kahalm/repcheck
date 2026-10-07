@@ -14,6 +14,7 @@
   .ci-alert b { display: block; margin-bottom: 4px; }
   .ci-alert div { margin-bottom: 6px; }
   .ci-alert .ci-alert-detail { font-size: 11px; color: #7a6a3a; word-break: break-word; }
+  .ci-alert .ci-never { display: block; font-weight: normal; margin: 6px 0; }
   .ci-alert .ci-alert-row { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin: 0; }
   /* Das Import-Panel teilt sich die Optik der Repertoire-Liste, aber nicht deren 180-px-Scrollbox: mit dem Hinweis
      (v1.60.0) rutschte „Kurs holen" sonst in einen inneren Scrollbereich. */
@@ -147,6 +148,7 @@
     <label><span data-i18n="popup.crawl.to">bis</span> <input id="crawl-max" type="number" min="3.5" max="120" step="0.5" inputmode="decimal"> s</label>
   </div>
   <div id="crawl-state" class="conn-hint"></div>
+  <label style="font-weight:normal;font-size:12px;display:block;margin-top:6px;"><input type="checkbox" id="ban-risk-show"> <span data-i18n="popup.crawl.showBanRisk">Bannrisiko-Hinweis vor „Kurs holen" zeigen</span></label>
 </div>
 <div class="hint" style="margin:-4px 0 10px 0;"><a href="#" id="open-welcome" data-i18n="popup.onb.welcome">Einführung öffnen ↗</a></div>
 <div class="row" id="page-panel-row" style="display:none;">

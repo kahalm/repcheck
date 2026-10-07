@@ -134,6 +134,7 @@ const RC_MESSAGES = {
 
     // — Popup: Kurs holen, Pause zwischen Chessable-Abrufen —
     'popup.crawl.heading': 'Fetch course: pause between requests',
+    'popup.crawl.showBanRisk': 'Show the ban-risk warning before “Fetch course”',
     'popup.crawl.intro': 'Between two Chessable requests RepCheck waits a random time in this range. It can only be made slower — the minimum is {min}–{max} s.',
     'popup.crawl.from': 'from',
     'popup.crawl.to': 'to',
@@ -180,6 +181,7 @@ const RC_MESSAGES = {
     'import.warn.body': '“Fetch course via my browser” makes rapid, automated calls to the Chessable API. This may violate Chessable’s terms of use and in the worst case get your account suspended.',
     'import.warn.own': 'Use it only for your own courses and at your own risk.',
     'import.warn.confirm': 'Continue anyway?',
+    'import.warn.dontShowAgain': 'Got it — don\'t show this warning again',
     'import.warn.yes': 'Continue',
     'import.throttled': 'Chessable is throttling (HTTP {status}) — waiting {seconds} s (attempt {attempt}/{max})…',
     'import.fetchingStructure': 'Fetching course structure…',
@@ -452,6 +454,7 @@ const RC_MESSAGES = {
     'welcome.footer': 'Diese Seite findest du jederzeit wieder: Popup → „Einstellungen“ → „Einführung öffnen“.',
 
     'popup.crawl.heading': 'Kurs holen: Pause zwischen Abrufen',
+    'popup.crawl.showBanRisk': 'Bannrisiko-Hinweis vor „Kurs holen“ zeigen',
     'popup.crawl.intro': 'Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist {min}–{max} s.',
     'popup.crawl.from': 'von',
     'popup.crawl.to': 'bis',
@@ -496,6 +499,7 @@ const RC_MESSAGES = {
     'import.warn.body': '„Kurs über meinen Browser holen“ ruft die Chessable-API automatisiert im Schnelldurchlauf ab. Das kann gegen Chessables Nutzungsbedingungen verstoßen und im schlimmsten Fall zur Sperrung deines Kontos führen.',
     'import.warn.own': 'Nutze es nur für eigene Kurse und auf eigenes Risiko.',
     'import.warn.confirm': 'Wirklich fortfahren?',
+    'import.warn.dontShowAgain': 'Verstanden — diesen Hinweis nicht mehr anzeigen',
     'import.warn.yes': 'Fortfahren',
     'import.throttled': 'Chessable drosselt (HTTP {status}) — warte {seconds} s (Versuch {attempt}/{max}) …',
     'import.fetchingStructure': 'Hole Kursstruktur …',
@@ -757,6 +761,7 @@ const RC_MESSAGES = {
     'welcome.saved': 'Spremljeno.',
     'welcome.footer': 'Ovu stranicu uvijek možeš ponovno otvoriti: skočni prozor → postavke → „Otvori uvod“.',
     'popup.crawl.heading': 'Dohvati tečaj: pauza između zahtjeva',
+    'popup.crawl.showBanRisk': 'Prikaži upozorenje o riziku zabrane prije „Dohvati tečaj“',
     'popup.crawl.intro': 'Između dva Chessable zahtjeva RepCheck čeka nasumično vrijeme u ovom rasponu. Može samo sporije — minimum je {min}–{max} s.',
     'popup.crawl.from': 'od',
     'popup.crawl.to': 'do',
@@ -801,6 +806,7 @@ const RC_MESSAGES = {
     'import.warn.body': '„Dohvati tečaj preko mog preglednika“ automatizirano i u brzom slijedu poziva Chessable API. To može prekršiti Chessableove uvjete korištenja i u najgorem slučaju dovesti do blokade tvojeg računa.',
     'import.warn.own': 'Koristi to samo za vlastite tečajeve i na vlastitu odgovornost.',
     'import.warn.confirm': 'Stvarno nastaviti?',
+    'import.warn.dontShowAgain': 'Razumijem — ne prikazuj više ovo upozorenje',
     'import.warn.yes': 'Nastavi',
     'import.throttled': 'Chessable usporava promet (HTTP {status}) — čekam {seconds} s (pokušaj {attempt}/{max}) …',
     'import.fetchingStructure': 'Dohvaćam strukturu tečaja …',

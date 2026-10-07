@@ -145,3 +145,16 @@ test('BOOK_NOT_OWNED: alter Popup-Hinweis aus v1.64.x wird erkannt und weggeräu
   assert.match(popup, /ciAlert = takeCiAlert\(r && r\.rcCrawlAlert\)/);
   assert.match(popup, /ciAlert = takeCiAlert\(ch\.rcCrawlAlert\.newValue\)/);
 });
+
+// „Nie wieder zeigen" (v1.71.0, gewünscht 07.10.2026): der allgemeine Bannrisiko-Hinweis lässt sich dauerhaft
+// wegbestätigen — die Rückfrage nach einer unerwarteten Chessable-Antwort NICHT, und in den Einstellungen geht es zurück.
+test('Bannrisiko-Hinweis: „nie wieder zeigen" gilt dauerhaft, aber nie für die Rückfrage nach einer unerwarteten Antwort', () => {
+  const klick = popup.slice(popup.indexOf("CI_CRAWL.addEventListener('click'"), popup.indexOf("CI_IMPORTCAP.addEventListener('click'"));
+  assert.match(klick, /if \(banRiskAck && !ciAlert\) \{ startCiCrawl\(\); return; \}/);
+  const box = popup.slice(popup.indexOf('function showCiWarn'), popup.indexOf('async function startCiCrawl'));
+  assert.match(box, /if \(!ciAlert\) \{[\s\S]*import\.warn\.dontShowAgain/, 'Haken darf nur ohne offene Rückfrage erscheinen');
+  const start = popup.slice(popup.indexOf('async function startCiCrawl'), popup.indexOf('function ciSend('));
+  assert.match(start, /chrome\.storage\.local\.set\(\{ rcBanRiskAck: true \}\)/);
+  assert.match(popupHtml, /id="ban-risk-show"/, 'kein Weg zurück in den Einstellungen');
+  assert.match(popup, /chrome\.storage\.local\.remove\('rcBanRiskAck'\)/);
+});

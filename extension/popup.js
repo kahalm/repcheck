@@ -744,6 +744,25 @@ function takeCiAlert(h) {
   return h || null;
 }
 
+// Bannrisiko-Hinweis „nie wieder zeigen" (v1.71.0, gewünscht 07.10.2026): einmal mit Haken bestätigt, startet
+// „Kurs holen" danach direkt. Gilt NUR für den allgemeinen Hinweis — nach einer unerwarteten Chessable-Antwort
+// (rcCrawlAlert) kommt die Rückfrage trotzdem, das ist ein Einzelfall und genau die Warnung, die zählen soll.
+let banRiskAck = false;
+// Der Weg zurück: in den Einstellungen („Kurs holen") lässt sich der Hinweis wieder einschalten.
+const BAN_RISK_SHOW = document.getElementById('ban-risk-show');
+function paintBanRiskShow() { if (BAN_RISK_SHOW) BAN_RISK_SHOW.checked = !banRiskAck; }
+try { chrome.storage.local.get('rcBanRiskAck', (r) => { banRiskAck = !!(r && r.rcBanRiskAck); paintBanRiskShow(); }); } catch (e) { /* dann eben fragen */ }
+if (BAN_RISK_SHOW) {
+  paintBanRiskShow();
+  BAN_RISK_SHOW.addEventListener('change', () => {
+    banRiskAck = !BAN_RISK_SHOW.checked;
+    try {
+      if (banRiskAck) chrome.storage.local.set({ rcBanRiskAck: true });
+      else chrome.storage.local.remove('rcBanRiskAck');
+    } catch (e) { /* gilt dann nur für dieses Popup */ }
+  });
+}
+
 try {
   chrome.storage.local.get('rcCrawlAlert', (r) => { ciAlert = takeCiAlert(r && r.rcCrawlAlert); paintCiAlert(); });
   chrome.storage.onChanged.addListener((ch, area) => {
@@ -783,6 +802,19 @@ function showCiWarn() {
   absatz(t('import.warn.body'));
   absatz(t('import.warn.own'));
   absatz(t('import.warn.confirm'));
+  // „Nie wieder zeigen" — nur ohne offene Rückfrage nach einer unerwarteten Antwort (die soll jedes Mal kommen).
+  ciNeverBox = null;
+  if (!ciAlert) {
+    const label = document.createElement('label');
+    label.className = 'ci-never';
+    ciNeverBox = document.createElement('input');
+    ciNeverBox.type = 'checkbox';
+    ciNeverBox.id = 'ci-warn-never';
+    const text = document.createElement('span');
+    text.textContent = ' ' + t('import.warn.dontShowAgain');
+    label.append(ciNeverBox, text);
+    teile.push(label);
+  }
   const zeile = document.createElement('div');
   zeile.className = 'ci-alert-row';
   const weiter = document.createElement('button');
@@ -799,7 +831,16 @@ function showCiWarn() {
   CI_WARN.style.display = 'block';
 }
 
+// Haken „nicht mehr anzeigen" in der gerade offenen Bannrisiko-Box (null, wenn keine offen ist oder eine Rückfrage ansteht).
+let ciNeverBox = null;
+
 async function startCiCrawl() {
+  if (ciNeverBox && ciNeverBox.checked) {
+    banRiskAck = true;
+    paintBanRiskShow();
+    try { chrome.storage.local.set({ rcBanRiskAck: true }); } catch (e) { /* gilt dann nur für dieses Popup */ }
+  }
+  ciNeverBox = null;
   hideCiWarn();
   if (ciAlert) { try { chrome.storage.local.remove('rcCrawlAlert'); } catch (e) { /* egal */ } }
   CI_STATUS.textContent = t('import.starting');
@@ -901,7 +942,9 @@ async function initChessableImport() {
       ciTick();
       return;
     }
-    // Bannrisiko (+ ggf. Rückfrage nach vorherigem Stopp) — Bestätigung inline, siehe showCiWarn().
+    // Bannrisiko (+ ggf. Rückfrage nach vorherigem Stopp) — Bestätigung inline, siehe showCiWarn(). Hat der Nutzer
+    // den Hinweis mit „nie wieder zeigen" bestätigt, geht es direkt los — außer es steht eine Rückfrage an.
+    if (banRiskAck && !ciAlert) { startCiCrawl(); return; }
     showCiWarn();
   });
   CI_IMPORTCAP.addEventListener('click', async () => {
