@@ -666,7 +666,7 @@ const CI_CRAWL = document.getElementById('ci-crawl');
 const CI_IMPORTCAP = document.getElementById('ci-importcap');
 const CI_PROGRESS = document.getElementById('ci-progress');
 const CI_STATUS = document.getElementById('ci-status');
-let ciTabId = null, ciPoll = null, ciTargetInit = false;
+let ciTabId = null, ciPoll = null, ciTargetTouched = false;
 // Mitlaufender Timer im Status („… · 1:23"): Basistext + Crawl-Startzeit getrennt halten,
 // damit ein 1-s-Ticker die verstrichene Zeit unabhängig vom 1,5-s-State-Poll aktualisiert.
 let ciStatusBase = '', ciStartedAt = null, ciTimerInt = null;
@@ -840,10 +840,19 @@ function ciRender(st) {
     CI_CRAWL.disabled = !st.onCourse;
   }
   // Ziel-Radios einmalig aus dem Zustand vorbelegen, danach nicht gegen den User kämpfen.
-  if (!ciTargetInit && (st.target === 'book' || st.target === 'repertoire')) {
+  // Ziel-Radios folgen dem Zustand (dort steht auch die aus Chessables Kursart erkannte Wahl, die erst nach
+  // dem getCourse eintrifft), bis der Nutzer selbst umschaltet — danach nicht mehr gegen ihn kämpfen.
+  if (!ciTargetTouched && (st.target === 'book' || st.target === 'repertoire')) {
     const r = document.querySelector(`input[name="ci-target"][value="${st.target}"]`);
     if (r) r.checked = true;
-    ciTargetInit = true;
+  }
+  const hint = document.getElementById('ci-target-hint');
+  if (hint) {
+    const kindKey = 'import.courseType.' + st.courseType;
+    const targetKey = 'import.target.' + st.suggestedTarget;
+    hint.textContent = st.suggestedTarget
+      ? t('import.targetDetected', { kind: t(kindKey), target: t(targetKey) })
+      : '';
   }
   if (st.captured > 0) {
     CI_IMPORTCAP.style.display = 'block';
@@ -901,7 +910,7 @@ async function initChessableImport() {
     ciTick();
   });
   document.querySelectorAll('input[name="ci-target"]').forEach((r) =>
-    r.addEventListener('change', () => ciSend('setTarget', { target: ciSelectedTarget() })));
+    r.addEventListener('change', () => { ciTargetTouched = true; ciSend('setTarget', { target: ciSelectedTarget() }); }));
 
   ciPoll = setInterval(ciTick, 1500);
   window.addEventListener('unload', () => { if (ciPoll) clearInterval(ciPoll); if (ciTimerInt) clearInterval(ciTimerInt); });

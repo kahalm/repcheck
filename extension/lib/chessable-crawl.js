@@ -158,7 +158,19 @@
         for (const o of oids) allOids.push(o);
       }
     }
-    return { chapters, allOids };
+    const type = course && typeof (course.type || course.Type) === 'string' ? String(course.type || course.Type) : null;
+    return { chapters, allOids, type };
+  }
+
+  // Wohin gehoert ein Kurs? getCourse nennt die Kursart in `course.type`: an 80 gecachten Kursen gemessen
+  // (07.10.2026) „opening" (52), „tactics" (13), „endgame" (10), „strategy" (5). Eroeffnungen sind Linien
+  // zum Lernen → Repertoire, alles andere sind Aufgaben → Kurs/Buch. `isRepertoire` stand bei allen 80 auf
+  // false und sagt darueber nichts. Unbekannte Art → null (dann bleibt die Wahl beim Nutzer).
+  function targetForCourseType(type) {
+    const t = String(type || '').trim().toLowerCase();
+    if (t === 'opening') return 'repertoire';
+    if (t === 'tactics' || t === 'endgame' || t === 'strategy') return 'book';
+    return null;
   }
 
   // Kurs-/Kapitel-Fortschrittszahlen aus Struktur + importierter oid-Menge (rein, für Anzeige/Tests).
@@ -314,7 +326,7 @@
     };
   }
 
-  const api = { classifyChessableApi, parseChapterLids, parseLineOids, parseCourseNameFromGame, buildIngestChapters, parseCourseVariations, progressCounts,
+  const api = { classifyChessableApi, parseChapterLids, parseLineOids, parseCourseNameFromGame, buildIngestChapters, parseCourseVariations, targetForCourseType, progressCounts,
     pruneStructures, splitIngestChapters, INGEST_BATCH_BYTES,
     checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CHARS, BOOK_NOT_OWNED, isNotOwnedAlert,
     CRAWL_DELAY_DEFAULT, normalizeCrawlDelay, pickCrawlDelayMs };

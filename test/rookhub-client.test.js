@@ -82,7 +82,7 @@ test('request: ohne Verbindung, bei Laufzeitfehler und bei 401 ein Fehler mit le
 });
 
 // Die drei Import-Pfade aus chessable-activity.js, gegen den echten Client und ein gestubbtes chrome ausgeführt.
-function ladeImportPfade(antwort) {
+function ladeImportPfade(antwort, live = {}) {
   const src = lies('extension/chessable-activity.js');
   const schnitt = (von, bis) => {
     const a = src.indexOf(von), b = src.indexOf(bis, a);
@@ -96,8 +96,11 @@ function ladeImportPfade(antwort) {
   const { chrome, gesendet } = fakeChrome({ antwort });
   const client = Rookhub.create({ t, chrome });
   const readConfig = () => Rookhub.readConfig(chrome);
-  const fns = new Function('chrome', 't', 'readConfig', 'Rookhub', block + '\nreturn { ingest, ingestChunk, ingestLive };')(
-    chrome, t, readConfig, client);
+  // markImported (Live-Zaehler „Auf RookHub") haengt an ingestChunk/ingestLive: ohne geladene Struktur
+  // (progressBid null) tut es nichts.
+  const fns = new Function('chrome', 't', 'readConfig', 'Rookhub', 'progressBid', 'importedOids', 'annotateDom',
+    block + '\nreturn { ingest, ingestChunk, ingestLive };')(chrome, t, readConfig, client,
+    live.progressBid != null ? live.progressBid : null, live.importedOids || new Set(), live.annotateDom || (() => {}));
   return { fns, gesendet };
 }
 
@@ -157,4 +160,32 @@ test('Standard-Instanz: überall dieselbe Adresse wie in der Lib (sonst lehnt de
     assert.ok(m, 'Standard-Adresse nicht gefunden in ' + datei);
     assert.strictEqual(m[1], Rookhub.DEFAULT_URL, datei + ' weicht ab');
   }
+});
+
+// „Auf RookHub: 80/741" zaehlt waehrend des Holens mit (gemeldet 07.10.2026: der Zaehler stand, darunter liefen die
+// Linien). Was RookHub angenommen hat, gilt sofort als importiert — fuer den angezeigten Kurs, und nur fuer ihn.
+test('Live-Zaehler: angenommene Linien gelten sofort als importiert (Chunk und Live)', async () => {
+  const importedOids = new Set(['1']);
+  let markiert = 0;
+  const { fns } = ladeImportPfade({ ok: true, status: 200, body: { imported: 2 } },
+    { progressBid: '55720', importedOids, annotateDom: () => { markiert++; } });
+
+  await fns.ingestChunk('s', '55720', 'book', 'Kurs', { chapterJson: '{}', lines: ['a', null], lineOids: ['1', '2'] }, false);
+  assert.deepStrictEqual([...importedOids].sort(), ['1', '2']);
+  await fns.ingestLive('55720', 'repertoire', 'Kurs', [{ chapterJson: '{}', lines: ['x'], lineOids: ['3'] }, { lineOids: [4] }]);
+  assert.deepStrictEqual([...importedOids].sort(), ['1', '2', '3', '4']);
+  assert.strictEqual(markiert, 2, 'die Marker an der Seite werden je neuer Lieferung nachgezogen');
+
+  await fns.ingestChunk('s', '55720', 'book', 'Kurs', null, true);   // Abschluss-Chunk ohne Kapitel
+  assert.strictEqual(markiert, 2, 'nichts Neues → nichts neu zeichnen');
+});
+
+test('Live-Zaehler: ein anderer Kurs und ein gescheitertes Paket aendern nichts', async () => {
+  const importedOids = new Set();
+  const fremd = ladeImportPfade({ ok: true, status: 200, body: {} }, { progressBid: '1', importedOids });
+  await fremd.fns.ingestLive('2', 'repertoire', 'K', [{ lineOids: ['9'] }]);
+  assert.strictEqual(importedOids.size, 0);
+  const kaputt = ladeImportPfade({ ok: false, status: 500, body: null }, { progressBid: '1', importedOids });
+  await assert.rejects(kaputt.fns.ingestLive('1', 'repertoire', 'K', [{ lineOids: ['9'] }]));
+  assert.strictEqual(importedOids.size, 0, 'nur was RookHub angenommen hat, zaehlt');
 });

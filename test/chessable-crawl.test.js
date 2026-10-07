@@ -208,3 +208,21 @@ test('parseCourseNameFromGame liest game.name (Kursname in jeder Linie) und vert
   assert.equal(parseCourseNameFromGame(null), null);
   assert.equal(parseCourseNameFromGame('{"game":{"name":"' + 'x'.repeat(300) + '"}}').length, 200);
 });
+
+// Kurs oder Repertoire? getCourse nennt die Kursart (an 80 gecachten Kursen gemessen, 07.10.2026).
+test('targetForCourseType: Eroeffnung → Repertoire, Taktik/Endspiel/Strategie → Kurs, Unbekanntes → keine Wahl', () => {
+  const { targetForCourseType } = require('../extension/lib/chessable-crawl.js');
+  assert.strictEqual(targetForCourseType('opening'), 'repertoire');
+  assert.strictEqual(targetForCourseType('Opening '), 'repertoire');
+  for (const t of ['tactics', 'endgame', 'strategy']) assert.strictEqual(targetForCourseType(t), 'book', t);
+  for (const t of [null, undefined, '', 'video', 42]) assert.strictEqual(targetForCourseType(t), null, String(t));
+});
+
+test('parseCourseVariations liest die Kursart mit (isRepertoire sagt nichts darueber)', () => {
+  const { parseCourseVariations } = require('../extension/lib/chessable-crawl.js');
+  const r = parseCourseVariations(JSON.stringify({ course: { type: 'opening', isRepertoire: false,
+    data: [{ id: 3, variations: [{ oid: 50402899, type: 'trainable' }] }] } }));
+  assert.strictEqual(r.type, 'opening');
+  assert.deepStrictEqual(r.allOids, ['50402899']);
+  assert.strictEqual(parseCourseVariations(JSON.stringify({ course: { data: [] } })).type, null);
+});

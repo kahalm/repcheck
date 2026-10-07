@@ -1242,8 +1242,26 @@
   // extra: beim finalen Chunk eines vollständig geholten Kurses { courseJson, complete }; bei einem Abbruch
   // { aborted: true } (schließt den Eintrag als abgebrochen, die schon importierten Kapitel bleiben).
   async function ingestChunk(sessionId, bid, target, courseName, chapter, final, extra) {
-    return rookhubRequest('/api/extension/chessable/ingest/chunk',
+    const res = await rookhubRequest('/api/extension/chessable/ingest/chunk',
       Object.assign({ sessionId, bid, target, courseName, chapter, final }, extra || {}));
+    markImported(bid, chapter ? [chapter] : []);
+    return res;
+  }
+
+  // „Auf RookHub: 80/741" zaehlt live mit: was RookHub gerade angenommen hat, gilt ab sofort als importiert.
+  // Vorher kam die oid-Menge nur beim Seitenaufruf bzw. nach 60 s neu, und waehrend des Holens liefen
+  // darunter die Linien, waehrend der Zaehler stand (gemeldet 07.10.2026).
+  function markImported(bid, chapters) {
+    if (!bid || String(bid) !== String(progressBid)) return;
+    let neu = 0;
+    for (const ch of chapters || []) {
+      for (const oid of (ch && ch.lineOids) || []) {
+        if (oid == null || importedOids.has(String(oid))) continue;
+        importedOids.add(String(oid));
+        neu++;
+      }
+    }
+    if (neu) { try { annotateDom(); } catch (e) { /* Marker sind best effort */ } }
   }
 
   const CRAWL_BACKOFF_BASE_MS = 3000;   // Basis des Backoffs bei Drosselung (6/12/24/30 s, s. chessableGet); der normale Takt kommt aus crawlPauseMs()
@@ -1727,7 +1745,9 @@
   }
 
   async function ingestLive(bid, target, courseName, chapters) {
-    return rookhubRequest('/api/extension/chessable/ingest/live', { bid, target, courseName, chapters });
+    const res = await rookhubRequest('/api/extension/chessable/ingest/live', { bid, target, courseName, chapters });
+    markImported(bid, chapters);
+    return res;
   }
 
   // Anhängen in Portionen (Crawl.splitIngestChapters): eine einzelne Anfrage je Import lief am Proxy in 413, siehe
@@ -1827,6 +1847,7 @@
         const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}&includeVariations=true`);
         progressStruct = Crawl.parseCourseVariations(courseText);
         saveStructure(bid, progressStruct.chapters);   // für die Zähler der Startseite merken
+        applySuggestedTarget();
       }
       const prog = await fetchImportedOids(bid);
       importedOids = new Set((prog && prog.oids) || []);
@@ -2001,6 +2022,18 @@
   // Zustand per chrome.tabs.sendMessage ab und löst Crawl / Mitschnitt-Import / Live-Toggle /
   // Ziel-Umschaltung aus. Die In-Page-Marker (✓/○ an Chessables Linien) bleiben (annotateDom).
   let importTarget = 'repertoire';   // vom Popup gesetzt (repertoire|book)
+  // Hat der Nutzer das Ziel fuer diesen Kurs selbst gewaehlt? Dann gewinnt seine Wahl gegen die erkannte Kursart.
+  let targetChosenFor = null;
+
+  // Ziel aus Chessables Kursart (getCourse `type`, siehe Crawl.targetForCourseType) — nur solange der Nutzer
+  // fuer diesen Kurs nichts anderes gewaehlt hat.
+  function suggestedTarget() {
+    return progressStruct && Crawl ? Crawl.targetForCourseType(progressStruct.type) : null;
+  }
+  function applySuggestedTarget() {
+    const s = suggestedTarget();
+    if (s && String(targetChosenFor) !== String(progressBid)) importTarget = s;
+  }
   let lastStatus = '';
 
   // Parameter bewusst `txt`, nicht `t` — `t` ist der Übersetzer-Wrapper (sonst verdeckt).
@@ -2025,6 +2058,9 @@
       crawling,
       crawlStartedAt,
       target: importTarget,
+      // Erkannte Kursart (opening/tactics/endgame/strategy) und das Ziel, das daraus folgt — fuers Popup.
+      courseType: (progressStruct && String(progressBid) === String(bid) && progressStruct.type) || null,
+      suggestedTarget: String(progressBid) === String(bid) ? suggestedTarget() : null,
       status: lastStatus,
       progress: progressSummary(),
     };
@@ -2040,7 +2076,7 @@
         sendResponse(importState());
         break;
       case 'setTarget':
-        if (msg.target === 'book' || msg.target === 'repertoire') importTarget = msg.target;
+        if (msg.target === 'book' || msg.target === 'repertoire') { importTarget = msg.target; targetChosenFor = pageCourseId(); }
         sendResponse(importState());
         break;
       case 'crawl':
