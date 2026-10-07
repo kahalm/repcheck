@@ -1482,6 +1482,52 @@
   // Was sich NICHT ändert: der Transportweg. Das Buch streamt weiter über die Chunk-Sitzung
   // (`ingest/chunk`) — daran hängen Import-Eintrag, Benachrichtigung und der Watchdog; das Repertoire
   // hängt über `ingest/live` an. Das ist ein Unterschied im Lebenszyklus, keine doppelte Logik.
+  // ---- Kursstruktur-Zwischenspeicher (v1.72.0) ----
+  // getCourse und die getList-Antworten je Kapitel bleiben LIST_CACHE_TTL_MS lang im IndexedDB dieser Seite liegen. Ein
+  // zweiter Versuch (nach Abbruch, Neuladen, Update der Erweiterung) muss sie dann nicht erneut bei Chessable holen — bei
+  // 36 Kapiteln mit Pause waren das jedes Mal rund zwei Minuten und 37 Anfragen (gewünscht 07.10.2026). Bewusst
+  // IndexedDB statt chrome.storage.local: dessen 10-MB-Grenze reicht für große Kurse nicht, und ein zusätzliches
+  // Recht (unlimitedStorage) hieße neue Zustimmung im Store. Die Antworten sind Chessables eigene Kursdaten, keine
+  // Geheimnisse. Jeder Fehler (privater Modus, gesperrter Speicher) heißt schlicht: nichts gespeichert, neu holen.
+  const LIST_CACHE_DB = 'RepCheckCrawlCache';
+  const LIST_CACHE_STORE = 'responses';
+  const LIST_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  let listCacheDbPromise = null;
+  function listCacheDb() {
+    if (!listCacheDbPromise) {
+      listCacheDbPromise = new Promise((resolve) => {
+        try {
+          const req = indexedDB.open(LIST_CACHE_DB, 1);
+          req.onupgradeneeded = () => { try { req.result.createObjectStore(LIST_CACHE_STORE); } catch (e) { /* schon da */ } };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+          req.onblocked = () => resolve(null);
+        } catch (e) { resolve(null); }
+      });
+    }
+    return listCacheDbPromise;
+  }
+  async function listCacheGet(key) {
+    const db = await listCacheDb();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      try {
+        const req = db.transaction(LIST_CACHE_STORE, 'readonly').objectStore(LIST_CACHE_STORE).get(key);
+        req.onsuccess = () => {
+          const v = req.result;
+          resolve(v && typeof v.text === 'string' && Date.now() - (v.at || 0) < LIST_CACHE_TTL_MS ? v.text : null);
+        };
+        req.onerror = () => resolve(null);
+      } catch (e) { resolve(null); }
+    });
+  }
+  async function listCachePut(key, text) {
+    const db = await listCacheDb();
+    if (!db || typeof text !== 'string') return;
+    try { db.transaction(LIST_CACHE_STORE, 'readwrite').objectStore(LIST_CACHE_STORE).put({ text, at: Date.now() }, key); }
+    catch (e) { /* voll oder gesperrt — dann eben nicht */ }
+  }
+
   async function crawlAndImport(target) {
     if (crawling) return; crawling = true; crawlStartedAt = Date.now(); cancelRequested = false;
     // Nur auf einer Kursseite (S1-012): sonst hieße bid die erste Kurskarte der Startseite.
@@ -1548,7 +1594,11 @@
       const partial = skipKnown && already.size > 0;
 
       setStatus(t('import.fetchingStructure'));
-      const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
+      let courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await listCacheGet(`${bid}:course`);
+      if (courseText == null) {
+        courseText = await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
+        listCachePut(`${bid}:course`, courseText);
+      }
       const lids = Crawl.parseChapterLids(courseText);
       if (!lids.length) throw new Error(t('err.noChapters'));
       const lists = [];
@@ -1559,13 +1609,18 @@
         // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
         setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
         const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
-        const listText = fromCapture ? cap.lists[lid] : await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
+        let listText = fromCapture ? cap.lists[lid] : await listCacheGet(`${bid}:${lid}`);
+        const fromCache = !fromCapture && listText != null;
+        if (listText == null) {
+          listText = await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
+          listCachePut(`${bid}:${lid}`, listText);
+        }
         harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
         const oids = Crawl.parseLineOids(listText);
         lists.push({ lid, listText, oids });
         total += oids.length;
         toFetch += skipKnown ? oids.filter(o => !already.has(String(o))).length : oids.length;
-        if (!fromCapture) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf, nicht für Mitgeschnittenes
+        if (!fromCapture && !fromCache) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf
       }
       const courseName = bestCourseName(bid);
 

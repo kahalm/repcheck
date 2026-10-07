@@ -137,12 +137,12 @@ test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien i
 const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
 
 // beimAnhaengen(nr, oids) läuft vor jedem ingestLiveInParts-Aufruf (nr ab 1); wirft es, scheitert dieser Anhang.
-function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000, beiGame, kurs = KURS, beimAnhaengen, beimChunk } = {}) {
+function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000, beiGame, kurs = KURS, beimAnhaengen, beimChunk, cache = new Map() } = {}) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
   const von = src.indexOf('  async function crawlAndImport(');
   const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
   assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
-  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [] };
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [] };
   let api;
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
@@ -153,6 +153,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
     setStatus: (s) => log.status.push(s),
     cap: { bid: null, courseText: null, lists: {}, games: {}, oidToLid: {} },
     chessableGetChecked: async (p) => {
+      log.abrufe.push(p.split('?')[0]);
       if (p.startsWith('getCourse')) return JSON.stringify({ course: { data: Object.keys(kurs).map((id) => ({ id: Number(id) })) } });
       if (p.startsWith('getList')) {
         const lid = /lid=(\d+)/.exec(p)[1];
@@ -197,6 +198,8 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
     showNotOwned: () => 'nicht im Konto',
     REPERTOIRE_APPEND_EVERY_MS: everyMs,
     BOOK_PART_EVERY_MS: bookEveryMs,
+    listCacheGet: async (k) => (cache.has(k) ? cache.get(k) : null),
+    listCachePut: async (k, v) => { cache.set(k, v); },
     REPERTOIRE_APPEND_MAX_FAILS: 2,
     REPERTOIRE_APPEND_RETRY_MS: 0,
   };
@@ -351,4 +354,18 @@ test('S1-006: scheitert der Schluss-Anhang einmal, gelingt die Wiederholung — 
   assert.deepStrictEqual(log.angehaengt, ['11', '12', '13', '21', '22']);
   assert.ok(!log.status.some((s) => s.startsWith('import.error')), 'Status meldet einen Fehler, obwohl alles gespeichert ist');
   assert.match(log.status[log.status.length - 1], /^import\.doneAppended \{"count":5\}/);
+});
+
+// Gewünscht 07.10.2026: ein zweiter Versuch soll die Kapitellisten nicht wieder bei Chessable holen.
+test('Kursstruktur-Cache: der zweite Lauf holt getCourse und getList nicht noch einmal — nur die Linien', async () => {
+  const cache = new Map();
+  const erster = ladeCrawl({ cache });
+  await erster.crawl();
+  assert.deepStrictEqual(erster.log.abrufe.filter((a) => a !== 'getGame'), ['getCourse', 'getList', 'getList']);
+  assert.ok(cache.has('4711:course') && cache.has('4711:1') && cache.has('4711:2'));
+
+  const zweiter = ladeCrawl({ cache });
+  await zweiter.crawl();
+  assert.deepStrictEqual(zweiter.log.abrufe.filter((a) => a !== 'getGame'), [], 'Struktur kam erneut von Chessable');
+  assert.ok(zweiter.log.abrufe.includes('getGame'), 'die Linien selbst werden weiter geholt');
 });
