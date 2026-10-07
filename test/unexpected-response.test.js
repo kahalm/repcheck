@@ -158,3 +158,11 @@ test('Bannrisiko-Hinweis: „nie wieder zeigen" gilt dauerhaft, aber nie für di
   assert.match(popupHtml, /id="ban-risk-show"/, 'kein Weg zurück in den Einstellungen');
   assert.match(popup, /chrome\.storage\.local\.remove\('rcBanRiskAck'\)/);
 });
+
+// Seit RookHub 0.695.1 (07.10.2026) geht JEDE unerwartete Antwort als Admin-Nachricht raus — die Karte sagt das dann
+// auch ohne Sperr-Verdacht, statt den Hinweis an `banned` zu koppeln.
+test('Karte: „Admins benachrichtigt" hängt an adminNotified, nicht an einer Sperre', () => {
+  const karte = activity.slice(activity.indexOf('function showCrawlAlert('), activity.indexOf('async function handleUnexpected('));
+  assert.match(karte, /if \(h\.adminNotified\) absatz\(t\('import\.unexpected\.adminsNotified'\)\);/);
+  assert.doesNotMatch(karte, /\+ \(h\.adminNotified \?/);
+});

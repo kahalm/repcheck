@@ -1396,9 +1396,10 @@
     absatz(t('import.unexpected.title'), { fontWeight: '600', marginBottom: '4px' });
     absatz(t('import.unexpected.body'));
     if (h.banned) {
-      absatz((h.message ? t('import.unexpected.bannedMessage', { message: h.message }) : t('import.unexpected.bannedPage'))
-        + (h.adminNotified ? ' ' + t('import.unexpected.adminsNotified') : ''));
+      absatz(h.message ? t('import.unexpected.bannedMessage', { message: h.message }) : t('import.unexpected.bannedPage'));
     }
+    // Seit RookHub 0.695.1 bekommen die Admins JEDE unerwartete Antwort gemeldet, nicht nur eine Sperre (07.10.2026).
+    if (h.adminNotified) absatz(t('import.unexpected.adminsNotified'));
     if (h.saved) absatz(t('import.unexpected.saved', { count: h.saved }));
     absatz(h.detail, { color: '#9aa4b2', fontSize: '11px', wordBreak: 'break-word' });
     const row = document.createElement('div');
