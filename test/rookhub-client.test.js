@@ -20,6 +20,7 @@ function fakeChrome({ cfg = { url: 'https://rookhub.example/', token: 'rkh_x' },
   const chrome = {
     storage: { local: { get: (key, cb) => cb({ rookhubConfig: cfg }) } },
     runtime: {
+      id: 'repcheck-test',   // ein lebendes Content-Script hat eine Extension-Id; abgehaengt fehlt sie
       lastError: null,
       sendMessage: (msg, cb) => {
         gesendet.push(msg);
@@ -74,8 +75,8 @@ test('request: ohne Verbindung, bei Laufzeitfehler und bei 401 ein Fehler mit le
   await assert.rejects(Rookhub.create({ t, chrome: ohne.chrome }).request('/x', { body: {} }),
     (e) => e.notConnected === true && e.message === 'err.notConnected');
   assert.strictEqual(ohne.gesendet.length, 0, 'ohne Token darf nichts rausgehen');
-  const weg = fakeChrome({ lastError: 'Extension context invalidated.' });
-  await assert.rejects(Rookhub.create({ t, chrome: weg.chrome }).request('/x'), /Extension context invalidated/);
+  const weg = fakeChrome({ lastError: 'Message port closed.' });
+  await assert.rejects(Rookhub.create({ t, chrome: weg.chrome }).request('/x'), /Message port closed/);
   const tot = fakeChrome({ antwort: { ok: false, status: 401, body: null } });
   await assert.rejects(Rookhub.create({ t, chrome: tot.chrome }).request('/x', { body: {} }),
     (e) => e.tokenInvalid === true && e.message === 'err.tokenInvalid');
@@ -188,4 +189,25 @@ test('Live-Zaehler: ein anderer Kurs und ein gescheitertes Paket aendern nichts'
   const kaputt = ladeImportPfade({ ok: false, status: 500, body: null }, { progressBid: '1', importedOids });
   await assert.rejects(kaputt.fns.ingestLive('1', 'repertoire', 'K', [{ lineOids: ['9'] }]));
   assert.strictEqual(importedOids.size, 0, 'nur was RookHub angenommen hat, zaehlt');
+});
+
+// Gemeldet 07.10.2026: „Error: Not connected to RookHub" mitten in „Kurs holen" — die Verbindung war in Ordnung, die
+// Erweiterung wurde waehrend des Laufs aktualisiert, und das abgehaengte Content-Script konnte den Speicher nicht mehr
+// lesen. Das ist eine andere Meldung mit einem anderen Ausweg (Seite neu laden).
+test('request: abgehaengtes Content-Script (Erweiterung neu geladen) meldet das, nicht „nicht verbunden"', async () => {
+  const ab = fakeChrome();
+  delete ab.chrome.runtime.id;
+  ab.chrome.storage.local.get = () => { throw new Error('Extension context invalidated.'); };
+  await assert.rejects(Rookhub.create({ t, chrome: ab.chrome }).request('/x', { body: {} }),
+    (e) => e.contextInvalidated === true && e.message === 'err.extensionReloaded' && !e.notConnected);
+  assert.strictEqual(ab.gesendet.length, 0);
+
+  // Erst beim Senden abgehaengt: der Worker antwortet mit lastError „context invalidated".
+  const spaet = fakeChrome({ lastError: 'Extension context invalidated.' });
+  await assert.rejects(Rookhub.create({ t, chrome: spaet.chrome }).request('/x', { body: {} }),
+    (e) => e.contextInvalidated === true && e.message === 'err.extensionReloaded');
+
+  // Wirklich ohne Token bleibt es „nicht verbunden".
+  const ohne = fakeChrome({ cfg: { url: 'https://rookhub.example' } });
+  await assert.rejects(Rookhub.create({ t, chrome: ohne.chrome }).request('/x', { body: {} }), (e) => e.notConnected === true);
 });

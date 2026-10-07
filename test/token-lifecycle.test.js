@@ -162,6 +162,7 @@ function ladeRevoke(antwort) {
   const gesendet = [];
   const chrome = {
     runtime: {
+      id: 'repcheck-test',
       lastError: null,
       sendMessage: (msg, cb) => {
         gesendet.push(msg);

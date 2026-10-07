@@ -16,6 +16,15 @@
   const DEFAULT_URL = 'https://rookhub.oberschmid.homes';
 
   function baseUrl(url) { return String(url || '').replace(/\/$/, ''); }
+
+  // Wurde die Erweiterung aktualisiert oder neu geladen, waehrend das Content-Script lief, ist es abgehaengt:
+  // `chrome.runtime.id` fehlt, und jeder Zugriff auf Speicher oder Worker wirft „Extension context invalidated".
+  // Vorher wurde daraus „Nicht mit RookHub verbunden" (gemeldet 07.10.2026 mitten in „Kurs holen") — die
+  // Verbindung war aber in Ordnung, nur die Seite musste neu geladen werden.
+  function contextInvalidated(c, error) {
+    try { if (!c || !c.runtime || !c.runtime.id) return true; } catch (e) { return true; }
+    return /context invalidated/i.test(String((error && error.message) || error || ''));
+  }
   function isConnected(cfg) { return !!(cfg && cfg.url && cfg.token); }
 
   // Die Config liegt extension-weit in chrome.storage.local (`rookhubConfig`, geschrieben von Popup und Worker).
@@ -76,15 +85,25 @@
 
     // Wirft bei fehlender Verbindung (`notConnected`), Laufzeitfehler und HTTP-Fehler (`status`, `tokenInvalid`);
     // liefert sonst den Antwortrumpf.
+    function reloadError() {
+      const err = new Error(t('err.extensionReloaded'));
+      err.contextInvalidated = true;
+      return err;
+    }
+
     async function request(path, opts) {
       const ro = opts || {};
+      if (contextInvalidated(chromeApi())) throw reloadError();
       const cfg = ro.cfg || await readConfig(chromeApi());
+      if (!cfg && contextInvalidated(chromeApi())) throw reloadError();
       if (!isConnected(cfg)) {
         const err = new Error(t('err.notConnected'));
         err.notConnected = true;
         throw err;
       }
-      const resp = await send(buildMessage(cfg, path, ro));
+      let resp;
+      try { resp = await send(buildMessage(cfg, path, ro)); }
+      catch (e) { if (contextInvalidated(chromeApi(), e)) throw reloadError(); throw e; }
       if (!resp || !resp.ok) throw responseError(resp, t);
       return resp.body;
     }
@@ -92,7 +111,7 @@
     return { request, send, readConfig: () => readConfig(chromeApi()) };
   }
 
-  const api = { DEFAULT_URL, baseUrl, isConnected, readConfig, buildMessage, responseError, create };
+  const api = { DEFAULT_URL, baseUrl, contextInvalidated, isConnected, readConfig, buildMessage, responseError, create };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckRookhub = api;
 })(typeof self !== 'undefined' ? self : this);
