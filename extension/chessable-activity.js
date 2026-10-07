@@ -1880,7 +1880,7 @@
         const courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await chessableGet(`getCourse?bid=${bid}&includeVariations=true`);
         progressStruct = Crawl.parseCourseVariations(courseText);
         saveStructure(bid, progressStruct.chapters);   // für die Zähler der Startseite merken
-        applySuggestedTarget();
+        applySuggestedTarget(bid);
       }
       const prog = await fetchImportedOids(bid);
       importedOids = new Set((prog && prog.oids) || []);
@@ -2063,9 +2063,12 @@
   function suggestedTarget() {
     return progressStruct && Crawl ? Crawl.targetForCourseType(progressStruct.type) : null;
   }
-  function applySuggestedTarget() {
+  // `bid` ausdrücklich: beim ersten Laden ist progressBid noch nicht gesetzt — und „null" gegen „null" verglichen hieß
+  // „der Nutzer hat für diesen Kurs gewählt". Ergebnis in 1.70.0: die Erkennung stand im Popup, das Ziel blieb auf
+  // Repertoire (gemeldet 07.10.2026 an einem Taktikkurs).
+  function applySuggestedTarget(bid) {
     const s = suggestedTarget();
-    if (s && String(targetChosenFor) !== String(progressBid)) importTarget = s;
+    if (s && (targetChosenFor == null || String(targetChosenFor) !== String(bid))) importTarget = s;
   }
   let lastStatus = '';
 

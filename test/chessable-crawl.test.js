@@ -226,3 +226,22 @@ test('parseCourseVariations liest die Kursart mit (isRepertoire sagt nichts daru
   assert.deepStrictEqual(r.allOids, ['50402899']);
   assert.strictEqual(parseCourseVariations(JSON.stringify({ course: { data: [] } })).type, null);
 });
+
+// Gemeldet 07.10.2026: „Laut Chessable ein Taktik-Kurs → Kurs/Buch" stand im Popup, die Auswahl blieb auf Repertoire.
+// applySuggestedTarget verglich beim ersten Laden null mit null und hielt das für eine eigene Wahl des Nutzers.
+test('Ziel aus der Kursart: greift beim ersten Laden, eine eigene Wahl für DIESEN Kurs gewinnt, für einen anderen nicht', () => {
+  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  const von = src.indexOf('  let targetChosenFor = null;');
+  const bis = src.indexOf('  let lastStatus', von);
+  const block = src.slice(von, bis);
+  const lade = (type) => new Function('Crawl', 'progressStruct',
+    'let importTarget = "repertoire";\n' + block
+      + '\nreturn { anwenden: (bid) => { applySuggestedTarget(bid); return importTarget; }, waehle: (bid, z) => { targetChosenFor = bid; importTarget = z; } };')(
+    require('../extension/lib/chessable-crawl.js'), { type });
+  assert.strictEqual(lade('tactics').anwenden('27821'), 'book', 'erstes Laden: Erkennung muss greifen');
+  assert.strictEqual(lade('opening').anwenden('27821'), 'repertoire');
+  const k = lade('tactics');
+  k.waehle('27821', 'repertoire');
+  assert.strictEqual(k.anwenden('27821'), 'repertoire', 'eigene Wahl für diesen Kurs gewinnt');
+  assert.strictEqual(k.anwenden('99999'), 'book', 'eine Wahl für einen anderen Kurs zählt hier nicht');
+});
