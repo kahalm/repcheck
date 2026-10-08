@@ -168,11 +168,28 @@ function lichessGameId(pathname) {
   return m[1];
 }
 
+// Kopfdaten einer Partie (chess.com-Callback, lichess-Export) mit Wiederholung holen. Direkt nach Partieende liefern die
+// Plattformen sie manchmal noch nicht — RookHub bekam dann „?" gegen „?" (Prod-Partie 63, 08.10.2026). `fetchOnce` gibt
+// ein Objekt mit white/black oder null; wiederholt wird, solange Namen fehlen, höchstens `tries`-mal mit `delayMs` Pause.
+// Ergebnis: der erste Treffer mit beiden Namen, sonst der letzte brauchbare (oder null). `sleep` ist für Tests einsetzbar.
+async function fetchMetaWithRetry(fetchOnce, { tries = 3, delayMs = 1500, sleep } = {}) {
+  const wait = sleep || ((ms) => new Promise(r => setTimeout(r, ms)));
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    if (i > 0) await wait(delayMs);
+    let got = null;
+    try { got = await fetchOnce(); } catch (e) { got = null; }
+    if (got) last = got;
+    if (got && got.white && got.black) return got;
+  }
+  return last;
+}
+
 // Node/CommonJS-Export (im Browser-Content-Script ist `module` undefiniert → übersprungen).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, fetchMetaWithRetry,
   };
 }
 
@@ -181,6 +198,6 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof self !== 'undefined') {
   self.RepCheckLib = Object.assign(self.RepCheckLib || {}, {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, fetchMetaWithRetry,
   });
 }

@@ -312,6 +312,7 @@ const RC_MESSAGES = {
     'overview.analyzingPct': 'Analysis running on RookHub ({pct} %) — open the game',
     'tools.saved': 'Game saved',
     'tools.savedWithLink': 'Saved · share link copied',
+    'tools.savedNoNames': 'Saved, but without player names — the site did not provide them yet. Click again in a moment to fill them in.',
 
     // — ✓/○-Marker an Chessables eigener Linienliste —
     'progress.onRookhub': 'On RookHub',
@@ -626,6 +627,7 @@ const RC_MESSAGES = {
     'overview.analyzingPct': 'Analyse läuft in RookHub ({pct} %) — Partie öffnen',
     'tools.saved': 'Partie gespeichert',
     'tools.savedWithLink': 'Gespeichert · Teilen-Link kopiert',
+    'tools.savedNoNames': 'Gespeichert, aber ohne Spielernamen — die Seite lieferte sie noch nicht. In einem Moment noch einmal klicken, dann werden sie nachgetragen.',
     'progress.onRookhub': 'Auf RookHub',
     'progress.notOnRookhub': 'Noch nicht auf RookHub',
     'progress.countTitle': 'Auf RookHub: {done} von {total}',
@@ -940,6 +942,7 @@ const RC_MESSAGES = {
     'overview.analyzingPct': 'Analiza je u tijeku na RookHubu ({pct} %) — otvori partiju',
     'tools.saved': 'Partija spremljena',
     'tools.savedWithLink': 'Spremljeno · poveznica za dijeljenje kopirana',
+    'tools.savedNoNames': 'Spremljeno, ali bez imena igrača — stranica ih još nije dala. Klikni ponovno za trenutak da se dopune.',
     'err.noBackground': 'nema odgovora od background workera',
     'err.tokenInvalid': 'Token nije valjan ili je istekao.',
     'err.http': 'HTTP {status}',

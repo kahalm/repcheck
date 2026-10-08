@@ -481,9 +481,9 @@ test('die Bedenkzeit reist von beiden Plattformen mit (RookHub >= 0.526.0 zeigt 
   const save = content.slice(content.indexOf('async function rookhubSaveGame('), content.indexOf('async function rookhubKnownGames('));
   assert.match(save, /timeControl: meta\.timeControl/);
   // chess.com nennt sie in den pgnHeaders seiner Callback-Antwort, lichess im Export-PGN.
-  const cc = content.slice(content.indexOf('async function fetchChessComHeaders('), content.indexOf('async function fetchLichessGame('));
+  const cc = content.slice(content.indexOf('async function fetchChessComHeadersOnce('), content.indexOf('function fetchLichessGame('));
   assert.match(cc, /timeControl: h\.TimeControl/);
-  const li = content.slice(content.indexOf('async function fetchLichessGame('), content.indexOf('async function getGameMeta('));
+  const li = content.slice(content.indexOf('async function fetchLichessGameOnce('), content.indexOf('async function getGameMeta('));
   assert.match(li, /hdr\('TimeControl'\)/);
 });
 

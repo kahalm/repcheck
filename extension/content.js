@@ -47,7 +47,7 @@
   // echten lichess-Partie-Adressen (nie aus /analysis, /training …).
   const {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, fetchMetaWithRetry,
   } = (self.RepCheckLib || {});
 
   // ─── Sprache (geteilte Tabelle, extension/lib/i18n.js) ──────────────
@@ -689,7 +689,12 @@
   // Kanonische Header (Spieler/Ergebnis/Datum) zu einer chess.com-Game-ID über
   // die same-origin-Callback-API holen — die Analyse-Seite hat sie NICHT im
   // og:title. Best-effort: bei Fehler null, dann greift der og:title-Fallback.
-  async function fetchChessComHeaders(id, isDaily) {
+  // Mit Wiederholung (fetchMetaWithRetry, Shared-Core): direkt nach Partieende war die Antwort manchmal noch leer.
+  function fetchChessComHeaders(id, isDaily) {
+    return fetchMetaWithRetry ? fetchMetaWithRetry(() => fetchChessComHeadersOnce(id, isDaily)) : fetchChessComHeadersOnce(id, isDaily);
+  }
+
+  async function fetchChessComHeadersOnce(id, isDaily) {
     try {
       const kind = isDaily ? 'daily' : 'live';
       const resp = await fetch(`https://www.chess.com/callback/${kind}/game/${id}`, { headers: { 'Accept': 'application/json' } });
@@ -720,7 +725,11 @@
   // lichess-Game-ID über die same-origin Export-API holen. Zuverlässiger als der og:title
   // (Namen/Elo) UND die DOM-Zugauslese (die auf Analyse-/Study-Ansichten „…"-Lücken liefern
   // kann). Best-effort: bei Fehler null, dann greifen og:title + DOM-Züge als Fallback.
-  async function fetchLichessGame(id) {
+  function fetchLichessGame(id) {
+    return fetchMetaWithRetry ? fetchMetaWithRetry(() => fetchLichessGameOnce(id)) : fetchLichessGameOnce(id);
+  }
+
+  async function fetchLichessGameOnce(id) {
     try {
       const resp = await fetch(`https://lichess.org/game/export/${id}?clocks=false&evals=false&literate=false`,
         { headers: { 'Accept': 'application/x-chess-pgn' } });
@@ -1173,8 +1182,11 @@
           try { await navigator.clipboard.writeText(link); copied = true; }
           catch (e) { /* Clipboard evtl. ohne User-Geste blockiert */ }
         }
-        btn.textContent = copied ? '🔗' : '✓';
-        btn.title = copied ? t('tools.savedWithLink') : t('tools.saved');
+        // Ohne Spielernamen gespeichert (Plattform lieferte auch nach Wiederholungen nichts): sichtbar sagen statt
+        // still „?" gegen „?" — ein zweiter Klick später trägt sie nach (RookHub ≥ 0.725.3 heilt fehlende Kopfdaten).
+        const noNames = !meta.white || !meta.black;
+        btn.textContent = noNames ? '⚠' : copied ? '🔗' : '✓';
+        btn.title = noNames ? t('tools.savedNoNames') : copied ? t('tools.savedWithLink') : t('tools.saved');
         reset('💾', t('tools.saveGame'));
       } catch (e) {
         btn.textContent = '✗';
