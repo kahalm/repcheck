@@ -120,13 +120,17 @@ Chrome-Store-Extensions sind in Edge automatisch installierbar. Eigene Edge-Subm
 repcheck/
 ├── extension/                    # Browser-Extension (MV3)
 │   ├── manifest.json
-│   ├── content.js                # Hauptlogik, RookHub-Fetches über Background
+│   ├── content.js                # Hauptlogik, RookHub-Fetches über Background (Teil-Dateien in content/)
+│   ├── content/                  # Teil-Dateien von content.js (Speicher, RookHub-Aufrufe, Metadaten, Stylesheet, Übersicht, Panel, Knöpfe)
 │   ├── chessable-token.js        # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
 │   ├── chessable-activity.js     # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → RookHub
+│   ├── chessable-activity/       # Teil-Dateien davon (Trainingszeit, Kurs-Kontext, Mitschnitt, Karten, Kurs holen, Fortschritt …)
 │   ├── chessable-fen.js          # Content-Script (world: MAIN) auf chessable.com: FEN-Copy/Search + XP-Anzeige
+│   ├── chessable-fen/            # Teil-Dateien davon (Zug-Rückmeldung, Pool, Zen, Leiste)
+│   ├── lib/                      # geteilte, Node-getestete Helfer (siehe CLAUDE.md „Geteilte Module")
 │   ├── background.js             # Service-Worker (CORS-freie Fetches)
 │   ├── popup.html                # Toolbar-Button-Popup (Status + „Chessable-Token kopieren")
-│   ├── popup.js
+│   ├── popup.js                  # + popup-connection.js, popup-settings.js, popup-share.js, popup-import.js
 │   ├── icons/                    # 16/48/128 PNG
 │   ├── generate-icons.py         # Placeholder-Icon-Generator (Pillow)
 │   └── web-ext-config.cjs        # web-ext-CLI-Konfig

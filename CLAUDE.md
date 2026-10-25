@@ -48,7 +48,9 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 | `lib/chesscom-moves.js` | `RepCheckChessCom` | chess.coms TCN-Zugliste → SAN (`decodeTcn`, `sansFromTcn`) — zweite Zugquelle beim Partie-Speichern |
 | `lib/chessable-crawl.js` | `RepCheckCrawl` | Crawl-/Ingest-Helfer (`splitIngestChapters`, `checkChessableResponse`, `looksBanned`, …) |
 | `lib/chessable-feedback.js` | — | Zuordnung der Rückmeldungs-Icons |
-| `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) und „Trennen" im Popup (`token/self`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup.js/welcome.js/chessable-activity.js — `test/rookhub-client.test.js` hält alle gleich |
+| `lib/rookhub-client.js` | `self.RepCheckRookhub` | Gemeinsamer RookHub-Client (v1.68.4): Standard-Adresse, `readConfig`, `buildMessage` (Bearer/JSON), `responseError` (401 → `err.tokenInvalid`, sonst Servertext/HTTP-Status), `create({ t }).request(path, { body })`. Bisher laufen die Import-Pfade von `chessable-activity.js` (`ingest`, `ingest/chunk`, `ingest/live`) und „Trennen" im Popup (`token/self`) darüber; die übrigen Aufrufer (Best-effort-Pfade, `rookhubProxy` in content.js, popup.js) ziehen mit der Zerlegung nach. Die Standard-Adresse steht zusätzlich in background.js/popup-connection.js/welcome.js/chessable-activity/capture-harvest.js — `test/rookhub-client.test.js` hält alle gleich |
+| `lib/site-adapters.js` | `self.RepCheckSiteAdapters` | Site-Adapter chess.com/lichess (`ADAPTERS`, `chessComMoveList`, `LICHESS_FIGURINES`), nur vor `content.js` geladen (Z37); siehe „Site-Adapter" |
+| `lib/fen-extract.js` | `self.RepCheckFenExtract` | FEN der angezeigten Chessable-Stellung (React-Fiber > cm-chessboard > chessground), nur in der MAIN-World vor `chessable-fen.js` (Z38); Golden `test/chessable-fen-extract.test.js` |
 
 Eine Lib wird als eigenes Content-Script VOR ihren Konsumenten geladen (Manifest
 `content_scripts`) — das ist die EINZIGE Stelle, an der sie eingetragen wird. Das Popup lädt in
@@ -61,6 +63,38 @@ waren gedriftet (fehlende `lib/chesscom-moves.js`, `lib/i18n.js`, `lib/chessable
 `chessable-token.js`). `test/nachlade-listen.test.js` hält Popup und Manifest gleich;
 `test/chessable-course-names.test.js` prüft Manifest-Auslieferung und Lib-Nutzung und schlägt bei
 einer wiederauferstandenen Inline-Kopie fehl.
+
+### Teil-Dateien der Content-Scripts und des Popups (Zerlegung Z36–Z39, 10/2026)
+
+`chessable-activity.js`, `content.js` und `chessable-fen.js` sind seit der Zerlegung nur noch die **Verdrahtung**
+ihrer Welt; die Logik liegt in Teil-Dateien daneben: `chessable-activity/*.js` (isoliert), `content/*.js`
+(isoliert), `chessable-fen/*.js` (MAIN). Wo in dieser Datei „in `chessable-activity.js`" usw. steht, ist die
+ganze Welt gemeint (Konsument + seine Teil-Dateien). Regeln:
+
+- **Laden**: im SELBEN `content_scripts`-Eintrag wie der Konsument, VOR ihm (nach den Libs). Das Popup lädt die
+  isolierten Welten über `manifestScripts` mit — kein zweiter Eintrag nötig. `test/teil-dateien.test.js` prüft
+  Manifest-Reihenfolge und Guard.
+- **Guard**: jede Teil-Datei beginnt mit demselben Guard wie ihr Konsument (`__repcheckChessableActivity`,
+  `__rdc_loaded`, `__repcheckChessableFen`) — lädt das Popup die Liste in einen laufenden Tab nach, legt keine
+  Teil-Datei etwas neu an.
+- **Keine Seiteneffekte beim Laden**: eine Teil-Datei legt nur Funktionen unter `self.RepCheckActivity.<teil>` bzw.
+  `self.RepCheckContent.<teil>` / `self.RepCheckFen.<teil>` ab. Listener, Takte und Erst-Aufrufe stehen in
+  `install*()`-Funktionen; der Konsument ruft sie in der Reihenfolge auf, die vorher im Code stand.
+- **Abhängigkeiten per `init(deps)`**: was eine Teil-Datei von anderen braucht, setzt der Konsument vor allem anderen
+  (die Funktionsrümpfe benutzen dieselben Namen wie vorher). In der MAIN-World löscht `chessable-fen.js`
+  `self.RepCheckFen` danach wieder (jeder globale Name ist dort für die Seite sichtbar).
+- **Geteilter Zustand nur über `S`**: liest oder schreibt eine Teil-Datei einen Wert, der einer anderen gehört, dann
+  über das Objekt `S` — nie über eine Kopie. In der chessable-Welt hängt der Besitzer Getter/Setter in seinem `init` an
+  `S` (z. B. `crawling` gehört `course-import.js`), in `content.js` definiert `content.js` selbst die Getter/Setter
+  für seinen Zustand. Ein neuer geteilter Wert = ein neues Feld an `S`, beim Besitzer.
+- **Popup**: klassische Skripte in EINEM Scope (`popup.js`, `popup-connection.js`, `popup-settings.js`,
+  `popup-share.js`, `popup-import.js`); spätere Skripte hängen ihre Neubeschriftung in `repaintHooks` ein, weil ein
+  Sprachwechsel-Rückruf aus `popup.js` vor ihnen feuern kann.
+- **Tests**: `test/welten-laden.test.js` lädt jede Welt wie das Manifest in eine vm und vergleicht alle Wirkungen
+  (Listener, Takte, Storage, Nachrichten, Klicks) mit einem Golden aus dem Stand vor der Zerlegung
+  (`test/fixtures/welten/`); `test/popup-golden.test.js` dasselbe fürs Popup. Anker-Tests schneiden Funktionen über
+  `test/helpers/quelle.js` (`finde` sucht den Anker in allen Laufzeitdateien, `welt`/`popupWelt` liefern die ganze
+  Welt) — ein Umzug zwischen Teil-Dateien braucht dann keine Teständerung.
 
 **Workflow bei einer Logik-Änderung:** nur die Lib ändern → `npm test`. Der frühere Build-Schritt
 (`build/assemble.mjs`, Sentinel-Regionen, `npm run build:userscript`) ist mit dem Userscript
@@ -128,7 +162,7 @@ und wird nicht von Hand editiert**.
 
 ## Site-Adapter (v1.5.0+)
 
-`extension/content.js` hat ein `ADAPTERS`-Objekt mit einem Eintrag pro unterstützter Plattform (`chesscom`, `lichess`). Jeder Adapter exportiert:
+`extension/lib/site-adapters.js` (bis v1.73.1 in `content.js`) hat ein `ADAPTERS`-Objekt mit einem Eintrag pro unterstützter Plattform (`chesscom`, `lichess`). Jeder Adapter exportiert:
 - `test(host)` — entscheidet, ob er für `location.hostname` zuständig ist
 - `isReviewPage()` — Site-spezifischer URL/DOM-Check für die Analyse-Seite
 - `getMoveListEl()` — liefert das Container-Element der Zugliste
@@ -136,7 +170,7 @@ und wird nicht von Hand editiert**.
 - `extractSan(node)` — extrahiert SAN aus einem Knoten; bei Lichess inkl. Mapping `♔♕♖♗♘ → KQRBN` für Figurinen-Notation
 - `findBannerContainer()` — wohin das Repertoire-Banner injiziert wird
 
-Neue Plattform hinzufügen = neuen Adapter-Eintrag in beide Dateien einfügen. Restlogik bleibt unverändert.
+Neue Plattform hinzufügen = neuen Adapter-Eintrag in `lib/site-adapters.js`. Restlogik bleibt unverändert.
 
 ## RookHub-Integration (v1.3.0+, server-seitige Analyse seit v1.6.0)
 
@@ -192,7 +226,7 @@ Servermeldung roh.
   Widerruf, ist das Verbinden trotzdem erfolgreich. `pairStart` behält Token UND Id derselben Instanz bis zum Erfolg.
 - **Deckel**: 400 „Maximum of N tokens" → Fehlercode `tooManyTokens` → `popup.conn.errTooMany` (Popup und
   Willkommensseite), mit Verweis auf „Tokens in RookHub verwalten".
-- **„Trennen"** (`revokeOwnToken` in popup.js, über `lib/rookhub-client.js`): `DELETE /api/extension/token/self`
+- **„Trennen"** (`revokeOwnToken` in popup-connection.js, über `lib/rookhub-client.js`): `DELETE /api/extension/token/self`
   (RookHub widerruft genau den aufrufenden Token), erst danach wird die Config überschrieben (die Egress-Allowlist
   hängt an ihr). 2xx oder 401 → „Nicht verbunden"; 404 (ältere RookHub-Version), Netz- oder Worker-Fehler → nur
   lokal getrennt, `popup.conn.forgetLocalOnly` sagt, dass der Token im Profil gelöscht werden muss.
@@ -319,7 +353,7 @@ unterscheiden, und eine über 💾 gespeicherte Partie ließ sich aus der Übers
 bzw. dem `[TimeControl]` des lichess-Exports — RookHub ≥ 0.526.0 zeigt daraus „3 + 2" in der Partienliste,
 ältere ignorieren das Feld.
 
-Getestet in `test/uebersicht-knopf.test.js`: der Uebersichts-Block wird aus `content.js`
+Getestet in `test/uebersicht-knopf.test.js`: der Uebersichts-Block wird aus `content/overview.js`
 ausgeschnitten und gegen ein winziges DOM ausgeführt (Zeilen finden, Zeichnen, Nachladen, Deckel 300,
 Schicken samt `analyze:true`, Fehlerpfade, und dass der Durchgang ohne Token bzw. auf lichess ruht).
 
@@ -328,7 +362,7 @@ Schicken samt `analyze:true`, Fehlerpfade, und dass der Durchgang ohne Token bzw
 Das **Popup** zeigt oben eine „Sharebar" mit einem öffentlichen Nur-Ansehen-Link
 (`{RookHub-URL}/l/{token}`) zur aktuell auf chess.com/lichess gespielten Zugfolge —
 kein Button-Umweg, direkt beim Öffnen des Popups sichtbar/kopierbar.
-- **Ablauf** (`popup.js` `initShareBar`): nur bei konfigurierter RookHub-Instanz + chess.com/lichess-Tab.
+- **Ablauf** (`popup-share.js` `initShareBar`): nur bei konfigurierter RookHub-Instanz + chess.com/lichess-Tab.
   `getCurrentLineFromTab` lazy-injiziert content.js (`ensureContentLoaded`) und ruft die neue
   API-Methode `window.__rdc_loaded.getCurrentLine()` (→ `{ moves, title }` aus `getGameMoves()`),
   dann `POST /api/extension/share-line { moves, title }` über den Background-Worker → `{ shareToken }`.
@@ -436,7 +470,7 @@ Beim Training schneidet die Extension die rohe **getReview**-Antwort der gerade 
 mit (MAIN-World `chessable-capture.js` → isolierte `chessable-activity.js`; fetch/XHR im
 Page-Kontext) und schickt sie an RookHub (`POST /api/extension/chessable/review-lines`), wo sie als
 Lücken-Füller neben getGame landet (siehe RookHub-CLAUDE.md). Klassifikation in `lib/chessable-crawl.js`
-(`classifyChessableApi` → `{kind:'review',bid,oid}`), Puffer/Flush in `chessable-activity.js`
+(`classifyChessableApi` → `{kind:'review',bid,oid}`), Puffer/Flush in `chessable-activity/capture-harvest.js`
 (`queueReviewLine`/`flushReviewLines`, Session-Dedupe, Batch, best-effort).
 
 **Token-los + Default-Ziel (v1.51.0):** Hat der User KEINEN RookHub-Token hinterlegt, gehen die
@@ -455,7 +489,7 @@ Session-Report (`POST /api/v1/saveProgressAndReturnNewProgressInfo`) mitgeschnit
 das SITZUNGS-Ergebnis (`wrong[]` = falsch gespielte Züge, `overstudied`, `alternativeSkipped`, `level`,
 `points`). Die ANTWORT dieses Endpoints wird bewusst NICHT angefasst (enthält Konto-Daten: E-Mail,
 Zahlungs-Reste). Capture: `RELEVANT_REQ` in `chessable-capture.js` (fetch `args[1].body`/Request-clone,
-XHR `send`-Argument) → Bridge mit `req:true` → `harvestFromSaveProgress` in `chessable-activity.js`
+XHR `send`-Argument) → Bridge mit `req:true` → `harvestFromSaveProgress` in `chessable-activity/capture-harvest.js`
 (parst `{uid, data}`, `data` ist ein JSON-STRING mit `{moves:[…]}`), gruppiert je (bid|oid) und sendet
 Batches an `POST /api/extension/chessable/session-moves` (RookHub: append-only Roh-Log
 `ChessableSessionMoves`, Auswertung offen). **NUR mit RookHub-Token** (wie problem-moves) — der Anon-Pfad
@@ -493,15 +527,23 @@ Fallback bleibt die Textsuche; der Line-Reset-Listener (`NEXT_LABEL_RE`) erkennt
 ```
 extension/
 ├── manifest.json       # MV3, host_permissions: https://*/*, content_scripts auf chess.com + lichess.org + chessable.com (chessable hat ZWEI: token=isoliert, fen=world:MAIN); permissions: scripting/activeTab/storage
-├── content.js          # Hauptlogik
+├── content.js          # Hauptlogik chess.com/lichess: Zustand, Sprache, Zugliste, Prüfung, Popup-Einstiege, Navigation (Verdrahtung der Teil-Dateien)
+├── content/            # Teil-Dateien von content.js (Z37): store.js (IndexedDB + rookhubConfig), rookhub-api.js (Worker-Proxy + Endpunkte), game-meta.js (Kopfdaten/Züge von chess.com/lichess), styles.js (Stylesheet), overview.js (Knopf je Partiezeile), local-repertoire.js (lokaler Modus), panel.js (Seiten-Panel), floating.js (♟ 🔎 📋 💾)
+├── lib/site-adapters.js # Site-Adapter chess.com/lichess → `self.RepCheckSiteAdapters` (Z37)
 ├── chessable-token.js    # Content-Script (isoliert) auf chessable.com: liest localStorage-JWT → chrome.storage.local
 ├── chessable-activity.js # Content-Script (isoliert) auf chessable.com: misst aktive Trainingszeit → POST an RookHub; hält zudem den Browser-Kurs-Import-Zustand (Crawl/Mitschnitt/Live/Fortschritt) + chrome.runtime.onMessage-Bridge (`{type:'rc-import'}`), gesteuert vom Popup (kein On-Page-Panel mehr; ✓/○-Marker an den Linien bleiben)
-├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige
+├── chessable-activity/   # Teil-Dateien (isoliert, Z36): activity-tracker.js (Trainingszeit, Tagesstatistik), course-context.js (Kurs-ID/-Name/-Art, Brücken course-id/remember-line), capture-harvest.js (Mitschnitt, problem-/session-moves, review-lines), banners.js (Karten), chessable-fetch.js (Chessable-Abruf, Pause, Prüfung, Kursstruktur-Cache), course-import.js (Kurs holen), import-bridge.js (ingest-Wege, Live-Anhängen, Popup-Brücke rc-import), progress-overlay.js (✓/○, Zähler)
+├── chessable-fen.js      # Content-Script (world: "MAIN") auf chessable.com: FEN-Copy/Search-Buttons + XP-Anzeige (Verdrahtung, Kurs-ID/-Name-Brücke, FEN-Suche)
+├── chessable-fen/        # Teil-Dateien (MAIN, Z38): fen-feedback.js (Zug-Rückmeldung), fen-pool.js (⏳ + Hochrechnung), zen.js (Vollbild/Zen), fen-toolbar.js (Leiste, Sichtbarkeit, Brücken)
+├── lib/fen-extract.js    # FEN-Auslese (React-Fiber > cm-chessboard > chessground), MAIN-World → `self.RepCheckFenExtract` (Z38)
 ├── lib/chessable-course-id.js # Kurs-ID der Seite (URL > Fiber > Link) + „ist das eine Kursseite?" für beide chessable-Welten → `self.RepCheckCourseId` (S1-012); test/chessable-course-id.test.js
 ├── lib/chessable-course-names.js # geteilter Kern der Kursnamen-Auflösung (uid-Decode + getHomeData-Parsing + isNavLabel), Node-getestet; wird per Manifest in BEIDEN chessable-Welten geladen (isoliert vor chessable-activity.js, MAIN vor chessable-fen.js) → `self.RepCheckCourseNames`. Keine Inline-Kopien mehr — test/chessable-course-names.test.js hält das fest
 ├── background.js       # Service-Worker, proxied RookHub-Fetches (CORS-frei); öffnet nach der Installation die Willkommensseite
 ├── welcome.html / .js  # Willkommensseite (v1.59.0): verbinden, was RepCheck wo tut, Chessable-Buttons ankreuzen
-├── popup-settings.js   # Popup: Chessable-Button-Einstellungen + „Erste Schritte" (S1-019, v1.68.13 aus popup.js ausgelagert). Die Popup-Skripte sind klassische Skripte in EINEM globalen Scope, popup.html lädt sie in fester Reihenfolge (Libs → popup.js → popup-settings.js); ein Skript darf beim Laden nur auf Früheres zugreifen, und kein Rückruf eines früheren Skripts auf ein späteres (ein Storage-Rückruf kann zwischen zwei <script>-Tags feuern). test/popup-laden.test.js lädt sie so in eine vm und prüft auch, dass kein Name doppelt deklariert ist. Verbindung, Kurs-holen-Pause und Import folgen (Zerlegungs-Karte Z39)
+├── popup-settings.js   # Popup: Chessable-Button-Einstellungen + „Erste Schritte" (S1-019, v1.68.13 aus popup.js ausgelagert). Die Popup-Skripte sind klassische Skripte in EINEM globalen Scope, popup.html lädt sie in fester Reihenfolge (Libs → popup.js → popup-connection.js → popup-settings.js → popup-share.js → popup-import.js); ein Skript darf beim Laden nur auf Früheres zugreifen, und kein Rückruf eines früheren Skripts auf ein späteres (ein Storage-Rückruf kann zwischen zwei <script>-Tags feuern). test/popup-laden.test.js lädt sie so in eine vm und prüft auch, dass kein Name doppelt deklariert ist. Seit Z39 auch die Kurs-holen-Pause
+├── popup-connection.js # Popup: RookHub-Verbindung (1-Klick-Verbinden, Token von Hand, Trennen mit Widerruf) — Z39
+├── popup-share.js      # Popup: Sharebar (Link zur aktuellen Line) — Z39
+├── popup-import.js     # Popup: RookHub-Import auf chessable.com (Kurs holen, Bannrisiko-Box, Mitschnitt, Fortschritt), pollt rc-import — Z39
 ├── popup.html / .js    # Toolbar-Button: Repertoire-Status (nur RookHub: die IndexedDB des Seiten-Origins ist im Popup leer, der tote Lese-Pfad ist seit v1.68.13 weg) + „Chessable-Token kopieren" + Sharebar + RookHub-Import (Browser) auf chessable.com [Ziel/Crawl/Mitschnitt/Live/Fortschritt, pollt chessable-activity.js per rc-import; Extension-only] + Chessable-Button-Einstellungen [chrome.storage.local `chessableButtons`, pro Button ein-/ausblendbar]. „Einstellungen"-Knopf klappt seit v1.55.0 IMMER die Popup-Einstellungen auf (`#settings-box`): RookHub-Verbindung [1-Klick-Verbinden + Rückfall „Token von Hand"] + Chessable-Buttons + Kurs-holen-Pause [`crawlDelay`, nur nach oben] + auf chess.com/lichess zusätzlich „Ordner / PGN auf der Seite…" → In-Page-Panel (openSettings)
 ├── icons/              # 16/48/128 PNG
 ├── generate-icons.py   # Placeholder-Generator (Pillow)
