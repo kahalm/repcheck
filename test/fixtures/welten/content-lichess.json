@@ -48,7 +48,7 @@
  ],
  [
   "console.log",
-  "[RepertoireChecker] Extension v1.73.1 loaded"
+  "[RepertoireChecker] Extension v<version> loaded"
  ],
  [
   "indexedDB.open"

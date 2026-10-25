@@ -214,7 +214,10 @@ function wirkung(log) {
 
 function vergleiche(name, log) {
   const datei = path.join(GOLDEN, name + '.json');
-  const ist = JSON.stringify(wirkung(log), null, 1);
+  // Versionsnummer maskieren: der Manifest-Bump (CLAUDE.md: jede Aenderung in extension/) soll das Golden nicht brechen.
+  const ist = JSON.stringify(wirkung(log), null, 1)
+    .split('v' + manifest.version).join('v<version>')
+    .split('"' + manifest.version + '"').join('"<version>"');
   if (process.env.WELTEN_UPDATE || !fs.existsSync(datei)) {
     fs.mkdirSync(GOLDEN, { recursive: true });
     fs.writeFileSync(datei, ist + '\n');

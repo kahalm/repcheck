@@ -34,7 +34,7 @@
  ],
  [
   "console.log",
-  "[RepertoireChecker] Extension v1.73.1 loaded"
+  "[RepertoireChecker] Extension v<version> loaded"
  ],
  [
   "api",
@@ -43,7 +43,7 @@
    "openSettings": "[fn]",
    "refreshButton": "[fn]",
    "runCheck": "[fn]",
-   "version": "1.73.1"
+   "version": "<version>"
   }
  ],
  [
