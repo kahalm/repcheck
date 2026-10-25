@@ -85,5 +85,37 @@
    "repcheck-floating-wrap",
    "repcheck-styles"
   ]
+ ],
+ [
+  "--- klick",
+  "repcheck-floating",
+  1
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] Position-Cache nicht lesbar: Error: keine IDB"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "knopf",
+  "✗",
+  "Keine Züge gefunden"
+ ],
+ [
+  "--- klick",
+  "repcheck-copy-pgn",
+  1
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] RookHub-PGN-Cache nicht lesbar: Error: keine IDB"
+ ],
+ [
+  "indexedDB.open"
  ]
 ]

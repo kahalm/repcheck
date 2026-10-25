@@ -104,5 +104,71 @@
    "repcheck-status",
    "repcheck-styles"
   ]
+ ],
+ [
+  "--- storage: rcLang hr (Panel neu zeichnen)"
+ ],
+ [
+  "el.on",
+  "SELECT#repcheck-lang",
+  "change"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-pick-dir",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-load-pgn",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-close",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-rookhub-refresh",
+  "click"
+ ],
+ [
+  "panel",
+  " <h3>Postavke repertoara</h3> <div style=\"margin-bottom: 12px;\"> <strong>RookHub:</strong><br> <span style=\"font-size:11px;color:#888;\">Adresu i token upisuješ "
+ ],
+ [
+  "--- klick",
+  "repcheck-rookhub-refresh",
+  1
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/analyze-game",
+  "POST"
+ ],
+ [
+  "--- klick",
+  "repcheck-close",
+  1
+ ],
+ [
+  "ids",
+  [
+   "repcheck-close",
+   "repcheck-folder-info",
+   "repcheck-lang",
+   "repcheck-load-pgn",
+   "repcheck-pgn-input",
+   "repcheck-pick-dir",
+   "repcheck-rookhub-refresh",
+   "repcheck-status",
+   "repcheck-styles"
+  ]
  ]
 ]

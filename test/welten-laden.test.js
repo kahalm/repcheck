@@ -14,6 +14,8 @@
 // DASSELBE Protokoll erzeugen — fehlt ein Listener, kommt ein Timer in anderer Reihenfolge oder wirft eine Datei
 // beim Laden (Name nicht verdrahtet), faellt der Test. Neu schreiben (nur bei gewollter Verhaltensaenderung):
 //   WELTEN_UPDATE=1 node --test test/welten-laden.test.js
+// Gegen einen anderen Stand der Erweiterung (z. B. eine git worktree des Commits VOR einem Umbau) laufen lassen:
+//   WELTEN_EXT=/pfad/zu/extension WELTEN_UPDATE=1 node --test test/welten-laden.test.js
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -21,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const EXT = path.join(__dirname, '..', 'extension');
+const EXT = process.env.WELTEN_EXT || path.join(__dirname, '..', 'extension');
 const GOLDEN = path.join(__dirname, 'fixtures', 'welten');
 const manifest = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
 
@@ -66,7 +68,8 @@ function umgebung({ href, storage = {} }) {
       append(...cs) { cs.forEach((c) => typeof c === 'object' && el.appendChild(c)); },
       replaceChildren() { kinder.length = 0; el.childElementCount = 0; },
       remove() { if (el._id && nachId.get(el._id) === el) nachId.delete(el._id); el.isConnected = false; },
-      addEventListener(typ) { schreib('el.on', el.tagName + (el._id ? '#' + el._id : ''), typ); },
+      listeners: [],
+      addEventListener(typ, fn) { el.listeners.push({ typ, fn }); schreib('el.on', el.tagName + (el._id ? '#' + el._id : ''), typ); },
       removeEventListener() {},
       setAttribute(k, v) { el.attrs[k] = String(v); if (k === 'id') el.id = v; },
       getAttribute(k) { return k in el.attrs ? el.attrs[k] : null; },
@@ -162,7 +165,15 @@ function umgebung({ href, storage = {} }) {
   vm.createContext(ctx);
   // Innen ist `window` der globale Proxy der vm, nicht das Objekt hier — `e.source === window` braucht genau ihn.
   const fenster = vm.runInContext('window', ctx);
-  return { ctx, fenster, log, listener, storage, nachId };
+  // Klick auf das Element mit dieser id: alle click-Listener mit einem Fake-Ereignis.
+  async function klick(id) {
+    const el = nachId.get(id);
+    schreib('--- klick', id, el ? el.listeners.filter((l) => l.typ === 'click').length : 'fehlt');
+    if (!el) return;
+    const ev = { type: 'click', target: el, isTrusted: true, preventDefault() {}, stopPropagation() {} };
+    for (const l of el.listeners.filter((x) => x.typ === 'click')) await l.fn(ev);
+  }
+  return { ctx, fenster, log, listener, storage, nachId, klick };
 }
 
 // Dateien eines content_scripts-Eintrags (Welt) in Manifest-Reihenfolge.
@@ -268,6 +279,15 @@ test('chess.com, isolierte Welt (content.js): Laden auf einer Partieseite, Panel
   api.openSettings();
   await tick();
   u.log.push(['ids', [...u.nachId.keys()].sort()]);
+  u.log.push(['--- storage: rcLang hr (Panel neu zeichnen)']);
+  for (const fn of u.listener.onChanged) fn({ rcLang: { newValue: 'hr' } }, 'local');
+  await tick();
+  u.log.push(['panel', (u.nachId.get('repcheck-panel')._html || '').replace(/\s+/g, ' ').slice(0, 160)]);
+  await u.klick('repcheck-rookhub-refresh');
+  await tick();
+  await u.klick('repcheck-close');
+  await tick();
+  u.log.push(['ids', [...u.nachId.keys()].sort()]);
   vergleiche('content-chesscom', u.log);
 });
 
@@ -278,5 +298,10 @@ test('lichess, isolierte Welt (content.js): Laden auf der Analyse', async () => 
   await u.ctx.__rdc_loaded.runCheck();
   await tick();
   u.log.push(['ids', [...u.nachId.keys()].sort()]);
+  await u.klick('repcheck-floating');
+  await tick();
+  u.log.push(['knopf', u.nachId.get('repcheck-floating').textContent, u.nachId.get('repcheck-floating').title]);
+  await u.klick('repcheck-copy-pgn');
+  await tick();
   vergleiche('content-lichess', u.log);
 });
