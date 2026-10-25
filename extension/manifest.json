@@ -24,6 +24,8 @@
         "content/store.js",
         "content/rookhub-api.js",
         "content/game-meta.js",
+        "content/styles.js",
+        "content/overview.js",
         "content.js"
       ],
       "run_at": "document_idle"

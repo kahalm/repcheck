@@ -19,7 +19,7 @@ const ROOT = path.join(__dirname, '..');
 const { finde, welt } = require('./helpers/quelle.js');
 const content = welt('content.js');
 
-const BLOCK = finde('const OVERVIEW_SWEEP_MS', 'function updateStatusText(');
+const BLOCK = finde('const OVERVIEW_SWEEP_MS', '// ─── Export');
 
 // ─── Winziges DOM, das genau die benutzten Aufrufe kennt ────────────────
 
