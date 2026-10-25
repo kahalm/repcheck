@@ -20,9 +20,10 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'extension', 'chess.m
 const Chess = chessCtx.Chess;
 
 function analyse(positionen) {
-  const src = finde('function analyzeGame(gameMoves) {', '// chessableSearchUrl');
-  return new Function('Chess', 'normalizedFen', 'repertoirePositions', src + '\nreturn { analyzeGame, fenBeforeMove };')(
-    Chess, Lib.normalizedFen, positionen);
+  // Das Positions-Set gehoert content.js; seit der Zerlegung Z37 liest analyzeGame es ueber das Zustandsobjekt S.
+  const src = finde('function analyzeGame(gameMoves) {', '// Stellt sicher, dass repertoirePositions geladen ist.');
+  return new Function('Chess', 'normalizedFen', 'S', src + '\nreturn { analyzeGame, fenBeforeMove };')(
+    Chess, Lib.normalizedFen, { repertoirePositions: positionen });
 }
 
 function setAus(zuege) {
@@ -155,4 +156,13 @@ test('Adapter-Erkennung am Host', () => {
   assert.ok(!chesscom.test('notchess.com'));
   assert.ok(lichess.test('lichess.org') && lichess.test('de.lichess.org'));
   assert.ok(!lichess.test('lichess.org.evil.example'));
+});
+
+test('lib/site-adapters.js: als Modul ladbar, liefert dieselben Adapter wie im Browser (self.RepCheckSiteAdapters)', () => {
+  const lib = require('../extension/lib/site-adapters.js');
+  assert.deepStrictEqual(Object.keys(lib.ADAPTERS), ['chesscom', 'lichess']);
+  for (const a of Object.values(lib.ADAPTERS)) {
+    for (const k of ['test', 'isReviewPage', 'getMoveListEl', 'getMoveNodes', 'extractSan']) assert.strictEqual(typeof a[k], 'function', k);
+  }
+  assert.strictEqual(lib.LICHESS_FIGURINES['♞'], 'N');
 });

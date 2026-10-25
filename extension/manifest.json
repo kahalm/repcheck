@@ -26,6 +26,9 @@
         "content/game-meta.js",
         "content/styles.js",
         "content/overview.js",
+        "content/local-repertoire.js",
+        "content/panel.js",
+        "content/floating.js",
         "content.js"
       ],
       "run_at": "document_idle"

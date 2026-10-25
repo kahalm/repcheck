@@ -99,12 +99,10 @@ test('content.js: Positions-Set aus kompakter PGN = Positions-Set aus PGN mit Le
   const fs = require('node:fs');
   const path = require('node:path');
   const { Chess } = require('../extension/chess.min.js');
-  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'content.js'), 'utf8');
-  const von = src.indexOf('function walkMovesForPositions(');
-  const bis = src.indexOf('// ─── File Loading', von);
-  assert.ok(von >= 0 && bis > von, 'Anker in content.js nicht gefunden');
+  // Seit der Zerlegung Z37 in content/local-repertoire.js — finde() sucht den Anker in allen Laufzeitdateien.
+  const { finde } = require('./helpers/quelle.js');
   const build = new Function('Chess', 'parsePgnText', 'normalizedFen', 'console',
-    src.slice(von, bis) + '\nreturn buildPositionSetFromPgns;')(Chess, parsePgnText, normalizedFen, { warn() {} });
+    finde('function walkMovesForPositions(', '// ─── File Loading') + '\nreturn buildPositionSetFromPgns;')(Chess, parsePgnText, normalizedFen, { warn() {} });
   const kompakt = build(['[Event "x"]\n\n1.e4 e5 2.Nf3 Nc6 (2...d6 3.d4) 3.Bb5 a6 *']);
   const gespreizt = build(['[Event "x"]\n\n1. e4 e5 2. Nf3 Nc6 (2... d6 3. d4) 3. Bb5 a6 *']);
   assert.strictEqual(kompakt.size, 9);   // Grundstellung + 6 Hauptzüge + 2 Variantenzüge

@@ -23,19 +23,13 @@ const path = require('node:path');
 const { RC_LANGS, RC_MESSAGES } = require('../extension/lib/i18n.js');
 
 const ROOT = path.join(__dirname, '..');
-const DATEI = 'extension/content.js';
-const QUELLE = fs.readFileSync(path.join(ROOT, DATEI), 'utf8');
+// Seit der Zerlegung Z37 steht das Panel in content/panel.js: QUELLE ist die ganze Welt (alle Nicht-Lib-Dateien des
+// Manifest-Eintrags von content.js), Bloecke kommen aus der Datei, in der sie stehen.
+const { welt, finde } = require('./helpers/quelle.js');
+const DATEI = 'extension/content.js (+ content/*.js)';
+const QUELLE = welt('content.js');
 
-function schnipsel(src, vonAnker, bisAnker) {
-  const von = src.indexOf(vonAnker);
-  assert.ok(von >= 0, `${DATEI}: Anker nicht gefunden: ${vonAnker}`);
-  const bis = src.indexOf(bisAnker, von);
-  assert.ok(bis > von, `${DATEI}: End-Anker nicht gefunden: ${bisAnker}`);
-  return src.slice(von, bis);
-}
-
-const PANEL_BLOCK = schnipsel(QUELLE, '// Panel-Markup (reiner String, keine DOM-Nebenwirkungen).',
-  'function togglePanel() {');
+const PANEL_BLOCK = finde('// Panel-Markup (reiner String, keine DOM-Nebenwirkungen).', 'function togglePanel() {');
 
 const GESPEICHERT = { url: 'https://rookhub.example', token: 'rkh_gespeichert' };
 const FREMD = 'https://evil.example';
@@ -62,18 +56,17 @@ function ladePanel() {
     } },
   };
   const fn = new Function(
-    't', 'rcEscHtml', 'rcAutoLang', 'repertoirePositions', 'rcGespeicherteSprache', 'document',
+    't', 'rcEscHtml', 'rcAutoLang', 'S', 'document',
     'chrome', 'self', 'navigator', 'rcApplyLang', 'loadRookhubConfig', 'saveRookhubConfig',
     'connectRookHub', 'updateStatusText', 'pickDirectory', 'loadRepertoireFromText', 'togglePanel',
     'ROOKHUB_DEFAULT_URL',
-    "let rcLang = 'en'; let lastGameMovesKey = 'alt';\n" + PANEL_BLOCK +
-    '\nreturn { panelHtml, wirePanelEvents, lastKey: () => lastGameMovesKey };');
+    PANEL_BLOCK + '\nreturn { panelHtml, wirePanelEvents, lastKey: () => S.lastGameMovesKey };');
   const api = fn(
     (k) => '<' + k + '>',
     (s) => String(s),
     () => 'en',
-    null,
-    '',
+    // Geteilter Zustand von content.js (Getter/Setter dort), hier ein schlichtes Objekt.
+    { repertoirePositions: null, rcGespeicherteSprache: '', rcLang: 'en', lastGameMovesKey: 'alt' },
     doc,
     chrome,
     { RepCheckI18n: { resolveLang: () => 'en' } },
