@@ -1,0 +1,462 @@
+{
+ "wirkung": [
+  "[\"on\",\"ban-risk-show\",\"change\"]",
+  "[\"on\",\"button\",\"click\"]",
+  "[\"on\",\"button\",\"click\"]",
+  "[\"on\",\"button\",\"click\"]",
+  "[\"on\",\"cb-analyse\",\"change\"]",
+  "[\"on\",\"cb-copyFen\",\"change\"]",
+  "[\"on\",\"cb-feedback\",\"change\"]",
+  "[\"on\",\"cb-fullscreen\",\"change\"]",
+  "[\"on\",\"cb-pool\",\"change\"]",
+  "[\"on\",\"cb-refresh\",\"change\"]",
+  "[\"on\",\"cb-remember\",\"change\"]",
+  "[\"on\",\"cb-searchFen\",\"change\"]",
+  "[\"on\",\"ci-crawl\",\"click\"]",
+  "[\"on\",\"ci-importcap\",\"click\"]",
+  "[\"on\",\"conn-forget\",\"click\"]",
+  "[\"on\",\"conn-pair\",\"click\"]",
+  "[\"on\",\"conn-save\",\"click\"]",
+  "[\"on\",\"conn-url\",\"input\"]",
+  "[\"on\",\"copy-chessable\",\"click\"]",
+  "[\"on\",\"copy-share\",\"click\"]",
+  "[\"on\",\"crawl-max\",\"change\"]",
+  "[\"on\",\"crawl-min\",\"change\"]",
+  "[\"on\",\"lang-select\",\"change\"]",
+  "[\"on\",\"notice-choose\",\"click\"]",
+  "[\"on\",\"notice-ok\",\"click\"]",
+  "[\"on\",\"onb-buttons-link\",\"click\"]",
+  "[\"on\",\"onb-close\",\"click\"]",
+  "[\"on\",\"onb-connect-link\",\"click\"]",
+  "[\"on\",\"onb-course-link\",\"click\"]",
+  "[\"on\",\"onb-welcome\",\"click\"]",
+  "[\"on\",\"open-chesscom\",\"click\"]",
+  "[\"on\",\"open-lichess\",\"click\"]",
+  "[\"on\",\"open-page-panel\",\"click\"]",
+  "[\"on\",\"open-settings\",\"click\"]",
+  "[\"on\",\"open-welcome\",\"click\"]",
+  "[\"on\",\"run-check\",\"click\"]",
+  "[\"runtime.sendMessage\",\"rookhub-fetch\",\"https://rookhub.example/api/extension/repertoires?kind=opening\",\"GET\"]",
+  "[\"runtime.sendMessage\",\"rookhub-pair-state\",null,null]",
+  "[\"setInterval\",1500]",
+  "[\"storage.get\",\"chessableButtons\"]",
+  "[\"storage.get\",\"chessableToken\"]",
+  "[\"storage.get\",\"crawlDelay\"]",
+  "[\"storage.get\",\"rcBanRiskAck\"]",
+  "[\"storage.get\",\"rcCrawlAlert\"]",
+  "[\"storage.get\",\"rookhubConfig\"]",
+  "[\"storage.get\",\"rookhubConfig\"]",
+  "[\"storage.get\",\"rookhubConfig\"]",
+  "[\"storage.get\",\"rookhubConfig\"]",
+  "[\"storage.get\",\"rookhubConfig\"]",
+  "[\"storage.get\",[\"rcLang\"]]",
+  "[\"storage.get\",[\"rcOnboarding\",\"rcButtonsNotice\",\"rcCourseFetched\",\"chessableButtons\",\"rookhubConfig\"]]",
+  "[\"storage.onChanged\"]",
+  "[\"storage.onChanged\"]",
+  "[\"storage.onChanged\"]",
+  "[\"storage.set\",[\"rookhubConfig\"]]",
+  "[\"tabs.query\"]",
+  "[\"tabs.query\"]",
+  "[\"tabs.query\"]",
+  "[\"tabs.sendMessage\",\"rc-import\",\"state\"]",
+  "[\"window.on\",\"unload\"]"
+ ],
+ "start": {
+  "ban-risk-show": {
+   "checked": true
+  },
+  "buttons-notice": {
+   "display": "none"
+  },
+  "cb-analyse": {},
+  "cb-copyFen": {},
+  "cb-feedback": {},
+  "cb-fullscreen": {},
+  "cb-pool": {
+   "checked": true
+  },
+  "cb-refresh": {},
+  "cb-remember": {},
+  "cb-searchFen": {},
+  "chessable-box": {
+   "display": "block"
+  },
+  "chessable-import": {
+   "display": "block"
+  },
+  "chessable-state": {
+   "textContent": "vor 29882032 min erfasst"
+  },
+  "ci-alert": {
+   "display": "block",
+   "kinder": [
+    "Unerwartete Antwort von Chessable",
+    "RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.",
+    "4711 · getGame oid 1 · HTTP 403",
+    "DIV"
+   ]
+  },
+  "ci-course": {
+   "textContent": "Kurs: Probekurs"
+  },
+  "ci-crawl": {
+   "textContent": "⚡ Kurs über meinen Browser holen"
+  },
+  "ci-importcap": {
+   "textContent": "Mitschnitt importieren (2 Linien)",
+   "display": "block"
+  },
+  "ci-progress": {
+   "kinder": [
+    "Auf RookHub: 1/4 Linien (25%)"
+   ]
+  },
+  "ci-status": {
+   "textContent": "bereit"
+  },
+  "ci-target-hint": {
+   "textContent": "Laut Chessable ein Taktik-Kurs → Kurs/Buch"
+  },
+  "ci-warn": {},
+  "conn-forget": {},
+  "conn-pair": {},
+  "conn-save": {},
+  "conn-state": {
+   "textContent": "Verbunden"
+  },
+  "conn-token": {},
+  "conn-tokens": {
+   "href": "https://rookhub.example/profile"
+  },
+  "conn-url": {
+   "value": "https://rookhub.example"
+  },
+  "copy-chessable": {},
+  "copy-share": {},
+  "crawl-intro": {
+   "textContent": "Zwischen zwei Chessable-Abrufen wartet RepCheck eine zufällige Zeit in diesem Bereich. Es geht nur langsamer — das Minimum ist 2,5–3,5 s."
+  },
+  "crawl-max": {
+   "value": "9"
+  },
+  "crawl-min": {
+   "value": "5"
+  },
+  "crawl-state": {},
+  "error-hint": {},
+  "lang-select": {
+   "value": "de"
+  },
+  "notice-choose": {},
+  "notice-ok": {},
+  "onb-buttons": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-buttons-link": {},
+  "onb-close": {},
+  "onb-connect": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-connect-link": {},
+  "onb-course": {},
+  "onb-course-link": {},
+  "onb-welcome": {},
+  "onboarding": {
+   "display": "block"
+  },
+  "open-chesscom": {},
+  "open-lichess": {},
+  "open-page-panel": {},
+  "open-settings": {},
+  "open-welcome": {},
+  "repertoires": {
+   "display": "block",
+   "kinder": [
+    "Repertoire (1)",
+    "UL"
+   ]
+  },
+  "run-check": {},
+  "settings-box": {},
+  "share-state": {},
+  "share-url": {},
+  "sharebar": {},
+  "status": {
+   "textContent": "RookHub verbunden · 1 Repertoire",
+   "className": "status loaded"
+  }
+ },
+ "kroatisch": {
+  "ban-risk-show": {
+   "checked": true
+  },
+  "buttons-notice": {
+   "display": "none"
+  },
+  "cb-analyse": {},
+  "cb-copyFen": {},
+  "cb-feedback": {},
+  "cb-fullscreen": {},
+  "cb-pool": {
+   "checked": true
+  },
+  "cb-refresh": {},
+  "cb-remember": {},
+  "cb-searchFen": {},
+  "chessable-box": {
+   "display": "block"
+  },
+  "chessable-import": {
+   "display": "block"
+  },
+  "chessable-state": {
+   "textContent": "zabilježen prije 29882032 min"
+  },
+  "ci-alert": {
+   "display": "block",
+   "kinder": [
+    "Unerwartete Antwort von Chessable",
+    "RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.",
+    "4711 · getGame oid 1 · HTTP 403",
+    "DIV"
+   ]
+  },
+  "ci-course": {
+   "textContent": "Tečaj: Probekurs"
+  },
+  "ci-crawl": {
+   "textContent": "⚡ Dohvati tečaj preko mog preglednika"
+  },
+  "ci-importcap": {
+   "textContent": "Uvezi snimljene linije (2 linije)",
+   "display": "block"
+  },
+  "ci-progress": {
+   "kinder": [
+    "Na RookHubu: 1/4 linija (25%)"
+   ]
+  },
+  "ci-status": {
+   "textContent": "bereit"
+  },
+  "ci-target-hint": {
+   "textContent": "Prema Chessableu tečaj vrste „taktika\" → Tečaj/knjiga"
+  },
+  "ci-warn": {},
+  "conn-forget": {},
+  "conn-pair": {},
+  "conn-save": {},
+  "conn-state": {
+   "textContent": "Povezano"
+  },
+  "conn-token": {},
+  "conn-tokens": {
+   "href": "https://rookhub.example/profile"
+  },
+  "conn-url": {
+   "value": "https://rookhub.example"
+  },
+  "copy-chessable": {},
+  "copy-share": {},
+  "crawl-intro": {
+   "textContent": "Između dva Chessable zahtjeva RepCheck čeka nasumično vrijeme u ovom rasponu. Može samo sporije — minimum je 2,5–3,5 s."
+  },
+  "crawl-max": {
+   "value": "9"
+  },
+  "crawl-min": {
+   "value": "5"
+  },
+  "crawl-state": {},
+  "error-hint": {},
+  "lang-select": {
+   "value": "hr"
+  },
+  "notice-choose": {},
+  "notice-ok": {},
+  "onb-buttons": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-buttons-link": {},
+  "onb-close": {},
+  "onb-connect": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-connect-link": {},
+  "onb-course": {},
+  "onb-course-link": {},
+  "onb-welcome": {},
+  "onboarding": {
+   "display": "block"
+  },
+  "open-chesscom": {},
+  "open-lichess": {},
+  "open-page-panel": {},
+  "open-settings": {},
+  "open-welcome": {},
+  "repertoires": {
+   "display": "block",
+   "kinder": [
+    "Repertoar (1)",
+    "UL"
+   ]
+  },
+  "run-check": {},
+  "settings-box": {},
+  "share-state": {},
+  "share-url": {},
+  "sharebar": {},
+  "status": {
+   "textContent": "RookHub povezan · 1 repertoar",
+   "className": "status loaded"
+  }
+ },
+ "nachKlicks": {
+  "ban-risk-show": {
+   "checked": true
+  },
+  "buttons-notice": {
+   "display": "none"
+  },
+  "cb-analyse": {},
+  "cb-copyFen": {},
+  "cb-feedback": {},
+  "cb-fullscreen": {},
+  "cb-pool": {
+   "checked": true
+  },
+  "cb-refresh": {},
+  "cb-remember": {},
+  "cb-searchFen": {},
+  "chessable-box": {
+   "display": "block"
+  },
+  "chessable-import": {
+   "display": "block"
+  },
+  "chessable-state": {
+   "textContent": "zabilježen prije 29882032 min"
+  },
+  "ci-alert": {
+   "display": "block",
+   "kinder": [
+    "Unerwartete Antwort von Chessable",
+    "RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.",
+    "4711 · getGame oid 1 · HTTP 403",
+    "DIV"
+   ]
+  },
+  "ci-course": {
+   "textContent": "Tečaj: Probekurs"
+  },
+  "ci-crawl": {
+   "textContent": "⚡ Dohvati tečaj preko mog preglednika"
+  },
+  "ci-importcap": {
+   "textContent": "Uvezi snimljene linije (2 linije)",
+   "display": "block"
+  },
+  "ci-progress": {
+   "kinder": [
+    "Na RookHubu: 1/4 linija (25%)"
+   ]
+  },
+  "ci-status": {
+   "textContent": "bereit"
+  },
+  "ci-target-hint": {
+   "textContent": "Prema Chessableu tečaj vrste „taktika\" → Tečaj/knjiga"
+  },
+  "ci-warn": {
+   "display": "block",
+   "kinder": [
+    "Posljednje dohvaćanje zaustavljeno je zbog neočekivanog odgovora s Chessablea (getGame oid 1 · HTTP 403).\n\nJe li razvijatelj obaviješten na Discordu? Ponovno dohvaćaj tek kad razvijatelj da zeleno svjetlo.",
+    "Rizik od blokade računa",
+    "Dohvaća se tečaj: Probekurs",
+    "„Dohvati tečaj preko mog preglednika“ automatizirano i u brzom slijedu poziva Chessable API. To može prekršiti Chessableove uvjete korištenja i u najgorem slučaju dovesti do blokade tvojeg računa.",
+    "Koristi to samo za vlastite tečajeve i na vlastitu odgovornost.",
+    "Stvarno nastaviti?",
+    "DIV"
+   ]
+  },
+  "conn-forget": {},
+  "conn-pair": {},
+  "conn-save": {},
+  "conn-state": {
+   "textContent": "Odspojeno samo ovdje — RookHub nije mogao opozvati token. Izbriši ga u svom profilu („Upravljaj tokenima u RookHubu“)."
+  },
+  "conn-token": {},
+  "conn-tokens": {
+   "href": "https://rookhub.example/profile"
+  },
+  "conn-url": {
+   "value": "https://rookhub.example"
+  },
+  "copy-chessable": {},
+  "copy-share": {},
+  "crawl-intro": {
+   "textContent": "Između dva Chessable zahtjeva RepCheck čeka nasumično vrijeme u ovom rasponu. Može samo sporije — minimum je 2,5–3,5 s."
+  },
+  "crawl-max": {
+   "value": "9"
+  },
+  "crawl-min": {
+   "value": "5"
+  },
+  "crawl-state": {},
+  "error-hint": {},
+  "lang-select": {
+   "value": "hr"
+  },
+  "notice-choose": {},
+  "notice-ok": {},
+  "onb-buttons": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-buttons-link": {},
+  "onb-close": {},
+  "onb-connect": {
+   "klassen": [
+    "done"
+   ]
+  },
+  "onb-connect-link": {},
+  "onb-course": {},
+  "onb-course-link": {},
+  "onb-welcome": {},
+  "onboarding": {
+   "display": "block"
+  },
+  "open-chesscom": {},
+  "open-lichess": {},
+  "open-page-panel": {},
+  "open-settings": {},
+  "open-welcome": {},
+  "repertoires": {
+   "display": "block",
+   "kinder": [
+    "Repertoar (1)",
+    "UL"
+   ]
+  },
+  "run-check": {},
+  "settings-box": {},
+  "share-state": {},
+  "share-url": {},
+  "sharebar": {},
+  "status": {
+   "textContent": "Još nije učitan nijedan repertoar",
+   "className": "status empty"
+  }
+ }
+}
