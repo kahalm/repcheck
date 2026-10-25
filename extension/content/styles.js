@@ -17,7 +17,6 @@
   const IN_REP_CLASS = 'repcheck-in-rep';
   const PANEL_ID = 'repcheck-panel';
 
-
   // ─── UI ─────────────────────────────────────────────────────────────
   // Styles der Deviation-Marker + des Settings-Panels + der Floating-Buttons.
   // Als Konstante ausgelagert (statt inline in injectStyles), damit die Funktion

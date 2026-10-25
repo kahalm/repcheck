@@ -29,7 +29,6 @@
     return set;
   }
 
-
   // ─── Repertoire Position Set ─────────────────────────────────────────
   // Transpositions: statt Zug-Sequenzen speichern wir alle erreichbaren
   // Stellungen als normalisierte FEN-Strings in einem Set. Zwei Partien,
@@ -162,7 +161,6 @@
     runCheck();
   }
 
-
   function analyzeGame(gameMoves) {
     // Returns { deviation: int, gaps: int[] }
     // deviation: Index des ersten dauerhaften Ausreissers (-1 = kein)
@@ -208,7 +206,6 @@
     return chess.fen();
   }
 
-
   // Stellt sicher, dass repertoirePositions geladen ist. Bei kaltem Tab
   // liest das Set einmalig aus IndexedDB. Migration vom alten pgnTexts-
   // Cache findet hier auch statt, falls noetig.
@@ -235,7 +232,6 @@
     }
     return false;
   }
-
 
   // ─── Export ──────────────────────────────────────────────────────────
   (self.RepCheckContent = self.RepCheckContent || {}).localRepertoire = {

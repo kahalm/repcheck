@@ -41,7 +41,6 @@
     }
   }
 
-
   // ─── UI ─────────────────────────────────────────────────────────────
   // Das Stylesheet (STYLE_CSS, injectStyles) liegt in content/styles.js.
 

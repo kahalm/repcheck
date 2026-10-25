@@ -30,7 +30,6 @@
     wirePanelEvents();
   }
 
-
   // Seit v1.6.0: RookHub-Modus zieht das Repertoire NICHT mehr vorab. Stattdessen
   // wird pro Review-Page ein POST /analyze-game gesendet (Game → Annotations). Hier
   // verifizieren wir nur Auth + zaehlen die Dateien, damit das Panel ein Feedback gibt.
@@ -46,12 +45,10 @@
     runCheck();
   }
 
-
   function updateStatusText(text) {
     const el = document.getElementById('repcheck-status');
     if (el) el.textContent = text;
   }
-
 
   // Panel-Markup (reiner String, keine DOM-Nebenwirkungen).
   // KEINE URL-/Token-Felder (seit v1.68.2): das Panel haengt im DOM von chess.com/lichess, ein
