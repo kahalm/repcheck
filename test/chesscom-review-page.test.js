@@ -11,7 +11,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const content = fs.readFileSync(path.join(__dirname, '..', 'extension', 'content.js'), 'utf8');
-const adapter = content.slice(content.indexOf('const ADAPTERS = {'), content.indexOf('lichess: {'));
+// Die Adapter liegen seit der Zerlegung Z37 in lib/site-adapters.js.
+const adapterLib = fs.readFileSync(path.join(__dirname, '..', 'extension', 'lib', 'site-adapters.js'), 'utf8');
+const adapter = adapterLib.slice(adapterLib.indexOf('const ADAPTERS = {'), adapterLib.indexOf('lichess: {'));
 // Nur die Seitenerkennung — `extractSan` daneben liest die Zuege und darf textContent benutzen.
 const istReviewSeite = adapter.slice(adapter.indexOf('isReviewPage:'), adapter.indexOf('getMoveListEl:'));
 
@@ -32,8 +34,8 @@ test('die bisherigen Pfad-Regeln gelten weiter', () => {
 });
 
 test('die Zugliste kennt die neue wc-simple-move-list (traegt die Klasse move-list)', () => {
-  assert.match(content, /function chessComMoveList\(\)/);
-  assert.match(content, /'\.move-list, vertical-move-list, wc-move-list'/);
+  assert.match(adapterLib, /function chessComMoveList\(\)/);
+  assert.match(adapterLib, /'\.move-list, vertical-move-list, wc-move-list'/);
 });
 
 test('ein sparsamer Takt bewertet neu, wenn der Knopf erst nach Partieende erscheint', () => {

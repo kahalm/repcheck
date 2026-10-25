@@ -129,7 +129,7 @@ function knoten(text, entfernbar = [], figurine = null) {
 }
 
 function adapter() {
-  const src = finde('const LICHESS_FIGURINES = {', '  function getAdapter() {');
+  const src = finde('const LICHESS_FIGURINES = {', '// ─── Export');
   return new Function('document', 'location', src + '\nreturn ADAPTERS;')({ querySelector: () => null }, { pathname: '/' });
 }
 
