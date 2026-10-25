@@ -49,7 +49,9 @@ test('KINDS listet genau die erkannten Zustände', () => {
 test('die Laufzeit-Dateien haben keine eigene Klassen-Zuordnung mehr', () => {
   const wurzel = path.join(__dirname, '..');
   for (const rel of ['extension/chessable-fen.js', 'extension/chessable-activity.js']) {
-    const src = fs.readFileSync(path.join(wurzel, rel), 'utf8');
+    // Seit der Zerlegung Z36/Z38: die ganze Welt (Konsument + seine Teil-Dateien), sonst liefe die Pruefung ins Leere.
+    const src = require('./helpers/quelle.js').welt(rel.replace('extension/', ''));
+    void wurzel;
     assert.ok(!src.includes("includes('icon--correct')"),
       `${rel} enthält wieder eine eigene Icon-Zuordnung — lib/chessable-feedback.js benutzen`);
   }

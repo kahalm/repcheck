@@ -153,7 +153,9 @@ test('Seite: Zug-Rückmeldung bleibt ohne Einschalten verborgen, auch nach einem
 });
 
 test('Keine Vorgabe „an" mehr in Seite und Einstellungs-Weiterleitung', () => {
+  // Seit der Zerlegung Z36/Z38: die ganze Welt (Konsument + seine Teil-Dateien), sonst liefe die Pruefung ins Leere.
+  const { welt } = require('./helpers/quelle.js');
   for (const datei of ['extension/chessable-fen.js', 'extension/chessable-activity.js']) {
-    assert.doesNotMatch(lies(datei), /copyFen: true/, `${datei} setzt noch eine Vorgabe „an"`);
+    assert.doesNotMatch(welt(datei.replace('extension/', '')), /copyFen: true/, `${datei} setzt noch eine Vorgabe „an"`);
   }
 });

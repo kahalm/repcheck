@@ -84,16 +84,14 @@ test('request: ohne Verbindung, bei Laufzeitfehler und bei 401 ein Fehler mit le
 
 // Die drei Import-Pfade aus chessable-activity.js, gegen den echten Client und ein gestubbtes chrome ausgeführt.
 function ladeImportPfade(antwort, live = {}) {
-  const src = lies('extension/chessable-activity.js');
-  const schnitt = (von, bis) => {
-    const a = src.indexOf(von), b = src.indexOf(bis, a);
-    assert.ok(a >= 0 && b > a, 'nicht gefunden: ' + von);
-    return src.slice(a, b);
-  };
-  const block = schnitt('  function rookhubRequest(', '  // Kurs-ID ermitteln')
-    + schnitt('  async function ingest(bid, chapters, target, courseName)', '  // Chessable drosselt (HTTP 429)')
-    + schnitt('  async function ingestChunk(', '  const CRAWL_BACKOFF_BASE_MS')
-    + schnitt('  async function ingestLive(', '  // Anhängen in Portionen');
+  // Seit der Zerlegung Z36: rookhubRequest in chessable-activity.js, ingest-Wege in chessable-activity/import-bridge.js,
+  // markImported in chessable-activity/progress-overlay.js — finde() sucht die Anker in allen Laufzeitdateien.
+  const { finde } = require('./helpers/quelle.js');
+  const block = finde('  function rookhubRequest(', '  // ---- Teil-Dateien verdrahten')
+    + finde('  async function ingest(bid, chapters, target, courseName)', '  // Ein Kapitel-Chunk an den kapitelweisen Ingest')
+    + finde('  async function ingestChunk(', '  // V1: nur den passiven Mitschnitt')
+    + finde('  function markImported(bid, chapters) {', '  // ======')
+    + finde('  async function ingestLive(', '  // Anhängen in Portionen');
   const { chrome, gesendet } = fakeChrome({ antwort });
   const client = Rookhub.create({ t, chrome });
   const readConfig = () => Rookhub.readConfig(chrome);
@@ -139,7 +137,7 @@ test('Auslieferung: die Lib lädt VOR chessable-activity.js, auch beim Nachladen
 });
 
 test('Die Import-Pfade bauen den Aufruf nicht mehr von Hand', () => {
-  const src = lies('extension/chessable-activity.js');
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   for (const endpunkt of ['/api/extension/chessable/ingest\'', '/api/extension/chessable/ingest/chunk\'', '/api/extension/chessable/ingest/live\'']) {
     const i = src.indexOf(endpunkt);
     assert.ok(i > 0, 'Endpunkt fehlt: ' + endpunkt);
@@ -154,7 +152,7 @@ test('Standard-Instanz: überall dieselbe Adresse wie in der Lib (sonst lehnt de
     'extension/background.js': /const DEFAULT_ROOKHUB_ORIGIN = '([^']+)'/,
     'extension/popup.js': /const ROOKHUB_DEFAULT_URL = '([^']+)'/,
     'extension/welcome.js': /const ROOKHUB_DEFAULT_URL = '([^']+)'/,
-    'extension/chessable-activity.js': /const DEFAULT_ROOKHUB_URL = '([^']+)'/,
+    'extension/chessable-activity/capture-harvest.js': /const DEFAULT_ROOKHUB_URL = '([^']+)'/,
   };
   for (const [datei, muster] of Object.entries(fundstellen)) {
     const m = muster.exec(lies(datei));

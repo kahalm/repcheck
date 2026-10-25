@@ -126,14 +126,15 @@ test('jeder Text-Schlüssel in Popup und Willkommensseite existiert', () => {
       if (!(m[1] in en)) fehlend.push(`${datei}: ${m[1]}`);
     }
   }
-  for (const m of lies('extension/chessable-activity.js').matchAll(/\bt\('((?:notice|connect)\.[\w.]+)'/g)) {
+  // Seit der Zerlegung Z36: die ganze Welt (chessable-activity.js + chessable-activity/*.js).
+  for (const m of require('./helpers/quelle.js').welt('chessable-activity.js').matchAll(/\bt\('((?:notice|connect)\.[\w.]+)'/g)) {
     if (!(m[1] in en)) fehlend.push(`chessable-activity.js: ${m[1]}`);
   }
   assert.deepStrictEqual(fehlend, []);
 });
 
 test('jeder erfolgreiche Chessable-Import hakt „Kurs geholt" ab', () => {
-  const zeilen = lies('extension/chessable-activity.js').split('\n');
+  const zeilen = require('./helpers/quelle.js').welt('chessable-activity.js').split('\n');
   const aufrufe = [
     'await ingestLiveInParts(bid, target, bestCourseName(bid), batch, onPart);',
     'await ingestChunk(sessionId, bid, target, courseName, null, true,',

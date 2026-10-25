@@ -126,7 +126,8 @@ test('pickCrawlDelayMs: eine zu schnelle Einstellung wird auch beim Würfeln nic
 
 test('Crawl-Schleifen: keine feste 3-s-Pause mehr, und keine Pause für Mitgeschnittenes', () => {
   for (const datei of ['extension/chessable-activity.js']) {
-    const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', datei), 'utf8');
+    // Seit der Zerlegung Z36: die ganze Welt (chessable-activity.js + chessable-activity/*.js).
+    const src = require('./helpers/quelle.js').welt('chessable-activity.js');
     assert.ok(!/sleep\((CRAWL_)?INTER_MS\)/.test(src), `${datei}: feste Pause gefunden`);
     assert.ok(src.includes('if (!fromCapture && !fromCache) await sleep(crawlPauseMs())'), `${datei}: Kapitel-Pause nicht an echten Abruf gebunden`);
     // Seit 1.60.0 steht der getGame-Abruf der Extension in einem try (unerwartete Antwort) — die Pause danach mehrzeilig.
@@ -135,7 +136,7 @@ test('Crawl-Schleifen: keine feste 3-s-Pause mehr, und keine Pause für Mitgesch
 });
 
 test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
-  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   assert.ok(src.includes("'/api/extension/chessable/cached-lines'"), 'Cache-Endpoint fehlt');
   assert.ok(src.includes('await fetchSharedCachedOids(wanted)'), 'Crawl fragt den geteilten Cache nicht ab');
   assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); fromShared++;'), 'gecachte Linie wird nicht übersprungen');
@@ -151,7 +152,7 @@ test('Buch-Crawl: ein zu großes Kapitel geht in byte-begrenzten Teilen raus (ni
   // Kapitel 30 eines Lifetime-Repertoires (87 Linien à ~470 KB) riss am 2026-09-20 das 48-MB-Limit des
   // Chunk-Endpoints; RookHub meldete das als HTTP 500. Der Buch-Zweig muss dieselbe Schranke nutzen wie
   // Mitschnitt und Repertoire — und die Teile per chapterKey als EIN Kapitel kennzeichnen.
-  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   assert.ok(src.includes('Crawl.splitIngestChapters([rest]).flat()'), 'Buch-Kapitel wird nicht nach Bytes geteilt');
   assert.ok(src.includes('chapterKey: String(lid)'), 'Teile tragen keinen chapterKey');
   assert.ok(!/await ingestChunk\(sessionId, bid, target, courseName, chapter, false\)/.test(src),
@@ -166,7 +167,7 @@ test('Kurs holen: BEIDE Ziele überspringen schon Importiertes, das Buch meldet 
   // hängt. Seit RookHub 0.496.0 ist die oid die Identität, 0.497.1 weicht bei Nummern-Kollisionen aus —
   // damit darf auch das Buch überspringen. Der Server muss aber WISSEN, dass der Stapel unvollständig
   // ist, sonst deutet er dieselbe Kollision genau falsch herum.
-  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   assert.ok(src.includes('const skipKnown = true;'), 'Überspringen hängt noch am Ziel');
   assert.ok(!/const incremental = target !== 'book'/.test(src), 'alte Ziel-Weiche noch da');
   assert.ok(src.includes('const partial = skipKnown && already.size > 0;'), 'partial wird nicht bestimmt');
@@ -189,7 +190,7 @@ test('pruneStructures behält die zuletzt aktualisierten Kurse und wirft kaputte
 });
 
 test('Zähler hängen an den echten Chessable-Ankern (Dumps 13.09.), nicht an geratenen Containern', () => {
-  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   assert.ok(src.includes("'#chapterBoxes a.levelBox[href]'"), 'Kapitel-Anker fehlt');
   assert.ok(src.includes("'.progressVisuals'"), 'Kapitel-Zähler nicht neben Chessables Zähler');
   assert.ok(src.includes("'h1.courseUI-bookChapter'"), 'Kurs-Summe fehlt');
@@ -230,14 +231,13 @@ test('parseCourseVariations liest die Kursart mit (isRepertoire sagt nichts daru
 // Gemeldet 07.10.2026: „Laut Chessable ein Taktik-Kurs → Kurs/Buch" stand im Popup, die Auswahl blieb auf Repertoire.
 // applySuggestedTarget verglich beim ersten Laden null mit null und hielt das für eine eigene Wahl des Nutzers.
 test('Ziel aus der Kursart: greift beim ersten Laden, eine eigene Wahl für DIESEN Kurs gewinnt, für einen anderen nicht', () => {
-  const src = fsCrawl.readFileSync(pathCrawl.join(__dirname, '..', 'extension/chessable-activity.js'), 'utf8');
-  const von = src.indexOf('  let targetChosenFor = null;');
-  const bis = src.indexOf('  let lastStatus', von);
-  const block = src.slice(von, bis);
-  const lade = (type) => new Function('Crawl', 'progressStruct',
+  const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
+  const block = require('./helpers/quelle.js').finde('  let targetChosenFor = null;', '  let lastStatus');
+  // Die Kursstruktur gehoert seit der Zerlegung Z36 dem Fortschritts-Teil; die Popup-Bruecke liest sie ueber S.
+  const lade = (type) => new Function('Crawl', 'S',
     'let importTarget = "repertoire";\n' + block
       + '\nreturn { anwenden: (bid) => { applySuggestedTarget(bid); return importTarget; }, waehle: (bid, z) => { targetChosenFor = bid; importTarget = z; } };')(
-    require('../extension/lib/chessable-crawl.js'), { type });
+    require('../extension/lib/chessable-crawl.js'), { progressStruct: { type } });
   assert.strictEqual(lade('tactics').anwenden('27821'), 'book', 'erstes Laden: Erkennung muss greifen');
   assert.strictEqual(lade('opening').anwenden('27821'), 'repertoire');
   const k = lade('tactics');

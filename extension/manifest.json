@@ -46,6 +46,14 @@
         "lib/chessable-feedback.js",
         "lib/i18n.js",
         "lib/rookhub-client.js",
+        "chessable-activity/activity-tracker.js",
+        "chessable-activity/course-context.js",
+        "chessable-activity/capture-harvest.js",
+        "chessable-activity/banners.js",
+        "chessable-activity/chessable-fetch.js",
+        "chessable-activity/course-import.js",
+        "chessable-activity/import-bridge.js",
+        "chessable-activity/progress-overlay.js",
         "chessable-activity.js"
       ],
       "run_at": "document_idle"

@@ -9,6 +9,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { splitIngestChapters, INGEST_BATCH_BYTES } = require('../extension/lib/chessable-crawl.js');
+// Seit der Zerlegung Z36 verteilt sich chessable-activity.js auf chessable-activity/*.js: Pruefungen der Art
+// „enthaelt X“ laufen gegen die ganze Welt (welt), Bloecke kommen per Anker aus der Datei, in der sie stehen (finde).
+const { finde, welt } = require('./helpers/quelle.js');
 
 const bytes = (v) => Buffer.byteLength(JSON.stringify(v));
 const linie = (oid, kb, fill = 'x') => JSON.stringify({ game: { id: oid, text: fill.repeat(kb * 1024) } });
@@ -87,7 +90,7 @@ test('gezählt wird in UTF-8-Bytes, nicht in Zeichen (Kommentare mit Umlauten)',
 });
 
 test('Extension: Mitschnitt, „Kurs holen" und Live-Anhängen schicken über die Portionierung', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
+  const src = welt('chessable-activity.js');
   assert.match(src, /const parts = Crawl\.splitIngestChapters\(chapters\);\s+const courseName = bestCourseName\(bid\);/);
   assert.match(src, /await ingestLiveInParts\(bid, target, bestCourseName\(bid\), batch, onPart\)/);
   assert.match(src, /await ingestLiveInParts\(bid, importTarget, bestCourseName\(bid\), chapters\)/);
@@ -98,14 +101,11 @@ test('Extension: Mitschnitt, „Kurs holen" und Live-Anhängen schicken über di
 // ─── v1.59.2: Rückmeldung beim „Kurs holen" ─────────────────────────────
 
 function ladeIngestLiveInParts(antworten) {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
-  const von = src.indexOf('  async function ingestLiveInParts(');
-  const bis = src.indexOf('  async function flushLive() {', von);
-  assert.ok(von >= 0 && bis > von, 'ingestLiveInParts nicht gefunden');
+  const block = finde('  async function ingestLiveInParts(', '  async function flushLive() {');
   const aufrufe = [];
   const Crawl = { splitIngestChapters: (ch) => ch.map((c) => [c]) };   // je Kapitel eine Portion
   const ingestLive = async (bid, target, name, part) => { aufrufe.push(part); return antworten[aufrufe.length - 1]; };
-  const fn = new Function('Crawl', 'ingestLive', src.slice(von, bis) + '\nreturn ingestLiveInParts;')(Crawl, ingestLive);
+  const fn = new Function('Crawl', 'ingestLive', block + '\nreturn ingestLiveInParts;')(Crawl, ingestLive);
   return { fn, aufrufe };
 }
 
@@ -123,7 +123,7 @@ test('ingestLiveInParts: ältere RookHub-Versionen ohne linked-Feld zählen als 
 });
 
 test('„Kurs holen" zählt die Kapitellisten mit und nennt verknüpfte Linien in der Abschlussmeldung', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
+  const src = welt('chessable-activity.js');
   assert.match(src, /setStatus\(t\('import\.fetchingChapters', \{ done: li \+ 1, total: lids\.length \}\)\)/);
   assert.match(src, /res\.linked \? fertig \+ ' ' \+ t\('import\.linkedNote', \{ count: res\.linked \}\) : fertig/);
 });
@@ -138,10 +138,7 @@ const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
 
 // beimAnhaengen(nr, oids) läuft vor jedem ingestLiveInParts-Aufruf (nr ab 1); wirft es, scheitert dieser Anhang.
 function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000, beiGame, kurs = KURS, beimAnhaengen, beimChunk, cache = new Map() } = {}) {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'extension', 'chessable-activity.js'), 'utf8');
-  const von = src.indexOf('  async function crawlAndImport(');
-  const bis = src.indexOf('  // V1: nur den passiven Mitschnitt', von);
-  assert.ok(von >= 0 && bis > von, 'crawlAndImport nicht gefunden');
+  const crawlBlock = finde('  async function crawlAndImport(', '  // ─── Export');
   const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [], berichte: [] };
   let api;
   const deps = {
@@ -205,7 +202,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
     REPERTOIRE_APPEND_RETRY_MS: 0,
   };
   const namen = Object.keys(deps);
-  const rumpf = 'let crawling = false, crawlStartedAt = null, cancelRequested = false;\n' + src.slice(von, bis)
+  const rumpf = 'let crawling = false, crawlStartedAt = null, cancelRequested = false;\n' + crawlBlock
     + '\nreturn { crawlAndImport, cancel: () => { cancelRequested = true; } };';
   api = new Function(...namen, rumpf)(...namen.map((n) => deps[n]));
   return { crawl: () => api.crawlAndImport(target), log };

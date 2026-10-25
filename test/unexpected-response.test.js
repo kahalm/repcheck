@@ -12,7 +12,10 @@ const { checkChessableResponse, looksBanned, scrubSnippet, UNEXPECTED_SNIPPET_CH
   require('../extension/lib/chessable-crawl.js');
 
 const ROOT = path.join(__dirname, '..');
-const activity = fs.readFileSync(path.join(ROOT, 'extension', 'chessable-activity.js'), 'utf8');
+// Seit der Zerlegung Z36 verteilt sich chessable-activity.js auf chessable-activity/*.js: Pruefungen der Art
+// „enthaelt X“ laufen gegen die ganze Welt (welt), Bloecke kommen per Anker aus der Datei, in der sie stehen (finde).
+const { finde, welt } = require('./helpers/quelle.js');
+const activity = welt('chessable-activity.js');
 const popup = fs.readFileSync(path.join(ROOT, 'extension', 'popup.js'), 'utf8');
 const popupHtml = fs.readFileSync(path.join(ROOT, 'extension', 'popup.html'), 'utf8');
 
@@ -73,7 +76,7 @@ test('Ausschnitt: gekürzt, ohne E-Mail- und IP-Adressen, Uhrzeiten bleiben', ()
 });
 
 test('Kurs holen prüft getCourse, getList und getGame', () => {
-  const crawl = activity.slice(activity.indexOf('async function crawlAndImport('), activity.indexOf('// V1: nur den passiven Mitschnitt'));
+  const crawl = finde('async function crawlAndImport(', '// ─── Export');
   assert.match(crawl, /chessableGetChecked\(`getCourse\?bid=\$\{bid\}`, 'course'\)/);
   assert.match(crawl, /chessableGetChecked\(`getList\?bid=\$\{bid\}&lid=\$\{lid\}`, 'list'/);
   assert.match(crawl, /chessableGetChecked\(`getGame\?lng=en&oid=\$\{oid\}`, 'game'/);
@@ -121,15 +124,15 @@ test('BOOK_NOT_OWNED: Code und Kursname aus der Antwort, keine Sperre', () => {
 });
 
 test('BOOK_NOT_OWNED: Erklärung statt Alarm — kein rcCrawlAlert, keine Meldung an RookHub', () => {
-  const checked = activity.slice(activity.indexOf('async function chessableGetChecked('), activity.indexOf('function unexpectedDetail('));
+  const checked = finde('async function chessableGetChecked(', '// ---- Kursstruktur-Zwischenspeicher');
   // Die Weiche steht VOR dem Fehler mit `unexpected` — sonst liefe der Alarm-Pfad doch.
   const weiche = checked.indexOf('Crawl.BOOK_NOT_OWNED');
   assert.ok(weiche > 0 && weiche < checked.indexOf('err.unexpected'));
   assert.match(checked, /err\.notOwned = /);
-  const karte = activity.slice(activity.indexOf('function showNotOwned('), activity.indexOf('// V2: Kurs aktiv holen'));
+  const karte = finde('function showNotOwned(', '// ─── Export');
   assert.match(karte, /import\.notOwned\.body/);
   assert.doesNotMatch(karte, /rcCrawlAlert|reportUnexpected|DISCORD_URL/);
-  const crawl = activity.slice(activity.indexOf('async function crawlAndImport('), activity.indexOf('// V1: nur den passiven Mitschnitt'));
+  const crawl = finde('async function crawlAndImport(', '// ─── Export');
   assert.match(crawl, /err\.notOwned\) \{\s*failMsg = showNotOwned\(/);
 });
 
@@ -162,7 +165,7 @@ test('Bannrisiko-Hinweis: „nie wieder zeigen" gilt dauerhaft, aber nie für di
 // Seit RookHub 0.695.1 (07.10.2026) geht JEDE unerwartete Antwort als Admin-Nachricht raus — die Karte sagt das dann
 // auch ohne Sperr-Verdacht, statt den Hinweis an `banned` zu koppeln.
 test('Karte: „Admins benachrichtigt" hängt an adminNotified, nicht an einer Sperre', () => {
-  const karte = activity.slice(activity.indexOf('function showCrawlAlert('), activity.indexOf('async function handleUnexpected('));
+  const karte = finde('function showCrawlAlert(', '// ---- Kurs nicht im Chessable-Konto');
   assert.match(karte, /if \(h\.adminNotified\) absatz\(t\('import\.unexpected\.adminsNotified'\)\);/);
   assert.doesNotMatch(karte, /\+ \(h\.adminNotified \?/);
 });

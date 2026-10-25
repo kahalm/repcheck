@@ -131,15 +131,17 @@ test('manifest.json liefert lib/chessable-course-names.js in BEIDEN Welten aus',
 // hält Popup und Manifest gleich.
 
 test('die Extension-Laufzeitdateien benutzen die Lib statt eigener Definitionen', () => {
+  // Seit der Zerlegung Z36/Z38: je Konsument die ganze Welt (Konsument + seine Teil-Dateien).
+  const { welt } = require('./helpers/quelle.js');
   for (const rel of ['extension/chessable-activity.js', 'extension/chessable-fen.js']) {
-    const src = lies(rel);
+    const src = welt(rel.replace('extension/', ''));
     assert.ok(src.includes('self.RepCheckCourseNames'),
       `${rel}: bezieht die Kursnamen-Helfer nicht über self.RepCheckCourseNames`);
     assert.ok(!src.includes(KOPIE_MARKER),
       `${rel}: enthält wieder eine eigene isNavLabel-Kopie`);
   }
   // Der uid-Decode lag ebenfalls doppelt vor (JWT-Payload-Parsing).
-  const activity = lies('extension/chessable-activity.js');
+  const activity = welt('chessable-activity.js');
   assert.ok(!/function b64urlDecode/.test(activity),
     'chessable-activity.js: eigener base64url-Decoder ist wieder da');
   assert.ok(activity.includes('CourseNames.decodeChessableUid'),

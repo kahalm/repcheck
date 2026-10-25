@@ -104,12 +104,13 @@ function schnipsel(src, vonAnker, bisAnker, datei) {
 }
 
 function activityAusschnitte() {
-  const datei = 'extension/chessable-activity.js';
-  const src = lies(datei);
+  // Seit der Zerlegung Z36: Kursnamen in chessable-activity/course-context.js, Abrufe in chessable-fetch.js —
+  // finde() sucht die Anker in allen Laufzeitdateien.
+  const { finde } = require('./helpers/quelle.js');
   // Der Helfer liegt zwischen readChessableToken und fetchCourseNameMap.
-  const helfer = schnipsel(src, 'function clearStoredChessableToken', 'async function fetchCourseNameMap', datei);
-  const nameMap = schnipsel(src, 'async function fetchCourseNameMap', 'function loadPersistedNames', datei);
-  const crawlGet = schnipsel(src, 'const CHESSABLE_RETRYABLE', '// Ein Kapitel-Chunk', datei);
+  const helfer = finde('function clearStoredChessableToken', 'async function fetchCourseNameMap');
+  const nameMap = finde('async function fetchCourseNameMap', 'function loadPersistedNames');
+  const crawlGet = finde('const CHESSABLE_RETRYABLE', 'const CRAWL_BACKOFF_BASE_MS');
   return { helfer, nameMap, crawlGet };
 }
 

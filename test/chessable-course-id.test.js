@@ -16,6 +16,9 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const lies = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const CourseId = require('../extension/lib/chessable-course-id.js');
+// Seit der Zerlegung Z36 verteilt sich chessable-activity.js auf chessable-activity/*.js: Pruefungen der Art
+// „enthaelt X“ laufen gegen die ganze Welt (welt), Bloecke kommen per Anker aus der Datei, in der sie stehen (finde).
+const { finde, welt } = require('./helpers/quelle.js');
 const { rcTranslate: translate } = require('../extension/lib/i18n.js');
 
 function schnipsel(src, von, bis, datei) {
@@ -60,10 +63,10 @@ test('isOnCourse: Kursseite laut Pfad oder ID aus URL/Fiber — eine Link-ID auf
 // ─── chessable-activity.js: importState und crawlAndImport ─────────────────────────────
 
 function ladeActivity(pathname, links) {
-  const src = lies('extension/chessable-activity.js');
-  const kern = schnipsel(src, '  // Kurs-ID ermitteln (geteilte Datei', '  // ---- Kursnamen-Kern', 'chessable-activity.js');
-  const state = schnipsel(src, '  function importState() {', '  // Popup → Content-Script.', 'chessable-activity.js');
-  const crawl = schnipsel(src, '  async function crawlAndImport(', '  // V1: nur den passiven Mitschnitt', 'chessable-activity.js');
+  const kern = finde('  // Kurs-ID ermitteln (geteilte Datei', '  function installKursIdBruecke() {')
+    + finde('  function installKursIdBruecke() {', '  // ---- Kursnamen-Kern');
+  const state = finde('  function importState() {', '  function installPopupBruecke() {');
+  const crawl = finde('  async function crawlAndImport(', '  // ─── Export');
   const log = { status: [], geholt: [] };
   let horcher = null;
   const location = { pathname, origin: 'https://www.chessable.com' };
@@ -79,9 +82,9 @@ function ladeActivity(pathname, links) {
     importTarget: 'repertoire',
     lastStatus: '',
     progressSummary: () => null,
-    progressStruct: null,
+    // Zustand anderer Teile (Fortschritt, Kurs holen) — im Browser Getter auf S, hier ein schlichtes Objekt.
+    S: { progressStruct: null, progressBid: null, crawling: false, crawlStartedAt: null },
     reportCrawlError: () => {},
-    progressBid: null,
     suggestedTarget: () => null,
     t: (k, p) => (p ? k + ' ' + JSON.stringify(p) : k),
     setStatus: (s) => log.status.push(s),
@@ -94,7 +97,7 @@ function ladeActivity(pathname, links) {
   const rumpf = 'let bridgedCourseId = null, bridgedCourseIdSource = null, bridgedCourseName = null;\n'
     + 'let crawling = false, crawlStartedAt = null, cancelRequested = false;\n'
     + kern + state + crawl
-    + '\nreturn { importState, crawlAndImport, currentCourseId };';
+    + '\ninstallKursIdBruecke();\nreturn { importState, crawlAndImport, currentCourseId };';
   const api = new Function(...namen, rumpf)(...namen.map((n) => deps[n]));
   const bridge = (data) => horcher({ source: window, origin: location.origin, data: Object.assign({ __repcheck: 'course-id' }, data) });
   return { api, log, location, bridge };
@@ -192,12 +195,12 @@ test('Manifest lädt lib/chessable-course-id.js vor beiden Konsumenten, keine In
     const eintrag = manifest.content_scripts.find((cs) => (cs.js || []).includes(konsument));
     const lib = eintrag.js.indexOf('lib/chessable-course-id.js');
     assert.ok(lib >= 0 && lib < eintrag.js.indexOf(konsument), `${konsument}: Lib fehlt oder kommt zu spät`);
-    const src = lies('extension/' + konsument);
+    const src = welt(konsument);
     assert.ok(src.includes('self.RepCheckCourseId'), `${konsument}: nutzt die Lib nicht`);
     assert.ok(!src.includes('/\\/courses?\\/(\\d+)'), `${konsument}: eigene URL-Regex ist wieder da`);
     assert.ok(!src.includes('/\\/course\\/(\\d+)(?:\\/|$)/'), `${konsument}: eigene Link-Regex ist wieder da`);
   }
-  assert.ok(lies('extension/chessable-activity.js').includes('const bid = pageCourseId();'), 'crawlAndImport muss pageCourseId nehmen');
+  assert.ok(welt('chessable-activity.js').includes('const bid = pageCourseId();'), 'crawlAndImport muss pageCourseId nehmen');
 });
 
 // ─── Popup: die Bannrisiko-Box nennt den Kurs ───────────────────────────────────────
