@@ -1,0 +1,305 @@
+[
+ [
+  "window.on",
+  "focus"
+ ],
+ [
+  "document.on",
+  "visibilitychange"
+ ],
+ [
+  "window.on",
+  "storage"
+ ],
+ [
+  "--- lade",
+  "lib/chessable-crawl.js"
+ ],
+ [
+  "--- lade",
+  "lib/chessable-course-names.js"
+ ],
+ [
+  "--- lade",
+  "lib/chessable-course-id.js"
+ ],
+ [
+  "--- lade",
+  "lib/chessable-feedback.js"
+ ],
+ [
+  "--- lade",
+  "lib/i18n.js"
+ ],
+ [
+  "--- lade",
+  "lib/rookhub-client.js"
+ ],
+ [
+  "--- lade",
+  "<konsument>"
+ ],
+ [
+  "storage.get",
+  [
+   "rcLang"
+  ]
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "document.on",
+  "pointerdown"
+ ],
+ [
+  "document.on",
+  "keydown"
+ ],
+ [
+  "document.on",
+  "click"
+ ],
+ [
+  "document.on",
+  "keydown"
+ ],
+ [
+  "window.on",
+  "message"
+ ],
+ [
+  "storage.get",
+  "chessableCourseNames"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "setInterval",
+  5000
+ ],
+ [
+  "document.on",
+  "visibilitychange"
+ ],
+ [
+  "window.on",
+  "pagehide"
+ ],
+ [
+  "window.on",
+  "message"
+ ],
+ [
+  "window.on",
+  "message"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "window.on",
+  "message"
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "storage.get",
+  "chessableButtons"
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "chessable-buttons",
+   "settings": {}
+  }
+ ],
+ [
+  "storage.get",
+  "crawlDelay"
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "setInterval",
+  3000
+ ],
+ [
+  "window.on",
+  "message"
+ ],
+ [
+  "runtime.onMessage.addListener"
+ ],
+ [
+  "setInterval",
+  5000
+ ],
+ [
+  "MutationObserver.new"
+ ],
+ [
+  "MutationObserver.observe",
+  {
+   "childList": true,
+   "subtree": true
+  }
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "console.log",
+  "[RepCheck Chessable] Activity-Tracking aktiv"
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/repertoires",
+  "GET"
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "rookhub-url",
+   "url": "https://rookhub.example"
+  }
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "--- popup: state"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "state",
+  {
+   "autoImport": true,
+   "bid": "4711",
+   "captured": 0,
+   "courseName": "Probe",
+   "courseType": null,
+   "crawlStartedAt": null,
+   "crawling": false,
+   "onCourse": true,
+   "progress": null,
+   "status": "",
+   "suggestedTarget": null,
+   "target": "repertoire"
+  }
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "--- mitschnitt: getList"
+ ],
+ [
+  "setTimeout",
+  15000
+ ],
+ [
+  "setTimeout",
+  1500
+ ],
+ [
+  "--- popup: setTarget book"
+ ],
+ [
+  "state",
+  {
+   "autoImport": true,
+   "bid": "4711",
+   "captured": 0,
+   "courseName": "Probe",
+   "courseType": null,
+   "crawlStartedAt": null,
+   "crawling": false,
+   "onCourse": true,
+   "progress": null,
+   "status": "",
+   "suggestedTarget": null,
+   "target": "book"
+  }
+ ],
+ [
+  "--- bridge: request-daily + request-rookhub-url"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.get",
+  [
+   "rcDailyStats"
+  ]
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "rookhub-url",
+   "url": "https://rookhub.example"
+  }
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "daily",
+   "daily": {
+    "heute": {
+     "linien": 0,
+     "linienOk": 0,
+     "sekunden": 0,
+     "zuege": 0,
+     "zuegeOk": 0
+    },
+    "schnitt": {
+     "linienQuote": null,
+     "sekProLinie": null,
+     "tage": 0
+    }
+   }
+  }
+ ],
+ [
+  "--- storage: rookhubConfig weg, Buttons-Einstellung neu"
+ ],
+ [
+  "storage.get",
+  "chessableButtons"
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "chessable-buttons",
+   "settings": {}
+  }
+ ]
+]

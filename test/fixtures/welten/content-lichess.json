@@ -1,0 +1,101 @@
+[
+ [
+  "--- lade",
+  "lib/repertoire-text.js"
+ ],
+ [
+  "--- lade",
+  "lib/chesscom-moves.js"
+ ],
+ [
+  "--- lade",
+  "lib/i18n.js"
+ ],
+ [
+  "--- lade",
+  "<konsument>"
+ ],
+ [
+  "storage.get",
+  [
+   "rcLang"
+  ]
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "setTimeout",
+  250
+ ],
+ [
+  "window.on",
+  "popstate"
+ ],
+ [
+  "setInterval",
+  2000
+ ],
+ [
+  "setInterval",
+  2500
+ ],
+ [
+  "window.on",
+  "popstate"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-floating",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-copy-pgn",
+  "click"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] Extension v1.73.1 loaded"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "--- runCheck ohne Zuege"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] Position-Cache nicht lesbar: Error: keine IDB"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] RookHub-PGN-Cache nicht lesbar: Error: keine IDB"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "setTimeout",
+  3000
+ ],
+ [
+  "ids",
+  [
+   "repcheck-copy-pgn",
+   "repcheck-floating",
+   "repcheck-floating-wrap",
+   "repcheck-styles"
+  ]
+ ]
+]

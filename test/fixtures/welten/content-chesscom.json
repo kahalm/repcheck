@@ -1,0 +1,120 @@
+[
+ [
+  "--- lade",
+  "lib/repertoire-text.js"
+ ],
+ [
+  "--- lade",
+  "lib/chesscom-moves.js"
+ ],
+ [
+  "--- lade",
+  "lib/i18n.js"
+ ],
+ [
+  "--- lade",
+  "<konsument>"
+ ],
+ [
+  "storage.get",
+  [
+   "rcLang"
+  ]
+ ],
+ [
+  "storage.onChanged.addListener"
+ ],
+ [
+  "setTimeout",
+  250
+ ],
+ [
+  "window.on",
+  "popstate"
+ ],
+ [
+  "setInterval",
+  2000
+ ],
+ [
+  "setInterval",
+  2500
+ ],
+ [
+  "window.on",
+  "popstate"
+ ],
+ [
+  "console.log",
+  "[RepertoireChecker] Extension v1.73.1 loaded"
+ ],
+ [
+  "api",
+  {
+   "getCurrentLine": "[fn]",
+   "openSettings": "[fn]",
+   "refreshButton": "[fn]",
+   "runCheck": "[fn]",
+   "version": "1.73.1"
+  }
+ ],
+ [
+  "--- getCurrentLine"
+ ],
+ [
+  "zeile",
+  {
+   "moves": [],
+   "title": "Probe"
+  }
+ ],
+ [
+  "--- openSettings"
+ ],
+ [
+  "el.on",
+  "DIV#repcheck-overlay",
+  "click"
+ ],
+ [
+  "el.on",
+  "SELECT#repcheck-lang",
+  "change"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-pick-dir",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-load-pgn",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-close",
+  "click"
+ ],
+ [
+  "el.on",
+  "BUTTON#repcheck-rookhub-refresh",
+  "click"
+ ],
+ [
+  "ids",
+  [
+   "repcheck-close",
+   "repcheck-folder-info",
+   "repcheck-lang",
+   "repcheck-load-pgn",
+   "repcheck-overlay",
+   "repcheck-panel",
+   "repcheck-pgn-input",
+   "repcheck-pick-dir",
+   "repcheck-rookhub-refresh",
+   "repcheck-status",
+   "repcheck-styles"
+  ]
+ ]
+]
