@@ -181,10 +181,11 @@ function ladeWelt(konsument, opts) {
   return u;
 }
 
-// Protokoll ohne die „--- lade"-Marker der Welt-Dateien: die Zerlegung darf neue Dateien einfuegen, deren Laden
-// selbst nichts bewirkt; verglichen wird, was die Welt INSGESAMT tut, und in welcher Reihenfolge.
+// Protokoll ohne die „--- lade"-Marker der Libs und Welt-Dateien (nur der Konsument bleibt als Marke): die
+// Zerlegung darf neue Dateien einfuegen, deren Laden selbst nichts bewirkt; verglichen wird, was die Welt
+// INSGESAMT tut, und in welcher Reihenfolge.
 function wirkung(log) {
-  return log.filter((e) => !(e[0] === '--- lade' && e[1] === '<welt>'));
+  return log.filter((e) => !(e[0] === '--- lade' && e[1] !== '<konsument>'));
 }
 
 function vergleiche(name, log) {
