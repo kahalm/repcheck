@@ -82,8 +82,9 @@ test('popup.html: jede Checkbox gehört zu CB_KEYS, keine ist vorab angehakt', (
 // ─── Seite: chessable-fen.js ────────────────────────────────────────────
 
 function ladeSichtbarkeit() {
-  const block = schnipsel(lies('extension/chessable-fen.js'),
-    '  let btnRefs = {};', '  function requestButtonSettings() {', 'extension/chessable-fen.js');
+  // Seit der Zerlegung Z38 in extension/chessable-fen/fen-toolbar.js.
+  const block = schnipsel(lies('extension/chessable-fen/fen-toolbar.js'),
+    '  let btnRefs = {};', '  function requestButtonSettings() {', 'extension/chessable-fen/fen-toolbar.js');
   const aufrufe = [];
   return new Function('renderFeedback', 'renderPool', block
     + '\nreturn { setRefs: (r) => { btnRefs = r; }, setSettings: (s) => { buttonSettings = s; }, buttonEnabled, applyButtonSettings };')(
@@ -113,7 +114,7 @@ test('Seite: nur `true` blendet ein — false, fehlend oder "true" als Text blei
 });
 
 test('Seite: btnRefs + die zwei Anzeigen decken genau die Popup-Schlüssel ab', () => {
-  const src = lies('extension/chessable-fen.js');
+  const src = require('./helpers/quelle.js').welt('chessable-fen.js');   // seit Z38 die ganze MAIN-Welt
   const m = src.match(/btnRefs = \{ ([^}]*) \};/);
   assert.ok(m, 'btnRefs-Zuweisung in createUi nicht gefunden');
   const keys = m[1].split(',').map((p) => p.split(':')[0].trim()).concat(['pool', 'feedback']).sort();
@@ -121,8 +122,9 @@ test('Seite: btnRefs + die zwei Anzeigen decken genau die Popup-Schlüssel ab', 
 });
 
 test('Seite: ⏳-Pool-Zähler bleibt ohne Einschalten verborgen, auch wenn es Daten gibt', () => {
-  const block = schnipsel(lies('extension/chessable-fen.js'),
-    '  function renderPool() {', '  // ---------- UI ----------', 'extension/chessable-fen.js');
+  // Seit der Zerlegung Z38 in extension/chessable-fen/fen-pool.js.
+  const block = schnipsel(lies('extension/chessable-fen/fen-pool.js'),
+    '  function renderPool() {', '  // Tagesstatistik aus der isolierten Welt', 'extension/chessable-fen/fen-pool.js');
   const el = { style: { display: '' }, textContent: '', title: '' };
   let an = false;
   const renderPool = new Function('document', 'trainingPoolRest', 'hidePoolPanel', 'buttonEnabled', 'POOL_ID',
@@ -136,8 +138,9 @@ test('Seite: ⏳-Pool-Zähler bleibt ohne Einschalten verborgen, auch wenn es Da
 });
 
 test('Seite: Zug-Rückmeldung bleibt ohne Einschalten verborgen, auch nach einem Zug', () => {
-  const block = schnipsel(lies('extension/chessable-fen.js'),
-    '  function renderFeedback() {', '  function renderFeedbackList() {', 'extension/chessable-fen.js');
+  // Seit der Zerlegung Z38 in extension/chessable-fen/fen-feedback.js.
+  const block = schnipsel(lies('extension/chessable-fen/fen-feedback.js'),
+    '  function renderFeedback() {', '  function renderFeedbackList() {', 'extension/chessable-fen/fen-feedback.js');
   const badge = { style: { display: '', background: '' }, textContent: '', title: '' };
   let an = false;
   const renderFeedback = new Function('document', 'FEEDBACK_ID', 'lineFeedback', 'hideFeedbackList', 'feedbackSum',

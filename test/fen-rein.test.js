@@ -84,7 +84,7 @@ test('Pool-Panel: zu wenig heute → Vortagesschnitt, mit Begruendung; ohne Date
 
 test('chessableSearchUrl: kursintern mit „;", sonst global mit „U"', () => {
   // lib/repertoire-text.js hat eine gleichnamige (globale) Fassung — hier die kursinterne aus der MAIN-World.
-  const src = finde('function chessableSearchUrl(fen) {\n    const courseId = currentCourseId();', '// ---------- Zug-Rückmeldung');
+  const src = finde('function chessableSearchUrl(fen) {\n    const courseId = currentCourseId();', '// ---- Anlaufen, in der Reihenfolge');
   const mit = (id) => new Function('currentCourseId', src + '\nreturn chessableSearchUrl;')(() => id);
   const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
   assert.strictEqual(mit('55720')(fen),
@@ -109,4 +109,16 @@ test('fiberCourseName: erster brauchbarer Name, Nav-Labels und Ueberlanges verwo
   assert.strictEqual(fn({ course: { name: 'Practice Moves' }, courseTitle: 'Grünfeld' }), 'Grünfeld');
   assert.strictEqual(fn({ book: { title: 'x'.repeat(201) } }), null);
   assert.strictEqual(fn({ courseName: 42 }), null);
+});
+
+test('lib/fen-extract.js: als Modul ladbar, placementFromGrid und isValidFen wie im Browser', () => {
+  const lib = require('../extension/lib/fen-extract.js');
+  const leer = Array.from({ length: 8 }, () => Array(8).fill(null));
+  leer[7][4] = 'K'; leer[0][4] = 'k';
+  assert.strictEqual(lib.placementFromGrid(leer), '4k3/8/8/8/8/8/8/4K3');
+  assert.strictEqual(lib.isValidFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1'), true);
+  assert.strictEqual(lib.isValidFen('4k3/8/8/8/8/8/8/4K3 w - -'), false);
+  for (const k of ['extractFenFromReact', 'extractBoardCm', 'extractBoardCg', 'extractBoard', 'buildFEN', 'getReactFiber']) {
+    assert.strictEqual(typeof lib[k], 'function', k);
+  }
 });

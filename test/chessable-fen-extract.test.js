@@ -118,10 +118,12 @@ function fakeDocument(html, seitenText = '') {
   };
 }
 
+// Seit der Zerlegung Z38 steht die FEN-Auslese in extension/lib/fen-extract.js (MAIN-World-Lib). Umgestellt wurde
+// wie vorgesehen nur diese Ladefunktion — die Erwartungen unten sind dieselben.
 function ladeFenExtraktion(document) {
-  const block = schnipsel(lies('extension/chessable-fen.js'),
-    '  // ---------- FEN extraction ----------', '  // ---------- Clipboard ----------',
-    'extension/chessable-fen.js');
+  const block = schnipsel(lies('extension/lib/fen-extract.js'),
+    '  // ---------- FEN extraction ----------', '  // ─── Export',
+    'extension/lib/fen-extract.js');
   return new Function('document', 'location', "'use strict';\n" + block
     + '\nreturn { extractFenFromReact, extractBoardCm, extractBoardCg, extractBoard, buildFEN, isValidFen };')(
     document, { href: 'https://www.chessable.com/practice/1', pathname: '/practice/1' });

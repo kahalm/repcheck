@@ -308,6 +308,9 @@ test('chessable.com, isolierte Welt ohne Verbindung: Verbinden-Karte', async () 
 test('chessable.com, MAIN-Welt (chessable-fen.js): Laden im Practice-Modus, Einstellungen und URL kommen an', async () => {
   const u = ladeWelt('chessable-fen.js', { href: 'https://www.chessable.com/practice/4711/1' });
   await tick();
+  // MAIN-World: jeder globale Name ist fuer die Seite sichtbar. Die Teil-Dateien (Z38) legen ihre Funktionen nur fuer
+  // die Verdrahtung unter RepCheckFen ab — danach muss der Name wieder weg sein.
+  assert.ok(!('RepCheckFen' in u.ctx), 'RepCheckFen bleibt im window der Seite stehen');
   u.log.push(['--- bridge: chessable-buttons + rookhub-url + daily']);
   for (const fn of u.listener.fenster.message || []) {
     fn({ source: u.fenster, origin: 'https://www.chessable.com', data: { __repcheck: 'chessable-buttons', settings: { copyFen: true, pool: true, fullscreen: true } } });
