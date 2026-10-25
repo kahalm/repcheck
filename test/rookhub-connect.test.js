@@ -33,7 +33,8 @@ function ladeFunktion(datei, vonAnker, bisAnker, name) {
 const NORMALIZER = {
   'extension/background.js': ladeFunktion('extension/background.js',
     'function normalizeRookhubUrl(raw) {', 'function sameOrigin(', 'normalizeRookhubUrl'),
-  'extension/popup.js': ladeFunktion('extension/popup.js',
+  // Seit der Zerlegung Z39 in popup-connection.js.
+  'extension/popup-connection.js': ladeFunktion('extension/popup-connection.js',
     'function normalizeRookhubUrl(raw) {', '// Wie readRookhubConfigFromStorage()', 'normalizeRookhubUrl'),
 };
 

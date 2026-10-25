@@ -206,8 +206,7 @@ test('Manifest lädt lib/chessable-course-id.js vor beiden Konsumenten, keine In
 // ─── Popup: die Bannrisiko-Box nennt den Kurs ───────────────────────────────────────
 
 function ladeWarnBox(state) {
-  const src = lies('extension/popup.js');
-  const block = schnipsel(src, 'function showCiWarn() {', 'async function startCiCrawl() {', 'popup.js');
+  const block = finde('function showCiWarn() {', 'async function startCiCrawl() {');   // seit Z39 in popup-import.js
   const el = () => ({ textContent: '', className: '', type: '', style: {}, children: [],
     append(...c) { this.children.push(...c); }, addEventListener() {} });
   const warn = Object.assign(el(), { replaceChildren(...c) { this.children = c; } });

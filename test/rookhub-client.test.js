@@ -133,7 +133,7 @@ test('Auslieferung: die Lib lädt VOR chessable-activity.js, auch beim Nachladen
   assert.ok(js.includes('lib/rookhub-client.js'), 'Manifest liefert lib/rookhub-client.js nicht aus');
   assert.ok(js.indexOf('lib/rookhub-client.js') < js.indexOf('chessable-activity.js'));
   // Das Popup lädt die Manifest-Liste nach (test/nachlade-listen.test.js), also auch die Lib in dieser Reihenfolge.
-  assert.match(lies('extension/popup.js'), /files: manifestScripts\('chessable-activity\.js'\)/);
+  assert.match(require('./helpers/quelle.js').popupWelt(), /files: manifestScripts\('chessable-activity\.js'\)/);   // seit Z39 popup-import.js
 });
 
 test('Die Import-Pfade bauen den Aufruf nicht mehr von Hand', () => {
@@ -150,7 +150,7 @@ test('Die Import-Pfade bauen den Aufruf nicht mehr von Hand', () => {
 test('Standard-Instanz: überall dieselbe Adresse wie in der Lib (sonst lehnt der Worker die token-losen Linien ab)', () => {
   const fundstellen = {
     'extension/background.js': /const DEFAULT_ROOKHUB_ORIGIN = '([^']+)'/,
-    'extension/popup.js': /const ROOKHUB_DEFAULT_URL = '([^']+)'/,
+    'extension/popup-connection.js': /const ROOKHUB_DEFAULT_URL = '([^']+)'/,
     'extension/welcome.js': /const ROOKHUB_DEFAULT_URL = '([^']+)'/,
     'extension/chessable-activity/capture-harvest.js': /const DEFAULT_ROOKHUB_URL = '([^']+)'/,
   };

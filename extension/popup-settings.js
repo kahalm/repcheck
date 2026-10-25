@@ -1,9 +1,8 @@
-// Popup: Chessable-Button-Einstellungen und „Erste Schritte" (S1-019, aus popup.js ausgelagert in v1.68.13).
-// Klassisches Skript im selben globalen Scope wie popup.js: popup.html lädt es DANACH, es nutzt von dort nur
-// showSettings (in Klick-Handlern). popup.js selbst greift auf nichts von hier zu — so bleibt es gleich, ob ein
+// Popup: Chessable-Button-Einstellungen, „Erste Schritte" (S1-019, aus popup.js ausgelagert in v1.68.13) und die
+// Kurs-holen-Pause (Zerlegung Z39). Klassisches Skript im selben globalen Scope wie popup.js: popup.html lädt es
+// nach popup.js und popup-connection.js, es nutzt von dort showSettings (in Klick-Handlern), t und rcLang. popup.js
+// greift auf nichts von hier zu (die Neubeschriftung der Pause hängt in repaintHooks) — so bleibt es gleich, ob ein
 // Storage-Rückruf von popup.js vor oder nach dem Laden dieser Datei feuert (test/popup-laden.test.js).
-// Die weiteren Bereiche (Verbindung, Kurs-holen-Pause, Import) folgen in einer eigenen Welle
-// (Zerlegungs-Karte Z39: popup-connection.js, popup-import.js, popup-settings.js).
 
 // ─── Chessable-Button-Einstellungen (pro Button/Anzeige ein-/ausblendbar) ──────
 // Persistiert in chrome.storage.local `chessableButtons`; chessable-activity.js spiegelt es live
@@ -98,3 +97,54 @@ if (chrome.storage && chrome.storage.onChanged) {
   });
 }
 refreshOnboarding();
+
+// ─── Kurs holen: Pause zwischen Chessable-Abrufen ─────────────────────
+// chessable-activity.js wartet zwischen zwei Abrufen eine zufällige Zeit im Bereich `crawlDelay`
+// (chrome.storage.local, {minMs,maxMs}) und führt Änderungen live nach. Der Standard 2,5–3,5 s ist die
+// Untergrenze: normalizeCrawlDelay (lib/chessable-crawl.js, dieselbe Funktion wie im Content-Script)
+// hebt alles darunter an — einstellbar ist also nur „langsamer".
+const CRAWL_MIN_EL = document.getElementById('crawl-min');
+const CRAWL_MAX_EL = document.getElementById('crawl-max');
+const CRAWL_INTRO_EL = document.getElementById('crawl-intro');
+const CRAWL_STATE_EL = document.getElementById('crawl-state');
+const CrawlLib = self.RepCheckCrawl;
+
+let crawlPaint = null;   // { key, cfg } — Rückmeldung nach dem Speichern, für den Sprachwechsel gemerkt
+function crawlSekunden(ms) {
+  return new Intl.NumberFormat(rcLang, { maximumFractionDigits: 2 }).format(ms / 1000);
+}
+function paintCrawlSettings() {
+  const d = CrawlLib.CRAWL_DELAY_DEFAULT;
+  CRAWL_INTRO_EL.textContent = t('popup.crawl.intro', { min: crawlSekunden(d.minMs), max: crawlSekunden(d.maxMs) });
+  CRAWL_STATE_EL.textContent = crawlPaint
+    ? t(crawlPaint.key, { min: crawlSekunden(crawlPaint.cfg.minMs), max: crawlSekunden(crawlPaint.cfg.maxMs) })
+    : '';
+}
+function showCrawlDelay(cfg) {
+  CRAWL_MIN_EL.value = String(cfg.minMs / 1000);
+  CRAWL_MAX_EL.value = String(cfg.maxMs / 1000);
+}
+function readSekundenFeld(el) {
+  const v = parseFloat(String(el.value).replace(',', '.'));
+  return Number.isFinite(v) ? Math.round(v * 1000) : NaN;
+}
+function saveCrawlDelay() {
+  const getippt = { minMs: readSekundenFeld(CRAWL_MIN_EL), maxMs: readSekundenFeld(CRAWL_MAX_EL) };
+  const cfg = CrawlLib.normalizeCrawlDelay(getippt);
+  showCrawlDelay(cfg);
+  // Weicht das Gespeicherte vom Getippten ab (zu schnell, leer, von > bis), sagen wir es statt still zu korrigieren.
+  const angepasst = cfg.minMs !== getippt.minMs || cfg.maxMs !== getippt.maxMs;
+  crawlPaint = { key: angepasst ? 'popup.crawl.adjusted' : 'popup.crawl.saved', cfg };
+  paintCrawlSettings();
+  try { chrome.storage.local.set({ crawlDelay: cfg }); } catch (e) {}
+}
+CRAWL_MIN_EL.addEventListener('change', saveCrawlDelay);
+CRAWL_MAX_EL.addEventListener('change', saveCrawlDelay);
+
+repaintHooks.push(paintCrawlSettings);
+
+showCrawlDelay(CrawlLib.normalizeCrawlDelay(null));
+paintCrawlSettings();
+if (chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get('crawlDelay', (r) => showCrawlDelay(CrawlLib.normalizeCrawlDelay(r && r.crawlDelay)));
+}

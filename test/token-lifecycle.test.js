@@ -134,7 +134,7 @@ test('Token-Deckel: „Maximum of 20 tokens" wird zum Fehlercode, den Popup und 
   assert.strictEqual(w.abrufe.length, 1);
   assert.deepStrictEqual(storage.rookhubConfig, { url: URL_RH, token: 'rkh_ALTALTALT_rest', tokenId: 7 });
 
-  for (const datei of ['extension/popup.js', 'extension/welcome.js']) {
+  for (const datei of ['extension/popup-connection.js', 'extension/welcome.js']) {   // Popup: seit Z39 popup-connection.js
     assert.match(lies(datei), /st\.error === 'tooManyTokens'\) setConn(State)?\('popup\.conn\.errTooMany'\)/, datei);
   }
   for (const lang of Object.keys(RC_MESSAGES)) {
@@ -154,7 +154,7 @@ test('pairStart: der Token derselben Instanz bleibt samt Id bis zum Erfolg stehe
 });
 
 // ─── Popup: „Trennen" widerruft den Token in RookHub ─────────────────────────────
-const POPUP = lies('extension/popup.js');
+const POPUP = lies('extension/popup-connection.js');   // seit der Zerlegung Z39
 
 // Das Popup lädt lib/rookhub-client.js als klassisches Skript (self.RepCheckRookhub) — hier genauso, mit einem
 // winzigen chrome, dessen Worker mit `antwort` antwortet (oder lastError setzt).
@@ -174,7 +174,7 @@ function ladeRevoke(antwort) {
   const selbst = { chrome };
   vm.runInNewContext(lies('extension/lib/rookhub-client.js'), { self: selbst });
   const run = new Function('self', 'chrome', 't',
-    schnipsel(POPUP, 'async function revokeOwnToken(cfg) {', "document.getElementById('conn-forget')", 'extension/popup.js')
+    schnipsel(POPUP, 'async function revokeOwnToken(cfg) {', "document.getElementById('conn-forget')", 'extension/popup-connection.js')
     + '\nreturn revokeOwnToken;')(selbst, chrome, (k) => k);
   return { run, gesendet };
 }
@@ -199,7 +199,7 @@ test('Trennen gegen ältere RookHub-Version (404) oder ohne Worker/Netz: nur lok
   assert.strictEqual(ohneToken.gesendet.length, 0, 'ohne Token gibt es nichts zu widerrufen');
 
   // Verdrahtung: erst widerrufen (solange die Config die Origin noch freigibt), dann lokal löschen.
-  const handler = schnipsel(POPUP, "document.getElementById('conn-forget')", '\n});', 'extension/popup.js');
+  const handler = schnipsel(POPUP, "document.getElementById('conn-forget')", '\n});', 'extension/popup-connection.js');
   assert.ok(handler.indexOf('revokeOwnToken(') >= 0 && handler.indexOf('revokeOwnToken(') < handler.indexOf('writeRookhubConfig('));
   assert.match(handler, /'popup\.conn\.forgetLocalOnly'/);
   assert.match(lies('extension/popup.html'), /<script src="lib\/rookhub-client\.js"><\/script>\s*<script src="popup\.js">/);

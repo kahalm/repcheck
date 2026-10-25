@@ -16,7 +16,8 @@ const ROOT = path.join(__dirname, '..');
 // „enthaelt X“ laufen gegen die ganze Welt (welt), Bloecke kommen per Anker aus der Datei, in der sie stehen (finde).
 const { finde, welt } = require('./helpers/quelle.js');
 const activity = welt('chessable-activity.js');
-const popup = fs.readFileSync(path.join(ROOT, 'extension', 'popup.js'), 'utf8');
+// Seit der Zerlegung Z39 verteilt sich das Popup auf popup*.js — alle zusammen, in der Reihenfolge aus popup.html.
+const popup = require('./helpers/quelle.js').popupWelt();
 const popupHtml = fs.readFileSync(path.join(ROOT, 'extension', 'popup.html'), 'utf8');
 
 test('gültige Antworten gehen durch', () => {

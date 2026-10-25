@@ -87,8 +87,10 @@ test('Firefox: absolute moz-extension-Adressen im Manifest ergeben dieselben rel
 });
 
 test('popup.js führt keine eigene Datei-Liste mehr — jedes executeScript mit files liest das Manifest', () => {
-  assert.doesNotMatch(POPUP, /files:\s*\[/, 'von Hand gepflegte Nachlade-Liste im Popup');
-  const aufrufe = POPUP.match(/files:\s*[^,}\n]+/g) || [];
+  // Seit der Zerlegung Z39: alle Popup-Skripte (das Nachladen für chessable.com steht in popup-import.js).
+  const POPUP_WELT = require('./helpers/quelle.js').popupWelt();
+  assert.doesNotMatch(POPUP_WELT, /files:\s*\[/, 'von Hand gepflegte Nachlade-Liste im Popup');
+  const aufrufe = POPUP_WELT.match(/files:\s*[^,}\n]+/g) || [];
   assert.ok(aufrufe.length >= 2, 'Nachlade-Aufrufe nicht gefunden');
   for (const a of aufrufe) assert.match(a, /files:\s*manifestScripts\('(content|chessable-activity)\.js'\)/, a);
   // triggerInTab lädt über dieselbe Stelle nach wie die Sharebar.

@@ -50,4 +50,11 @@ function welt(konsument) {
   return eintrag.js.filter((f) => !f.startsWith('lib/') && f !== 'chess.min.js').map(lies).join('\n');
 }
 
-module.exports = { EXT, alleSkripte, finde, welt, lies, rel };
+// Alle Popup-Skripte (popup*.js) in der Reihenfolge aus popup.html, aneinandergehaengt — seit der Zerlegung Z39 verteilt
+// sich das Popup auf mehrere klassische Skripte in EINEM globalen Scope.
+function popupWelt() {
+  return [...lies('popup.html').matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1])
+    .filter((f) => /^popup[\w-]*\.js$/.test(f)).map(lies).join('\n');
+}
+
+module.exports = { EXT, alleSkripte, finde, welt, popupWelt, lies, rel };

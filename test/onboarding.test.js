@@ -121,7 +121,9 @@ test('jeder Text-Schlüssel in Popup und Willkommensseite existiert', () => {
       if (!(m[1] in en)) fehlend.push(`${datei}: ${m[1]}`);
     }
   }
-  for (const datei of ['extension/popup.js', 'extension/popup-settings.js', 'extension/welcome.js']) {
+  // Seit der Zerlegung Z39: alle Popup-Skripte aus popup.html.
+  const popupSkripte = [...lies('extension/popup.html').matchAll(/<script src="(popup[\w-]*\.js)"><\/script>/g)].map((m) => 'extension/' + m[1]);
+  for (const datei of [...popupSkripte, 'extension/welcome.js']) {
     for (const m of lies(datei).matchAll(/\b(?:t|setConn|setConnState)\('([\w.]+)'/g)) {
       if (!(m[1] in en)) fehlend.push(`${datei}: ${m[1]}`);
     }
