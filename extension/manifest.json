@@ -21,6 +21,9 @@
         "lib/chesscom-moves.js",
         "lib/i18n.js",
         "lib/site-adapters.js",
+        "content/store.js",
+        "content/rookhub-api.js",
+        "content/game-meta.js",
         "content.js"
       ],
       "run_at": "document_idle"

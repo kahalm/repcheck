@@ -17,7 +17,7 @@ const path = require('node:path');
 const { lichessGameId } = require('../extension/lib/repertoire-text.js');
 
 const ROOT = path.join(__dirname, '..');
-const content = fs.readFileSync(path.join(ROOT, 'extension', 'content.js'), 'utf8');
+const { finde } = require('./helpers/quelle.js');
 
 // ─── Die Regel ──────────────────────────────────────────────────────────
 
@@ -57,12 +57,8 @@ test('Analysebrett, Übertragungen, Studien und andere Seiten haben keine Partie
 
 // ─── Die Verdrahtung im ausgelieferten getGameMeta ──────────────────────
 
-const GET_GAME_META = (() => {
-  const von = content.indexOf('async function getGameMeta()');
-  const bis = content.indexOf('function analyzeGame(', von);
-  assert.ok(von > 0 && bis > von, 'getGameMeta nicht gefunden');
-  return content.slice(von, bis);
-})();
+// Seit der Zerlegung Z37 in content/game-meta.js — finde() sucht den Anker in allen Laufzeitdateien.
+const GET_GAME_META = finde('async function getGameMeta()', '// ─── Export');
 
 function ladeGetGameMeta(pathname, { site = 'lichess' } = {}) {
   const ruf = { lichess: [], chesscom: [] };

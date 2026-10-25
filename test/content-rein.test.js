@@ -108,7 +108,7 @@ test('getGameResult: Ergebnis-Token der Zugliste, ½-½ wird 1/2-1/2', () => {
 });
 
 test('buildShareLink: {url}/g/{token}, Slash am Ende weg, ohne Token leer', () => {
-  const src = finde('function buildShareLink(cfg, saved) {', '// Seit v1.6.0: RookHub-Modus');
+  const src = finde('function buildShareLink(cfg, saved) {', '// ─── Export');
   const link = new Function(src + '\nreturn buildShareLink;')();
   assert.strictEqual(link({ url: 'https://rh.example/' }, { shareToken: 'abc' }), 'https://rh.example/g/abc');
   assert.strictEqual(link({ url: 'https://rh.example' }, { ShareToken: 'X' }), 'https://rh.example/g/X');

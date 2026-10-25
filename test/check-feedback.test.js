@@ -15,17 +15,11 @@ const path = require('node:path');
 const { rcTranslate } = require('../extension/lib/i18n.js');
 
 const ROOT = path.join(__dirname, '..');
-const content = fs.readFileSync(path.join(ROOT, 'extension', 'content.js'), 'utf8');
+// Seit der Zerlegung Z37 steht rookhubAnalyzeGame in content/rookhub-api.js — finde() sucht in allen Laufzeitdateien.
+const { finde } = require('./helpers/quelle.js');
 
-function ausschnitt(von, bis) {
-  const a = content.indexOf(von);
-  const b = content.indexOf(bis, a);
-  assert.ok(a > 0 && b > a, `Block nicht gefunden: ${von}`);
-  return content.slice(a, b);
-}
-
-const PRUEF_BLOCK = ausschnitt('// ─── Main Check Logic', '// ─── Lazy bootstrap');
-const ANALYZE = ausschnitt('async function rookhubAnalyzeGame(', '// Schickt die SAN-Zugliste');
+const PRUEF_BLOCK = finde('// ─── Main Check Logic', '// ─── Lazy bootstrap');
+const ANALYZE = finde('async function rookhubAnalyzeGame(', '// Schickt die SAN-Zugliste');
 
 const t = (key, params) => rcTranslate('de', key, params);
 

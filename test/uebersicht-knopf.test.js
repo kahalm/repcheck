@@ -14,14 +14,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const content = fs.readFileSync(path.join(ROOT, 'extension', 'content.js'), 'utf8');
+// Seit der Zerlegung Z37 verteilt sich der Code auf content.js und content/*.js: Bloecke per Anker aus der Datei,
+// in der sie stehen (finde), Einbau-Pruefungen gegen die ganze Welt (alle Nicht-Lib-Dateien des Manifest-Eintrags).
+const { finde, welt } = require('./helpers/quelle.js');
+const content = welt('content.js');
 
-const BLOCK = (() => {
-  const von = content.indexOf('const OVERVIEW_SWEEP_MS');
-  const bis = content.indexOf('function updateStatusText(');
-  assert.ok(von > 0 && bis > von, 'Uebersichts-Block nicht gefunden');
-  return content.slice(von, bis);
-})();
+const BLOCK = finde('const OVERVIEW_SWEEP_MS', 'function updateStatusText(');
 
 // ─── Winziges DOM, das genau die benutzten Aufrufe kennt ────────────────
 
@@ -469,7 +467,7 @@ test('ein sparsamer Takt fasst nachgeladene Zeilen — chess.com aendert dabei w
 });
 
 test('der Host ist positioniert — sonst faengt der deckende Zeilen-Link jeden Klick', () => {
-  const css = content.slice(content.indexOf('.rc-ov {'), content.indexOf('.rc-ov-btn {'));
+  const css = finde('.rc-ov {', '.rc-ov-btn {');
   assert.match(css, /position: relative/);
   assert.match(css, /z-index/);
   // Die 80px-Zelle traegt schon zwei Knoepfe: passt der dritte nicht daneben, bricht er UM statt in
@@ -478,17 +476,17 @@ test('der Host ist positioniert — sonst faengt der deckende Zeilen-Link jeden 
 });
 
 test('die Bedenkzeit reist von beiden Plattformen mit (RookHub >= 0.526.0 zeigt sie in der Liste)', () => {
-  const save = content.slice(content.indexOf('async function rookhubSaveGame('), content.indexOf('async function rookhubKnownGames('));
+  const save = finde('async function rookhubSaveGame(', 'async function rookhubKnownGames(');
   assert.match(save, /timeControl: meta\.timeControl/);
   // chess.com nennt sie in den pgnHeaders seiner Callback-Antwort, lichess im Export-PGN.
-  const cc = content.slice(content.indexOf('async function fetchChessComHeadersOnce('), content.indexOf('function fetchLichessGame('));
+  const cc = finde('async function fetchChessComHeadersOnce(', 'function fetchLichessGame(');
   assert.match(cc, /timeControl: h\.TimeControl/);
-  const li = content.slice(content.indexOf('async function fetchLichessGameOnce('), content.indexOf('async function getGameMeta('));
+  const li = finde('async function fetchLichessGameOnce(', 'async function getGameMeta(');
   assert.match(li, /hdr\('TimeControl'\)/);
 });
 
 test('„In RookHub analysieren" geht ueber die Extension-Flaeche (das API-Token erreicht /api/games nicht)', () => {
-  const fn = content.slice(content.indexOf('async function rookhubAnalyzeSavedGame('), content.indexOf('// Öffentlicher Teilen-Link'));
+  const fn = finde('async function rookhubAnalyzeSavedGame(', '// Öffentlicher Teilen-Link');
   assert.match(fn, /\/api\/extension\/games\/' \+ encodeURIComponent\(id\) \+ '\/analyze'/);
   assert.match(fn, /no-engine/);
   assert.match(fn, /too-many-open/);
@@ -497,7 +495,7 @@ test('„In RookHub analysieren" geht ueber die Extension-Flaeche (das API-Token
 // „known" unterscheidet „keine davon" ([]) von „keine Auskunft" (null). Ausgefuehrt wird die AUSGELIEFERTE
 // Funktion mit gestubbtem rookhubProxy.
 function ladeKnownGames(proxy) {
-  const fn = content.slice(content.indexOf('async function rookhubKnownGames('), content.indexOf('function buildShareLink('));
+  const fn = finde('async function rookhubKnownGames(', 'function buildShareLink(');
   assert.match(fn, /\/api\/extension\/games\/known/);
   const rufe = [];
   const known = new Function('rookhubProxy', fn + '\nreturn rookhubKnownGames;')(async (req) => { rufe.push(req); return proxy(req); });

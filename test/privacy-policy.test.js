@@ -17,15 +17,10 @@ const lies = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const PRIVACY = lies('PRIVACY.md');
 const manifest = JSON.parse(lies('extension/manifest.json'));
 
+// Alle Laufzeitskripte, auch in Unterordnern (seit der Zerlegung Z36–Z38: content/, chessable-*/).
 function extensionSources() {
-  const dirs = ['extension', 'extension/lib'];
-  const out = [];
-  for (const d of dirs) {
-    for (const f of fs.readdirSync(path.join(ROOT, d))) {
-      if (f.endsWith('.js') && f !== 'chess.min.js') out.push(lies(path.join(d, f)));
-    }
-  }
-  return out.join('\n');
+  const { alleSkripte } = require('./helpers/quelle.js');
+  return alleSkripte().map((p) => fs.readFileSync(p, 'utf8')).join('\n');
 }
 
 // RookHub-Pfade, die der Code als String-Literal anspricht ('/api/extension/…', '/api/profile/…').
