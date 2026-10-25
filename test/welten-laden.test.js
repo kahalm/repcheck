@@ -82,6 +82,8 @@ function umgebung({ href, storage = {} }) {
     return el;
   }
 
+  const dokListener = {};
+  const takte = [];
   const body = element('body');
   const head = element('head');
   const document = {
@@ -91,7 +93,7 @@ function umgebung({ href, storage = {} }) {
     querySelector: () => null, querySelectorAll: () => [],
     createElement: (tag) => element(tag),
     createTextNode: (t) => ({ textContent: t }),
-    addEventListener: (typ) => schreib('document.on', typ),
+    addEventListener: (typ, fn) => { (dokListener[typ] = dokListener[typ] || []).push(fn); schreib('document.on', typ); },
     removeEventListener() {},
     execCommand: () => true,
   };
@@ -141,7 +143,7 @@ function umgebung({ href, storage = {} }) {
       search: url.search, hash: url.hash, reload() {},
     },
     navigator: { languages: ['de'], userAgent: 'Probe Chrome/141', clipboard: { writeText: async () => {} } },
-    setInterval: (_fn, ms) => { schreib('setInterval', ms); return 1; },
+    setInterval: (fn, ms) => { takte.push({ fn, ms }); schreib('setInterval', ms); return takte.length; },
     clearInterval() {},
     setTimeout: (_fn, ms) => { schreib('setTimeout', ms); return 1; },
     clearTimeout() {},
@@ -173,7 +175,18 @@ function umgebung({ href, storage = {} }) {
     const ev = { type: 'click', target: el, isTrusted: true, preventDefault() {}, stopPropagation() {} };
     for (const l of el.listeners.filter((x) => x.typ === 'click')) await l.fn(ev);
   }
-  return { ctx, fenster, log, listener, storage, nachId, klick };
+  // Jeden Takt (setInterval) einmal ausfuehren, in der Reihenfolge der Anmeldung.
+  async function takt() {
+    schreib('--- takt', takte.map((x) => x.ms));
+    for (const x of takte.slice()) await x.fn();
+  }
+  // Ereignis am Dokument bzw. Fenster ausloesen.
+  async function feuer(ziel, typ, ev) {
+    const liste = (ziel === 'document' ? dokListener[typ] : listener.fenster[typ]) || [];
+    schreib('--- ' + ziel + '.' + typ, liste.length);
+    for (const fn of liste.slice()) await fn(ev);
+  }
+  return { ctx, fenster, log, listener, storage, nachId, klick, takt, feuer };
 }
 
 // Dateien eines content_scripts-Eintrags (Welt) in Manifest-Reihenfolge.
@@ -215,7 +228,11 @@ const tick = () => new Promise((r) => setImmediate(r));
 test('chessable.com, isolierte Welt (chessable-activity.js): Laden, Popup-Abfrage, Mitschnitt', async () => {
   const u = ladeWelt('chessable-activity.js', {
     href: 'https://www.chessable.com/course/4711/',
-    storage: { rookhubConfig: { url: 'https://rookhub.example', token: 'rkh_x' }, rcLang: 'de' },
+    storage: {
+      rookhubConfig: { url: 'https://rookhub.example', token: 'rkh_x' }, rcLang: 'de',
+      // Chessable-Bearer mit uid 42 (nur der Payload zaehlt).
+      chessableToken: { token: 'h.' + Buffer.from(JSON.stringify({ user: { uid: 42 } })).toString('base64url') + '.s' },
+    },
   });
   await tick();
   u.log.push(['--- popup: state']);
@@ -242,12 +259,49 @@ test('chessable.com, isolierte Welt (chessable-activity.js): Laden, Popup-Abfrag
   u.log.push(['--- storage: rookhubConfig weg, Buttons-Einstellung neu']);
   for (const fn of u.listener.onChanged) fn({ chessableButtons: { newValue: { copyFen: true } } }, 'local');
   await tick();
+  await u.takt();
+  await tick();
+  const nachricht = (data) => u.feuer('window', 'message', { source: u.fenster, origin: 'https://www.chessable.com', data });
+  u.log.push(['--- bridge: course-id (fiber) + remember-line']);
+  await nachricht({ __repcheck: 'course-id', courseId: '4711', courseIdSource: 'fiber', courseName: 'Probekurs' });
+  await nachricht({ __repcheck: 'remember-line', fen: '8/8/8/8/8/8/8/8 w - - 0 1', courseId: '4711', sourceUrl: 'https://x' });
+  await tick();
+  u.log.push(['--- mitschnitt: getGame + getReview + saveProgress']);
+  await nachricht({ __repcheck: 'chessable-capture', url: 'https://www.chessable.com/api/v1/getGame?oid=11', body: JSON.stringify({ game: { id: 11, name: 'Probekurs', problemMoves: { thisUser: [] } } }) });
+  await nachricht({ __repcheck: 'chessable-capture', url: 'https://www.chessable.com/api/v1/getReview?bid=4711&oid=12', body: JSON.stringify({ x: 1 }) });
+  await nachricht({ __repcheck: 'chessable-capture', req: true, url: 'https://www.chessable.com/api/v1/saveProgressAndReturnNewProgressInfo', body: JSON.stringify({ uid: 42, data: JSON.stringify({ moves: [{ bid: 4711, oid: 11, wrong: [] }] }) }) });
+  await tick();
+  u.log.push(['--- Next variation (Klick)']);
+  const knopf = { textContent: 'Next variation', getAttribute: () => null };
+  await u.feuer('document', 'click', { target: { closest: () => knopf } });
+  await tick();
+  u.log.push(['--- popup: crawl (Chessable antwortet 599 → unerwartet)']);
+  for (const fn of u.listener.onMessage) fn({ type: 'rc-import', action: 'crawl', target: 'repertoire' }, {}, (r) => { antwort = r; });
+  u.log.push(['crawl', kurz(antwort)]);
+  for (let i = 0; i < 5; i++) await tick();
+  for (const fn of u.listener.onMessage) fn({ type: 'rc-import', action: 'state' }, {}, (r) => { antwort = r; });
+  u.log.push(['state', kurz(antwort)]);
+  u.log.push(['karten', [...u.nachId.keys()].sort()]);
+  u.log.push(['--- popup: cancel, importCaptured, refreshProgress, unbekannt']);
+  for (const action of ['cancel', 'importCaptured', 'refreshProgress', 'gibtsnicht']) {
+    for (const fn of u.listener.onMessage) fn({ type: 'rc-import', action, target: 'book' }, {}, (r) => { antwort = r; });
+    u.log.push([action, kurz(antwort)]);
+    await tick();
+  }
+  await u.feuer('window', 'pagehide', {});
+  await tick();
   vergleiche('chessable-isoliert', u.log);
 });
 
 test('chessable.com, isolierte Welt ohne Verbindung: Verbinden-Karte', async () => {
   const u = ladeWelt('chessable-activity.js', { href: 'https://www.chessable.com/practice/4711/1', storage: {} });
   await tick();
+  u.log.push(['karten', [...u.nachId.keys()].sort()]);
+  await u.takt();
+  await tick();
+  u.log.push(['--- verbunden (anderer Tab)']);
+  for (const fn of u.listener.onChanged) fn({ rookhubConfig: { newValue: { url: 'https://rookhub.example', token: 'rkh_x' } } }, 'local');
+  u.log.push(['karten', [...u.nachId.keys()].filter((id) => u.nachId.get(id).isConnected).sort()]);
   vergleiche('chessable-isoliert-ohne-verbindung', u.log);
 });
 
@@ -262,6 +316,13 @@ test('chessable.com, MAIN-Welt (chessable-fen.js): Laden im Practice-Modus, Eins
   }
   await tick();
   u.log.push(['sichtbar', [...u.nachId.entries()].map(([id, el]) => [id, el.style.display || '']).sort()]);
+  await u.takt();
+  await tick();
+  await u.klick('repcheck-chessable-fen-copy-btn');
+  await u.klick('repcheck-chessable-pool');
+  await u.klick('repcheck-chessable-feedback');
+  await tick();
+  u.log.push(['ids', [...u.nachId.keys()].sort()]);
   vergleiche('chessable-main', u.log);
 });
 

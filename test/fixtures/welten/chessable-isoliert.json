@@ -166,6 +166,14 @@
   "chessableToken"
  ],
  [
+  "fetch",
+  "https://www.chessable.com/api/v1/getHomeData?uid=42&sortBookRowsBy=alphabetically&userLanguageShort=en"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&includeVariations=true&uid=42"
+ ],
+ [
   "--- popup: state"
  ],
  [
@@ -192,6 +200,10 @@
  [
   "storage.get",
   "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&includeVariations=true&uid=42"
  ],
  [
   "--- mitschnitt: getList"
@@ -277,5 +289,281 @@
    "__repcheck": "chessable-buttons",
    "settings": {}
   }
+ ],
+ [
+  "--- takt",
+  [
+   5000,
+   3000,
+   5000
+  ]
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&includeVariations=true&uid=42"
+ ],
+ [
+  "--- bridge: course-id (fiber) + remember-line"
+ ],
+ [
+  "--- window.message",
+  5
+ ],
+ [
+  "--- window.message",
+  5
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getHomeData?uid=42&sortBookRowsBy=alphabetically&userLanguageShort=en"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/remember-line",
+  "POST"
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "remember-line-result",
+   "error": null,
+   "ok": false
+  }
+ ],
+ [
+  "--- mitschnitt: getGame + getReview + saveProgress"
+ ],
+ [
+  "--- window.message",
+  5
+ ],
+ [
+  "--- window.message",
+  5
+ ],
+ [
+  "setTimeout",
+  15000
+ ],
+ [
+  "--- window.message",
+  5
+ ],
+ [
+  "setTimeout",
+  15000
+ ],
+ [
+  "--- Next variation (Klick)"
+ ],
+ [
+  "--- document.click",
+  1
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/line-trained",
+  "POST"
+ ],
+ [
+  "--- popup: crawl (Chessable antwortet 599 → unerwartet)"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "crawl",
+  {
+   "started": true
+  }
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/progress?bid=4711",
+  "GET"
+ ],
+ [
+  "indexedDB.open"
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&uid=42"
+ ],
+ [
+  "el.on",
+  "BUTTON",
+  "click"
+ ],
+ [
+  "storage.set",
+  [
+   "rcCrawlAlert"
+  ]
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/unexpected-response",
+  "POST"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "state",
+  {
+   "autoImport": true,
+   "bid": "4711",
+   "captured": 1,
+   "courseName": "Probekurs",
+   "courseType": null,
+   "crawlStartedAt": null,
+   "crawling": false,
+   "onCourse": true,
+   "progress": null,
+   "status": "Gestoppt: unerwartete Antwort von Chessable (getCourse · HTTP 599). Vor einem erneuten Versuch dem Entwickler Bescheid geben.",
+   "suggestedTarget": null,
+   "target": "repertoire"
+  }
+ ],
+ [
+  "karten",
+  [
+   "repcheck-banners",
+   "repcheck-crawl-alert"
+  ]
+ ],
+ [
+  "--- popup: cancel, importCaptured, refreshProgress, unbekannt"
+ ],
+ [
+  "cancel",
+  {
+   "autoImport": true,
+   "bid": "4711",
+   "captured": 1,
+   "courseName": "Probekurs",
+   "courseType": null,
+   "crawlStartedAt": null,
+   "crawling": false,
+   "onCourse": true,
+   "progress": null,
+   "status": "Gestoppt: unerwartete Antwort von Chessable (getCourse · HTTP 599). Vor einem erneuten Versuch dem Entwickler Bescheid geben.",
+   "suggestedTarget": null,
+   "target": "repertoire"
+  }
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&includeVariations=true&uid=42"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "importCaptured",
+  {
+   "started": true
+  }
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/ingest",
+  "POST"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "refreshProgress",
+  {
+   "ok": true
+  }
+ ],
+ [
+  "storage.get",
+  "chessableToken"
+ ],
+ [
+  "fetch",
+  "https://www.chessable.com/api/v1/getCourse?bid=4711&includeVariations=true&uid=42"
+ ],
+ [
+  "gibtsnicht",
+  null
+ ],
+ [
+  "--- window.pagehide",
+  1
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "storage.get",
+  "rookhubConfig"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/problem-moves",
+  "POST"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/review-lines",
+  "POST"
+ ],
+ [
+  "runtime.sendMessage",
+  "rookhub-fetch",
+  "https://rookhub.example/api/extension/chessable/session-moves",
+  "POST"
  ]
 ]

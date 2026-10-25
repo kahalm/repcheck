@@ -156,5 +156,29 @@
   "el.on",
   "BUTTON",
   "click"
+ ],
+ [
+  "karten",
+  [
+   "repcheck-banners",
+   "repcheck-connect-prompt"
+  ]
+ ],
+ [
+  "--- takt",
+  [
+   5000,
+   3000,
+   5000
+  ]
+ ],
+ [
+  "--- verbunden (anderer Tab)"
+ ],
+ [
+  "karten",
+  [
+   "repcheck-banners"
+  ]
  ]
 ]

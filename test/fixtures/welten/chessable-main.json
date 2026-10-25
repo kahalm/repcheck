@@ -274,5 +274,56 @@
     "none"
    ]
   ]
+ ],
+ [
+  "--- takt",
+  [
+   3000,
+   5000
+  ]
+ ],
+ [
+  "--- klick",
+  "repcheck-chessable-fen-copy-btn",
+  1
+ ],
+ [
+  "setTimeout",
+  1200
+ ],
+ [
+  "console.log",
+  "[RepCheck Chessable] debug: [object Object]"
+ ],
+ [
+  "--- klick",
+  "repcheck-chessable-pool",
+  1
+ ],
+ [
+  "window.postMessage",
+  {
+   "__repcheck": "request-daily"
+  }
+ ],
+ [
+  "--- klick",
+  "repcheck-chessable-feedback",
+  1
+ ],
+ [
+  "ids",
+  [
+   "repcheck-chessable-feedback",
+   "repcheck-chessable-fen-copy-btn",
+   "repcheck-chessable-fen-mobile-style",
+   "repcheck-chessable-fen-search-btn",
+   "repcheck-chessable-fen-tools",
+   "repcheck-chessable-pool",
+   "repcheck-chessable-pool-panel",
+   "repcheck-zen-analyse",
+   "repcheck-zen-hint",
+   "repcheck-zen-next"
+  ]
  ]
 ]
