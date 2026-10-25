@@ -167,7 +167,8 @@ function vergleiche(name, ist) {
 
 const VERBUNDEN = {
   rookhubConfig: { url: 'https://rookhub.example', token: 'rkh_x' }, rcLang: 'de',
-  chessableToken: { token: 'eyJ', capturedAt: 0 }, crawlDelay: { minMs: 5000, maxMs: 9000 },
+  // capturedAt = jetzt: „gerade erfasst“ bleibt stabil (eine feste Zeit liesse den Text mit der Uhr wandern).
+  chessableToken: { token: 'eyJ', capturedAt: Date.now() }, crawlDelay: { minMs: 5000, maxMs: 9000 },
   rcCrawlAlert: { at: 0, bid: '4711', detail: 'getGame oid 1 · HTTP 403', banned: false },
   chessableButtons: { pool: true }, rcOnboarding: 'active',
 };

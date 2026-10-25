@@ -85,7 +85,7 @@
    "display": "block"
   },
   "chessable-state": {
-   "textContent": "vor 29882032 min erfasst"
+   "textContent": "gerade erfasst"
   },
   "ci-alert": {
    "display": "block",
@@ -214,7 +214,7 @@
    "display": "block"
   },
   "chessable-state": {
-   "textContent": "zabilježen prije 29882032 min"
+   "textContent": "upravo zabilježen"
   },
   "ci-alert": {
    "display": "block",
@@ -343,7 +343,7 @@
    "display": "block"
   },
   "chessable-state": {
-   "textContent": "zabilježen prije 29882032 min"
+   "textContent": "upravo zabilježen"
   },
   "ci-alert": {
    "display": "block",
