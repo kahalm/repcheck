@@ -82,6 +82,7 @@
         "lib/fen-extract.js",
         "chessable-fen/fen-feedback.js",
         "chessable-fen/fen-pool.js",
+        "chessable-fen/zen-extras.js",
         "chessable-fen/zen.js",
         "chessable-fen/fen-toolbar.js",
         "chessable-fen.js"

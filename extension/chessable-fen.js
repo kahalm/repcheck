@@ -29,23 +29,25 @@
   const { extractFenFromReact, getReactFiber } = self.RepCheckFenExtract;
   const S = {};
   const F = self.RepCheckFen;
-  const FB = F.feedback, PO = F.pool, ZE = F.zen, TB = F.toolbar;
+  const FB = F.feedback, PO = F.pool, ZX = F.zenExtras, ZE = F.zen, TB = F.toolbar;
   delete self.RepCheckFen;
   const { CONTAINER_ID, ensureUi, removeUi, isPracticeMode } = TB;
   const { initFeedbackTracker } = FB;
   FB.init({ S, buttonEnabled: TB.buttonEnabled, renderPool: PO.renderPool });
   PO.init({ buttonEnabled: TB.buttonEnabled });
+  ZX.init({ flash: TB.flash, CONTAINER_ID });
   ZE.init({
     S, flash: TB.flash, CONTAINER_ID, FEEDBACK_ID: FB.FEEDBACK_ID, POOL_ID: PO.POOL_ID, renderFeedback: FB.renderFeedback,
-    renderPool: PO.renderPool, applyButtonSettings: TB.applyButtonSettings,
+    renderPool: PO.renderPool, applyButtonSettings: TB.applyButtonSettings, zenPanelWidth: ZX.zenPanelWidth,
+    zenNarrow: ZX.zenNarrow, zenPanelHeightNarrow: ZX.zenPanelHeightNarrow, zenPanelPlace: ZX.zenPanelPlace,
   });
   TB.init({
     S, debugDump, chessableSearchUrl, currentCourseId, togglePoolPanel: PO.togglePoolPanel, renderPool: PO.renderPool,
     POOL_ID: PO.POOL_ID, POOL_PANEL_ID: PO.POOL_PANEL_ID, toggleFeedbackList: FB.toggleFeedbackList,
     renderFeedback: FB.renderFeedback, FEEDBACK_ID: FB.FEEDBACK_ID, initFeedbackTracker,
     attachLineResetListener: FB.attachLineResetListener, resetLineFeedback: FB.resetLineFeedback, zenActive: ZE.zenActive,
-    enterZen: ZE.enterZen, exitZen: ZE.exitZen, toggleZenPanel: ZE.toggleZenPanel, clickChessableNext: ZE.clickChessableNext,
-    clickChessableHint: ZE.clickChessableHint,
+    enterZen: ZE.enterZen, exitZen: ZE.exitZen, toggleZenPanel: ZE.toggleZenPanel, clickChessableNext: ZX.clickChessableNext,
+    clickChessableHint: ZX.clickChessableHint,
   });
 
   function debugDump() {
