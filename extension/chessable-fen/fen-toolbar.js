@@ -104,6 +104,36 @@
       gap: '8px',
     });
 
+    const { poolBadge, feedbackBadge } = createBadges();
+    wrap.appendChild(poolBadge);
+    const { copyBtn, analyseBtn, searchBtn, refreshBtn, rememberBtn, fullscreenBtn, openAnalysis } = createMainButtons();
+    const { zNext, zHint, zAnalyse, zPanel } = createZenButtons(openAnalysis);
+
+    // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
+    btnRefs = { copyFen: copyBtn, analyse: analyseBtn, searchFen: searchBtn, refresh: refreshBtn, remember: rememberBtn, fullscreen: fullscreenBtn };
+    wrap.appendChild(feedbackBadge);
+    wrap.appendChild(copyBtn);
+    wrap.appendChild(analyseBtn);
+    wrap.appendChild(searchBtn);
+    wrap.appendChild(refreshBtn);
+    wrap.appendChild(rememberBtn);
+    wrap.appendChild(zHint);
+    wrap.appendChild(zAnalyse);
+    wrap.appendChild(zPanel);
+    wrap.appendChild(zNext);
+    wrap.appendChild(fullscreenBtn);
+    document.body.appendChild(wrap);
+    applyButtonSettings();     // je nach Popup-Einstellung ein-/ausblenden
+    requestButtonSettings();   // aktuelle Einstellung aus der isolierten Welt anfordern
+    // RookHub-URL aus der isolierten Welt (chessable-activity.js) anfordern, damit der
+    // Analyse-Button beim Klick synchron einen neuen Tab öffnen kann (Popup-Blocker-sicher).
+    requestRookhubUrl();
+  }
+
+  // ── Schritte von createUi (zweiter Schnitt; Reihenfolge der Knoten und Listener unveraendert) ──
+
+  // ⏳-Pool-Zähler und Zug-Rückmeldung — Anzeigen in der Leiste (Sichtbarkeit schalten sie selbst).
+  function createBadges() {
     // Rest-Zaehler des Trainingspools. Im Zen-Modus ist Chessables Tab-Leiste verdeckt —
     // deshalb spiegeln wir die Zahl hierher.
     const poolBadge = document.createElement('button');
@@ -115,7 +145,6 @@
       background: 'rgba(0,0,0,0.45)', color: '#fff', font: '12px/1 system-ui, sans-serif',
       whiteSpace: 'nowrap', alignSelf: 'center', border: 'none', cursor: 'pointer',
     });
-    wrap.appendChild(poolBadge);
 
     // Zug-Rückmeldung (Overstudied / +XP). Liegt in UNSERER Leiste, weil Chessables eigene
     // Anzeige in `.board-footer` sitzt — im Zen-Modus hinter dem Backdrop. Klick öffnet die
@@ -129,7 +158,11 @@
       cursor: 'pointer', background: 'rgba(0,0,0,0.45)',
     });
     feedbackBadge.addEventListener('click', toggleFeedbackList);
+    return { poolBadge, feedbackBadge };
+  }
 
+  // Die beschrifteten Knöpfe (Copy FEN, Analyse, Search FEN, Refresh, Remember line) und der Vollbild-Knopf.
+  function createMainButtons() {
     const copyBtn = document.createElement('button');
     copyBtn.id = COPY_BTN_ID;
     copyBtn.type = 'button';
@@ -203,7 +236,11 @@
     Object.assign(fullscreenBtn.style, { fontSize: '15px', lineHeight: '1', padding: '8px 10px' });
     fullscreenBtn.title = 'Brett bildschirmfüllend (Esc beendet)';
     fullscreenBtn.addEventListener('click', () => { zenActive() ? exitZen() : enterZen(fullscreenBtn); });
+    return { copyBtn, analyseBtn, searchBtn, refreshBtn, rememberBtn, fullscreenBtn, openAnalysis };
+  }
 
+  // Zen-only-Knöpfe ▸ 💡 🔬 💬 (setzen ihre Referenzen über S fürs Zen).
+  function createZenButtons(openAnalysis) {
     // Zen-only: ▸ klickt Chessables „Next", 💬 holt die Kommentar-/Zugspalte
     // vor das Backdrop. Außerhalb des Zen-Modus unsichtbar; bewusst NICHT in
     // btnRefs (keine Popup-Toggles dafür).
@@ -248,26 +285,7 @@
     Object.assign(zPanel.style, { fontSize: '15px', lineHeight: '1', padding: '8px 10px', display: 'none' });
     zPanel.addEventListener('click', () => toggleZenPanel(zPanel));
     S.zenPanelBtn = zPanel;
-
-    // XP-Anzeige vorerst deaktiviert (kommt später wieder) — Badge + Tracker aus.
-    btnRefs = { copyFen: copyBtn, analyse: analyseBtn, searchFen: searchBtn, refresh: refreshBtn, remember: rememberBtn, fullscreen: fullscreenBtn };
-    wrap.appendChild(feedbackBadge);
-    wrap.appendChild(copyBtn);
-    wrap.appendChild(analyseBtn);
-    wrap.appendChild(searchBtn);
-    wrap.appendChild(refreshBtn);
-    wrap.appendChild(rememberBtn);
-    wrap.appendChild(zHint);
-    wrap.appendChild(zAnalyse);
-    wrap.appendChild(zPanel);
-    wrap.appendChild(zNext);
-    wrap.appendChild(fullscreenBtn);
-    document.body.appendChild(wrap);
-    applyButtonSettings();     // je nach Popup-Einstellung ein-/ausblenden
-    requestButtonSettings();   // aktuelle Einstellung aus der isolierten Welt anfordern
-    // RookHub-URL aus der isolierten Welt (chessable-activity.js) anfordern, damit der
-    // Analyse-Button beim Klick synchron einen neuen Tab öffnen kann (Popup-Blocker-sicher).
-    requestRookhubUrl();
+    return { zNext, zHint, zAnalyse, zPanel };
   }
 
   // ---- Pro-Button-Sichtbarkeit (im Popup einstellbar) ----
