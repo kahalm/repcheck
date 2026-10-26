@@ -86,6 +86,8 @@ function paintCiAlert() {
   CI_ALERT.replaceChildren(...teile);
   CI_ALERT.style.display = 'block';
 }
+// Sprachwechsel: der Hinweis wird mit t() gebaut und muss neu beschriftet werden wie der Rest des Popups.
+repaintHooks.push(paintCiAlert);
 
 // Bis v1.64.x landete auch „Kurs nicht im Konto" (BOOK_NOT_OWNED) hier — solche Altlasten räumt das Popup still weg.
 function takeCiAlert(h) {

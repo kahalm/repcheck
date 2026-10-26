@@ -2,6 +2,7 @@
  "wirkung": [
   "[\"on\",\"ban-risk-show\",\"change\"]",
   "[\"on\",\"button\",\"click\"]",
+  "[\"on\",\"button\",\"click\"]",
   "[\"on\",\"cb-analyse\",\"change\"]",
   "[\"on\",\"cb-copyFen\",\"change\"]",
   "[\"on\",\"cb-feedback\",\"change\"]",
@@ -204,8 +205,8 @@
   "ci-alert": {
    "display": "block",
    "kinder": [
-    "Unerwartete Antwort von Chessable",
-    "RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.",
+    "Neočekivan odgovor s Chessablea",
+    "RepCheck je zaustavio dohvaćanje. Da bi se isključila mjera Chessablea protiv automatskog dohvaćanja (anti-crawling), razvijatelj treba provjeriti ovaj odgovor. Prije ponovnog pokušaja javi to na Discordu.",
     "4711 · getGame oid 1 · HTTP 403",
     "DIV"
    ]
@@ -324,8 +325,8 @@
   "ci-alert": {
    "display": "block",
    "kinder": [
-    "Unerwartete Antwort von Chessable",
-    "RepCheck hat das Holen gestoppt. Um auszuschließen, dass es sich um eine Anti-Crawling-Maßnahme von Chessable handelt, soll der Entwickler diese Antwort prüfen. Bitte gib vor einem erneuten Versuch auf Discord Bescheid.",
+    "Neočekivan odgovor s Chessablea",
+    "RepCheck je zaustavio dohvaćanje. Da bi se isključila mjera Chessablea protiv automatskog dohvaćanja (anti-crawling), razvijatelj treba provjeriti ovaj odgovor. Prije ponovnog pokušaja javi to na Discordu.",
     "4711 · getGame oid 1 · HTTP 403",
     "DIV"
    ]
