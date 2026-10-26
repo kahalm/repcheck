@@ -76,6 +76,17 @@ test('Ausschnitt: gekürzt, ohne E-Mail- und IP-Adressen, Uhrzeiten bleiben', ()
   assert.equal(checkChessableResponse('game', 'y'.repeat(9000)).snippet.length, UNEXPECTED_SNIPPET_CHARS);
 });
 
+test('Fehlermeldung (message) ohne E-Mail- und IP-Adressen, auch im JSON.stringify-Rückfall', () => {
+  const r = checkChessableResponse('game', JSON.stringify({ error: { message: 'Blocked felix@example.com from 203.0.113.7 at 08:56:57' } }), 403);
+  assert.ok(!r.message.includes('felix@example.com'));
+  assert.ok(!r.message.includes('203.0.113.7'));
+  assert.ok(r.message.includes('[email]') && r.message.includes('[ip]') && r.message.includes('08:56:57'));
+  const r2 = checkChessableResponse('game', JSON.stringify({ error: { code: 'X', ip: '2a02:8388:1:2::1', mail: 'a@b.de' } }));
+  assert.ok(!r2.message.includes('2a02:8388') && !r2.message.includes('a@b.de'));
+  // Die Sperr-Erkennung arbeitet weiter auf der Meldung.
+  assert.equal(checkChessableResponse('game', JSON.stringify({ error: { message: 'User is banned or deleted' } })).banned, true);
+});
+
 test('Kurs holen prüft getCourse, getList und getGame', () => {
   const crawl = finde('async function crawlAndImport(', '// ─── Export');
   assert.match(crawl, /chessableGetChecked\(`getCourse\?bid=\$\{bid\}`, 'course'\)/);

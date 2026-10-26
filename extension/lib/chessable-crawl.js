@@ -243,12 +243,17 @@
   // Ausschnitt für die Meldung an RookHub: gekürzt, ohne E-Mail- und IP-Adressen (eine Cloudflare-Sperrseite nennt
   // die IP des Nutzers). Uhrzeiten wie 08:56:57 bleiben stehen — die IPv6-Regel verlangt mindestens vier Gruppen.
   function scrubSnippet(text) {
+    return scrubText(text, UNEXPECTED_SNIPPET_CHARS);
+  }
+
+  // E-Mail- und IP-Adressen ersetzen, auf max Zeichen kürzen (Ausschnitt und Fehlermeldung, S1-013).
+  function scrubText(text, max) {
     return String(text == null ? '' : text)
-      .slice(0, UNEXPECTED_SNIPPET_CHARS * 4)
+      .slice(0, max * 4)
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
       .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
       .replace(/\b[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){3,7}\b/gi, '[ip]')
-      .slice(0, UNEXPECTED_SNIPPET_CHARS);
+      .slice(0, max);
   }
 
   // Fehlermeldung einer JSON-Antwort: {"error":{"message":"…"}} oder {"error":"…"}; sonst null.
@@ -312,7 +317,8 @@
     const ok2xx = code >= 200 && code < 300;
     if (ok2xx && isObj && hasExpectedShape(kind, obj)) return null;
     const found = isObj ? chessableErrorMessage(obj) : null;
-    const message = found ? found.slice(0, UNEXPECTED_MESSAGE_CHARS) : null;
+    // Die Meldung geht an RookHub (Log + Admin-Nachricht) → wie der Ausschnitt ohne E-Mail-/IP-Adressen.
+    const message = found ? scrubText(found, UNEXPECTED_MESSAGE_CHARS) : null;
     const snippet = scrubSnippet(raw);
     const fehler = isObj ? chessableErrorCode(obj) : null;
     return {
