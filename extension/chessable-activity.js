@@ -66,7 +66,7 @@
   }
 
   // ---- Teil-Dateien verdrahten (chessable-activity/*.js, per Manifest VOR dieser Datei geladen) ----
-  // Seit der Zerlegung Z36 liegen Trainingszeit, Kurs-Kontext, Mitschnitt, Karten, Chessable-Abrufe, Kurs holen,
+  // Seit der Zerlegung Z36 liegen Trainingszeit, Kurs-Kontext, Mitschnitt, Karten, Chessable-Abrufe, Abbruch-Meldungen, Kurs holen,
   // Import-Wege/Popup-Bruecke und Fortschritt in eigenen Dateien; hier bleiben Sprache, Config, RookHub-Client, die
   // Bruecken zur MAIN-World und die Reihenfolge, in der alles anlaeuft. Die Teile legen beim Laden nur Funktionen ab;
   // was sie voneinander brauchen, bekommen sie per init(), bevor irgendetwas anlaeuft.
@@ -77,8 +77,8 @@
   // (Fortschritt).
   const S = {};
   const A = self.RepCheckActivity;
-  const T = A.tracker, CX = A.context, CA = A.capture, BN = A.banners, FE = A.fetch, CI = A.crawl, BR = A.bridge,
-    PR = A.progress;
+  const T = A.tracker, CX = A.context, CA = A.capture, BN = A.banners, FE = A.fetch, RP = A.report, CI = A.crawl,
+    BR = A.bridge, PR = A.progress;
   const { TICK_MS, dailyZusammenfassung } = T;
   const { ensureCourseNames, lookupCourseKind } = CX;
   const { startDomObserver, ensureProgress, annotateHome } = PR;
@@ -101,13 +101,17 @@
     t, setStatus: BR.setStatus, readChessableToken: CX.readChessableToken, decodeUid: CX.decodeUid,
     clearStoredChessableToken: CX.clearStoredChessableToken,
   });
+  RP.init({
+    t, readConfig, bestCourseName: CX.bestCourseName, setStatus: BR.setStatus, showCrawlAlert: BN.showCrawlAlert,
+    CRAWL_ALERT_ID: BN.CRAWL_ALERT_ID,
+  });
   CI.init({
     S, t, readConfig, cap, pageCourseId: CX.pageCourseId, bestCourseName: CX.bestCourseName, setStatus: BR.setStatus,
     fetchImportedOids: PR.fetchImportedOids, ensureProgress, listCacheGet: FE.listCacheGet,
     listCachePut: FE.listCachePut, chessableGetChecked: FE.chessableGetChecked, harvestFromList: CA.harvestFromList,
     harvestFromGame: CA.harvestFromGame, sleep: FE.sleep, crawlPauseMs: FE.crawlPauseMs, ingestChunk: BR.ingestChunk,
     ingestLiveInParts: BR.ingestLiveInParts, markCourseFetched: BR.markCourseFetched, showNotOwned: BN.showNotOwned,
-    showCrawlAlert: BN.showCrawlAlert, CRAWL_ALERT_ID: BN.CRAWL_ALERT_ID,
+    handleUnexpected: RP.handleUnexpected, reportCrawlError: RP.reportCrawlError,
   });
   BR.init({
     S, t, rookhubRequest, cap, currentCourseId: CX.currentCourseId, pageCourseId: CX.pageCourseId,
