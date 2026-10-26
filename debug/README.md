@@ -130,3 +130,12 @@ Zwei Folgen, beide berücksichtigt:
   `el.wrappedJSObject`, wo es das gibt (Chrome kennt beides nicht und bleibt unverändert).
 - `@updateURL`/`@downloadURL` zeigen jetzt auf die Raw-Datei, damit Tampermonkey neue Fassungen von
   selbst findet. Vorher musste man jede Version von Hand nachziehen.
+
+### 0.13.0: Datenschutz im Dump (S1-014)
+
+- `zensiereText` (alle Freitext-Sammler: outerHTML, `__NEXT_DATA__`, Speicher, Netzwerk) ersetzt neben
+  JWT-Mustern jetzt auch E-Mail- (`[email]`) und IP-Adressen (`[ip]`) — gleiche Regeln wie `scrubSnippet`
+  der Erweiterung.
+- Der Netzwerk-Mitschnitt der Aufnahme nimmt Antwort-Körper nur noch von `getCourse`, `getList`, `getGame`
+  und `getReview`. Andere Chessable-Antworten erscheinen nur mit Pfad (ohne Query) und Länge.
+- Getestet in `test/debug-inspector.test.js` (schneidet den Datenschutz-Block per Anker aus dem Skript).

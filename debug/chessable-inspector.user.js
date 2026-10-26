@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RepCheck Chessable-Inspector (Debug)
 // @namespace    https://github.com/kahalm/repcheck
-// @version      0.12.0
+// @version      0.13.0
 // @description  Diagnose-Werkzeug: sammelt Brett-DOM/Geometrie/Drag-Traces sowie Trainings-Zähler (DOM, React-State, Seiten-State, Netzwerk) auf chessable.com — und auf chess.com die Auszeichnung von Zugliste und Analyse-Knopf — als JSON (Zwischenablage + Download). NICHT für die Stores — nur zur Fehleranalyse.
 // @match        https://www.chessable.com/*
 // @match        https://chessable.com/*
@@ -34,8 +34,10 @@
  *
  * WICHTIG (Datenschutz): der Dump wandert zum Entwickler. Der Chessable-Bearer
  * (localStorage `chessable.web.production.JWT`) und alles, was nach Token
- * aussieht, wird deshalb ZENSIERT — siehe `istGeheim`. Beim Ergänzen neuer
- * Sammler diese Regel mitziehen.
+ * aussieht, wird deshalb ZENSIERT — siehe `istGeheim`; Freitext läuft durch
+ * `zensiereText` (auch E-Mail-/IP-Adressen), der Netzwerk-Mitschnitt nimmt Körper
+ * nur von getCourse/getList/getGame/getReview (`recorderEintrag`). Beim Ergänzen
+ * neuer Sammler diese Regeln mitziehen.
  */
 (() => {
   'use strict';
@@ -58,9 +60,36 @@
   function zensiert(wert) {
     return typeof wert === 'string' ? `«${wert.length} Zeichen zensiert»` : '«zensiert»';
   }
-  /** Freitext (HTML, Response-Körper) von Token-artigen Zeichenfolgen befreien. */
+  /** Freitext (HTML, Response-Körper, Seiten-State, Speicher) von Token-artigen Zeichenfolgen, E-Mail- und
+   *  IP-Adressen befreien — gleiche Regeln wie scrubSnippet in extension/lib/chessable-crawl.js (S1-014).
+   *  Uhrzeiten wie 08:56:57 bleiben stehen (die IPv6-Regel verlangt mindestens vier Gruppen). */
   function zensiereText(text) {
-    return String(text).replace(/[\w-]{12,}\.[\w-]{12,}\.[\w-]{12,}/g, '«JWT zensiert»');
+    return String(text)
+      .replace(/[\w-]{12,}\.[\w-]{12,}\.[\w-]{12,}/g, '«JWT zensiert»')
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+      .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]')
+      .replace(/\b[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){3,7}\b/gi, '[ip]');
+  }
+
+  /** Netzwerk-Mitschnitt: nur diese Chessable-Endpunkte kommen MIT Körper in den Dump (Allowlist). */
+  const RECORDER_ENDPUNKTE = /\/(getCourse|getList|getGame|getReview)(?:[/?#]|$)/i;
+  function recorderErlaubt(url) {
+    const u = String(url || '');
+    if (!/^(https?:)?\/\/(www\.)?chessable\.com\//i.test(u) && !(u.startsWith('/') && !u.startsWith('//'))) return false;
+    return RECORDER_ENDPUNKTE.test(u);
+  }
+  /** Eintrag für den Netzwerk-Mitschnitt oder null (fremde Herkunft, statische Datei). Chessable-Antworten außerhalb
+   *  der Allowlist erscheinen nur mit Pfad (ohne Query) und Länge — so bleibt sichtbar, welche Endpunkte es gibt. */
+  function recorderEintrag(methode, url, koerper) {
+    const u = String(url || '');
+    if (!/chessable\.com/i.test(u) && !u.startsWith('/')) return null;
+    if (/\.(js|css|png|jpg|jpeg|svg|woff2?|gif|webp)(\?|$)/i.test(u)) return null;
+    const text = String(koerper || '');
+    if (!recorderErlaubt(u)) {
+      return { methode, url: zensiereText(u.split(/[?#]/)[0]).slice(0, 300), laenge: text.length, koerper: null };
+    }
+    const roh = zensiereText(text);
+    return { methode, url: zensiereText(u).slice(0, 300), laenge: roh.length, koerper: roh.slice(0, 8000) };
   }
 
   // ── Brett-Anker (gleiche Heuristik wie chessable-fen.js) ────────────────
@@ -792,15 +821,9 @@
     // danach wieder zurückgesetzt — beides, weil ungewiss ist, was Chessable benutzt.
     trace.netzwerk = [];
     const merkeAntwort = (methode, url, koerper) => {
-      if (!/chessable\.com/i.test(url) && !url.startsWith('/')) return;
-      if (/\.(js|css|png|jpg|jpeg|svg|woff2?|gif|webp)(\?|$)/i.test(url)) return;
       if (trace.netzwerk.length >= 40) return;
-      const roh = zensiereText(String(koerper || ''));
-      trace.netzwerk.push({
-        t: ts(), methode, url: url.slice(0, 300),
-        laenge: roh.length,
-        koerper: roh.slice(0, 8000),
-      });
+      const eintrag = recorderEintrag(methode, url, koerper);
+      if (eintrag) trace.netzwerk.push({ t: ts(), ...eintrag });
     };
 
     const origFetch = window.fetch;
