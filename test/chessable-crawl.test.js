@@ -139,7 +139,7 @@ test('Kurs holen: geteilter Cache und oid-Zuordnung sind verdrahtet', () => {
   const src = require('./helpers/quelle.js').welt('chessable-activity.js');   // seit Z36 die ganze Welt
   assert.ok(src.includes("'/api/extension/chessable/cached-lines'"), 'Cache-Endpoint fehlt');
   assert.ok(src.includes('await fetchSharedCachedOids(wanted)'), 'Crawl fragt den geteilten Cache nicht ab');
-  assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); fromShared++;'), 'gecachte Linie wird nicht übersprungen');
+  assert.ok(src.includes('lines.push(null); lineOids.push(String(oid)); run.fromShared++;'), 'gecachte Linie wird nicht übersprungen');
   assert.ok(src.includes('lineOids: lineOids.slice(sentUpTo)') && src.includes('lineOids: lineOids.slice(pushedUpTo)'), 'Crawl schickt keine lineOids');
   // `complete` nur bei einem VOLLSTÄNDIGEN Lauf: nach einem Teil-Import hat dieser Lauf die
   // übersprungenen Linien gar nicht geholt, piratechess dürfte den Kurs also nicht als Ganzes cachen.
@@ -159,7 +159,9 @@ test('Buch-Crawl: ein zu großes Kapitel geht in byte-begrenzten Teilen raus (ni
     'ungeteilter Kapitel-Chunk noch vorhanden');
   // Die lid muss dafür bis in die Sendeschleife durchgereicht werden.
   assert.ok(src.includes('lists.push({ lid, listText, oids })'), 'lid wird nicht mitgeführt');
-  assert.ok(src.includes('for (const { lid, listText, oids } of lists)'), 'Sendeschleife kennt die lid nicht');
+  // Seit dem zweiten Schnitt holt crawlChapter je Kapitel (Schleife in crawlAndImport) — es bekommt die lid mit.
+  assert.ok(src.includes('async function crawlChapter(run, { lid, listText, oids })'), 'Sendeschleife kennt die lid nicht');
+  assert.ok(src.includes('await crawlChapter(run, chapter)'), 'Kapitelschleife ruft crawlChapter nicht');
 });
 
 test('Kurs holen: BEIDE Ziele überspringen schon Importiertes, das Buch meldet den Teil-Import', () => {

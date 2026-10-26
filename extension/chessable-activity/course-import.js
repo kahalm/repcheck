@@ -102,54 +102,16 @@
     const skipKnown = true;                    // beide Ziele überspringen, was schon auf RookHub liegt
     const viaSession = target === 'book';      // Buch: Chunk-Sitzung (Import-Eintrag); Repertoire: Live-Append
     const incremental = !viaSession;           // nur noch: „sammelt für den Live-Append"
+    // Wo der Lauf steht und wie weit er kam — geht bei einem Abbruch mit der Fehlermeldung an RookHub (reportCrawlError).
+    const lauf = { phase: 'start', fetched: 0, sent: 0 };
     // Nur fürs inkrementelle Anhängen gesammelt: geholt, aber noch nicht angehängt. Außerhalb des try, damit JEDER
     // Abbruch (Stopp, unerwartete Antwort, Chessable-401, Netzfehler) die bis dahin geholten Linien noch speichern
     // kann — sonst müsste ein erneuter Lauf sie wieder bei Chessable holen.
-    // Wo der Lauf steht und wie weit er kam — geht bei einem Abbruch mit der Fehlermeldung an RookHub (reportCrawlError).
-    const lauf = { phase: 'start', fetched: 0, sent: 0 };
-    const newChapters = [];
-    const appended = { imported: 0, linked: 0, lines: 0 };   // Summe der in diesem Lauf schon angehängten Linien
-    let lastAppendAt = Date.now();
-    // Hängt newChapters an und nimmt sie erst nach Erfolg heraus (scheitert es, bleiben sie für den nächsten Versuch
-    // liegen; schon Angehängtes überspringt der Server über die oid).
-    const appendNew = async (onPart) => {
-      if (!newChapters.length) return;
-      const batch = newChapters.slice();
-      lauf.phase = 'sending';
-      const res = await ingestLiveInParts(bid, target, bestCourseName(bid), batch, onPart);
-      newChapters.splice(0, batch.length);
-      lauf.sent += batch.reduce((n, c) => n + c.lineOids.length, 0);
-      appended.imported += res.imported;
-      appended.linked += res.linked;
-      appended.lines += batch.reduce((n, c) => n + c.lineOids.length, 0);
-      lastAppendAt = Date.now();
-      markCourseFetched();
-    };
-    // Wiederholen lohnt nicht, wenn es ohnehin nicht klappen kann: Token ungültig/widerrufen oder RookHub nicht verbunden.
-    const hoffnungslos = (e) => !!(e && (e.tokenInvalid || e.notConnected));
-    let appendFails = 0;   // Zwischen-Anhänge, die hintereinander scheiterten
-    // Zwischen-Anhang an einer Kapitelgrenze, best effort (s. REPERTOIRE_APPEND_MAX_FAILS). Ein Fehlschlag setzt die
-    // Schranke neu: der nächste Versuch kommt frühestens nach REPERTOIRE_APPEND_EVERY_MS, zwei Fehlschläge hintereinander
-    // liegen also mindestens so weit auseinander, und ein kurzer Neustart von RookHub bricht den Lauf nicht ab.
-    const appendBetween = async () => {
-      try {
-        await appendNew();
-        appendFails = 0;
-      } catch (e) {
-        lastAppendAt = Date.now();
-        if (hoffnungslos(e) || ++appendFails >= REPERTOIRE_APPEND_MAX_FAILS) throw e;
-      }
-    };
-    // Nach einem Abbruch den Rest sichern (best effort). Liefert, wie viele Linien dieser Lauf insgesamt gesichert hat.
-    const saveRest = async () => {
-      if (!incremental) return 0;
-      try { await appendNew(); } catch (e) { /* die eigentliche Meldung zählt mehr als die Teilsicherung */ }
-      if (appended.lines) ensureProgress(true);
-      return appended.lines;
-    };
-    // Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (bookOpen); kommt kein
+    const ap = createRepertoireAppender(bid, target, lauf, incremental);
+    // Buch-Ziel: nach dem ersten gesendeten Kapitel ist am Server ein Import-Eintrag offen (run.bookOpen); kommt kein
     // finaler Chunk (Stopp, Fehler, unerwartete Antwort), schließt ihn das finally mit `aborted`.
-    let sent = 0, bookOpen = false, failMsg = null;
+    const run = { bid, target, sessionId, skipKnown, incremental, lauf, ap, bookOpen: false };
+    let sent = 0, failMsg = null;
     try {
       if (!bid) throw new Error(t('err.noCourse'));
       if (!Crawl) throw new Error(t('err.libMissing'));
@@ -162,37 +124,9 @@
       // der Server ab, dass eine Kollision der Positionsnummer nichts über die Identität aussagt.
       const partial = skipKnown && already.size > 0;
 
-      lauf.phase = 'structure';
-      setStatus(t('import.fetchingStructure'));
-      let courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await listCacheGet(`${bid}:course`);
-      if (courseText == null) {
-        courseText = await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
-        listCachePut(`${bid}:course`, courseText);
-      }
-      const lids = Crawl.parseChapterLids(courseText);
-      if (!lids.length) throw new Error(t('err.noChapters'));
-      const lists = [];
-      let total = 0, toFetch = 0;
-      for (let li = 0; li < lids.length; li++) {
-        const lid = lids[li];
-        if (cancelRequested) { setStatus(t('import.aborted')); return; }
-        // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
-        lauf.phase = 'chapters';
-        setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
-        const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
-        let listText = fromCapture ? cap.lists[lid] : await listCacheGet(`${bid}:${lid}`);
-        const fromCache = !fromCapture && listText != null;
-        if (listText == null) {
-          listText = await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
-          listCachePut(`${bid}:${lid}`, listText);
-        }
-        harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
-        const oids = Crawl.parseLineOids(listText);
-        lists.push({ lid, listText, oids });
-        total += oids.length;
-        toFetch += skipKnown ? oids.filter(o => !already.has(String(o))).length : oids.length;
-        if (!fromCapture && !fromCache) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf
-      }
+      const struktur = await loadChapterLists(bid, already, skipKnown, lauf);
+      if (!struktur) return;   // gestoppt
+      const { courseText, lists, total, toFetch } = struktur;
       const courseName = bestCourseName(bid);
 
       if (skipKnown && toFetch === 0) {
@@ -203,143 +137,25 @@
 
       // Linien, die schon im geteilten RookHub-Cache liegen, setzt der Server beim Import selbst ein — dafür
       // weder getGame bei Chessable noch eine Pause. Mitgeschnittene (cap.games) brauchen die Abfrage nicht.
-      const wanted = [];
-      for (const { oids } of lists) {
-        for (const oid of oids) {
-          if (skipKnown && already.has(String(oid))) continue;
-          if (cap.games[oid]) continue;
-          wanted.push(String(oid));
-        }
-      }
+      const wanted = wantedOids(lists, already, skipKnown);
       const shared = wanted.length ? await fetchSharedCachedOids(wanted) : new Set();
 
-      let done = 0, skipped = 0, fromShared = 0;
-      const fortschritt = () => (fromShared
-        ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
-        : t('import.fetchingLines', { done, total: toFetch }));
-      let lastBookPartAt = Date.now();
-      for (const { lid, listText, oids } of lists) {
-        // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
-        // Inhalt (null) aus dem geteilten Cache.
-        const lines = [], lineOids = [];
-        let sentUpTo = 0;   // Buch: so viele Linien dieses Kapitels liegen schon bei RookHub
-        let pushedUpTo = 0; // Repertoire: so viele Linien dieses Kapitels liegen schon in newChapters (bzw. sind angehängt)
-        // Repertoire: das noch nicht Gesammelte dieses Kapitels in den Anhänge-Puffer legen (gleiches chapterJson —
-        // der Live-Append ordnet über die oid zu, ein Kapitel in mehreren Stücken ist dort kein Problem).
-        const pushRest = () => {
-          if (!incremental || pushedUpTo >= lines.length) return;
-          newChapters.push({ chapterJson: listText, lines: lines.slice(pushedUpTo), lineOids: lineOids.slice(pushedUpTo) });
-          pushedUpTo = lines.length;
-        };
-        // Buch: was von diesem Kapitel noch nicht gesendet ist, als Teil(e) schicken. Ein Kapitel kann für EINEN
-        // Request zu groß sein (Kapitel 30 eines Lifetime-Repertoires riss am 2026-09-20 die 48 MB des Endpoints) —
-        // darum dieselbe Byte-Schranke wie beim Mitschnitt; alle Teile tragen denselben chapterKey.
-        const sendBookPart = async () => {
-          if (incremental || sentUpTo >= lines.length) return;
-          const rest = { chapterJson: listText, lines: lines.slice(sentUpTo), lineOids: lineOids.slice(sentUpTo) };
-          const teile = Crawl.splitIngestChapters([rest]).flat();
-          lauf.phase = 'sending';
-          for (let pi = 0; pi < teile.length; pi++) {
-            if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
-            await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
-            bookOpen = true;
-          }
-          lauf.sent += lines.length - sentUpTo;
-          lauf.phase = 'lines';
-          sentUpTo = lines.length;
-          lastBookPartAt = Date.now();
-        };
-        // Beim Abbruch (Stopp, Chessable-Fehler) das schon Geholte noch abliefern — best effort: ist RookHub oder die
-        // Erweiterung selbst weg, scheitert das eben auch.
-        const rescueBookPart = async () => { try { await sendBookPart(); } catch (e) { /* der eigentliche Fehler zählt */ } };
-        for (const oid of oids) {
-          if (cancelRequested) {
-            // Die schon geholten Linien dieses Kapitels sichern: Repertoire hängt sie an, das Buch schickt den Rest.
-            pushRest();
-            await rescueBookPart();
-            const saved = await saveRest();
-            setStatus(saved ? t('import.aborted') + ' ' + t('import.unexpected.saved', { count: saved }) : t('import.aborted'));
-            return;
-          }
-          if (skipKnown && already.has(String(oid))) { skipped++; continue; }   // schon auf RookHub → nicht holen
-          let g = cap.games[oid];
-          if (!g && shared.has(String(oid))) {
-            lines.push(null); lineOids.push(String(oid)); fromShared++;
-            done++; setStatus(fortschritt());
-            continue;
-          }
-          if (!g) {
-            try {
-              lauf.phase = 'lines';
-              g = await chessableGetChecked(`getGame?lng=en&oid=${oid}`, 'game', { oid: String(oid) });
-              lauf.fetched++;
-            } catch (e) {
-              // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen, egal woran der Abruf
-              // scheiterte (unerwartete Antwort, Chessable-401, Netzfehler; Abbruch-Zweig unten).
-              pushRest();
-              await rescueBookPart();
-              throw e;
-            }
-            await sleep(crawlPauseMs());
-          }
-          if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
-          done++; setStatus(fortschritt());
-          if (!incremental && Date.now() - lastBookPartAt >= BOOK_PART_EVERY_MS) { await sendBookPart(); setStatus(fortschritt()); }
-          // Repertoire: auch MITTEN im Kapitel anhängen, wenn die Frist um ist — vorher nur an Kapitelgrenzen, und bei
-          // einem großen Kapitel kam bei RookHub eine Viertelstunde lang nichts an (gemeldet 07.10.2026).
-          if (incremental && Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS && lines.length > pushedUpTo) {
-            pushRest();
-            await appendBetween();
-            setStatus(fortschritt());
-          }
-        }
-        if (!lines.length) continue;
-        if (incremental) {
-          pushRest();
-          if (Date.now() - lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await appendBetween();
-        } else {
-          await sendBookPart();   // der Rest des Kapitels (oder das ganze, wenn es in unter einer Minute geholt war)
-        }
+      Object.assign(run, { courseName, partial, already, shared, toFetch, done: 0, skipped: 0, fromShared: 0 });
+      run.lastBookPartAt = Date.now();
+      for (const chapter of lists) {
+        const ergebnis = await crawlChapter(run, chapter);
+        if (ergebnis === 'cancelled') return;
+        if (ergebnis === 'empty') continue;
         sent++;
       }
       if (!sent) throw new Error(t('err.noLines'));
 
-      if (incremental) {
-        setStatus(t('import.appending'));
-        const onPart = (part, parts) => { if (parts > 1) setStatus(t('import.appendingPart', { part, parts })); };
-        // Schluss-Anhang: einmal wiederholen, bevor der Lauf als gescheitert gilt. Sonst meldete der Status „Fehler",
-        // obwohl die Wiederholung in saveRest alles gespeichert hatte.
-        try {
-          await appendNew(onPart);
-        } catch (e) {
-          if (hoffnungslos(e)) throw e;
-          await sleep(REPERTOIRE_APPEND_RETRY_MS);
-          setStatus(t('import.appending'));
-          await appendNew(onPart);
-        }
-        const res = appended;
-        const fertig = skipped
-          ? t('import.doneAppendedSkipped', { count: res.imported, skipped })
-          : t('import.doneAppended', { count: res.imported });
-        // Verknüpfte Alt-Linien nennen — sonst las sich ein Abruf mit hunderten nachgetragenen IDs als „0 angehängt".
-        setStatus(res.linked ? fertig + ' ' + t('import.linkedNote', { count: res.linked }) : fertig);
-      } else {
-        setStatus(t('import.importing'));
-        // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
-        // dann als Ganzes im geteilten Cache ab (und prüft selbst Kapitelzahl und Lücken).
-        // `complete` heißt: piratechess darf den Kurs als Ganzes cachen. Nach einem Teil-Import
-        // stimmt das nicht — dieser Lauf hat die übersprungenen Linien gar nicht geholt.
-        const res = await ingestChunk(sessionId, bid, target, courseName, null, true,
-          { courseJson: courseText, complete: !partial, partial });
-        bookOpen = false;
-        markCourseFetched();
-        setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));
-      }
+      await finishCrawl(run, courseText);
       ensureProgress(true);
     } catch (err) {
       // Bis zum Abbruch geholte, geprüfte Linien noch anhängen — nur beim Repertoire, und bei JEDEM Fehler; beim Buch
       // sind die schon gesendeten Kapitel bereits importiert, den Eintrag schließt das finally mit `aborted`.
-      const saved = await saveRest();
+      const saved = await ap.saveRest();
       if (err && err.unexpected) {
         await handleUnexpected(bid, err.unexpected, saved);
       } else if (err && err.notOwned) {
@@ -354,7 +170,7 @@
         reportCrawlError(bid, target, lauf, (err && err.message) || String(err));
       }
     } finally {
-      if (bookOpen) {
+      if (run.bookOpen) {
         // Ohne Abschluss stünde der Import-Eintrag bis zum serverseitigen Aufräumen (30 min ohne Kapitel) auf
         // „läuft" — und die Rückmeldung sagte nicht, dass die bis hierhin geholten Kapitel im Kurs sind.
         try {
@@ -366,6 +182,240 @@
         } catch (e) { /* der Server schließt die Sitzung nach 30 min selbst */ }
       }
       crawling = false; crawlStartedAt = null;
+    }
+  }
+
+  // ---- Schritte von crawlAndImport (zweiter Schnitt; Ablauf und Wortlaut unveraendert) ----
+
+  // Wiederholen lohnt nicht, wenn es ohnehin nicht klappen kann: Token ungültig/widerrufen oder RookHub nicht verbunden.
+  function hoffnungslos(e) { return !!(e && (e.tokenInvalid || e.notConnected)); }
+
+  // Repertoire-Ziel: Puffer der geholten, noch nicht angehängten Kapitel (newChapters) samt Anhängen zwischendurch,
+  // am Kapitelende und beim Abbruch. lastAppendAt liest auch die Schleife in crawlChapter (Frist).
+  function createRepertoireAppender(bid, target, lauf, incremental) {
+    const ap = {
+      newChapters: [],
+      appended: { imported: 0, linked: 0, lines: 0 },   // Summe der in diesem Lauf schon angehängten Linien
+      lastAppendAt: Date.now(),
+    };
+    // Hängt newChapters an und nimmt sie erst nach Erfolg heraus (scheitert es, bleiben sie für den nächsten Versuch
+    // liegen; schon Angehängtes überspringt der Server über die oid).
+    ap.appendNew = async (onPart) => {
+      if (!ap.newChapters.length) return;
+      const batch = ap.newChapters.slice();
+      lauf.phase = 'sending';
+      const res = await ingestLiveInParts(bid, target, bestCourseName(bid), batch, onPart);
+      ap.newChapters.splice(0, batch.length);
+      lauf.sent += batch.reduce((n, c) => n + c.lineOids.length, 0);
+      ap.appended.imported += res.imported;
+      ap.appended.linked += res.linked;
+      ap.appended.lines += batch.reduce((n, c) => n + c.lineOids.length, 0);
+      ap.lastAppendAt = Date.now();
+      markCourseFetched();
+    };
+    let appendFails = 0;   // Zwischen-Anhänge, die hintereinander scheiterten
+    // Zwischen-Anhang an einer Kapitelgrenze, best effort (s. REPERTOIRE_APPEND_MAX_FAILS). Ein Fehlschlag setzt die
+    // Schranke neu: der nächste Versuch kommt frühestens nach REPERTOIRE_APPEND_EVERY_MS, zwei Fehlschläge hintereinander
+    // liegen also mindestens so weit auseinander, und ein kurzer Neustart von RookHub bricht den Lauf nicht ab.
+    ap.appendBetween = async () => {
+      try {
+        await ap.appendNew();
+        appendFails = 0;
+      } catch (e) {
+        ap.lastAppendAt = Date.now();
+        if (hoffnungslos(e) || ++appendFails >= REPERTOIRE_APPEND_MAX_FAILS) throw e;
+      }
+    };
+    // Nach einem Abbruch den Rest sichern (best effort). Liefert, wie viele Linien dieser Lauf insgesamt gesichert hat.
+    ap.saveRest = async () => {
+      if (!incremental) return 0;
+      try { await ap.appendNew(); } catch (e) { /* die eigentliche Meldung zählt mehr als die Teilsicherung */ }
+      if (ap.appended.lines) ensureProgress(true);
+      return ap.appended.lines;
+    };
+    return ap;
+  }
+
+  // Kursstruktur (getCourse) und je Kapitel die Linienliste (getList) — aus Mitschnitt, Kursstruktur-Cache oder
+  // frisch geholt. Liefert null, wenn der Nutzer währenddessen stoppt (Status schon gesetzt).
+  async function loadChapterLists(bid, already, skipKnown, lauf) {
+    lauf.phase = 'structure';
+    setStatus(t('import.fetchingStructure'));
+    let courseText = (cap.courseText && cap.bid === bid) ? cap.courseText : await listCacheGet(`${bid}:course`);
+    if (courseText == null) {
+      courseText = await chessableGetChecked(`getCourse?bid=${bid}`, 'course');
+      listCachePut(`${bid}:course`, courseText);
+    }
+    const lids = Crawl.parseChapterLids(courseText);
+    if (!lids.length) throw new Error(t('err.noChapters'));
+    const lists = [];
+    let total = 0, toFetch = 0;
+    for (let li = 0; li < lids.length; li++) {
+      const lid = lids[li];
+      if (cancelRequested) { setStatus(t('import.aborted')); return null; }
+      // Mitzählen: bei 36 Kapiteln mit Pause stand hier sonst zwei Minuten lang „Kursstruktur" (Kurs 207313).
+      lauf.phase = 'chapters';
+      setStatus(t('import.fetchingChapters', { done: li + 1, total: lids.length }));
+      const fromCapture = !!(cap.lists[lid] && cap.bid === bid);
+      let listText = fromCapture ? cap.lists[lid] : await listCacheGet(`${bid}:${lid}`);
+      const fromCache = !fromCapture && listText != null;
+      if (listText == null) {
+        listText = await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
+        listCachePut(`${bid}:${lid}`, listText);
+      }
+      harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
+      const oids = Crawl.parseLineOids(listText);
+      lists.push({ lid, listText, oids });
+      total += oids.length;
+      toFetch += skipKnown ? oids.filter(o => !already.has(String(o))).length : oids.length;
+      if (!fromCapture && !fromCache) await sleep(crawlPauseMs());   // Pause nur nach einem echten Abruf
+    }
+    return { courseText, lists, total, toFetch };
+  }
+
+  // Die oids, die weder auf RookHub liegen noch mitgeschnitten sind — nur für sie lohnt die Frage nach dem geteilten Cache.
+  function wantedOids(lists, already, skipKnown) {
+    const wanted = [];
+    for (const { oids } of lists) {
+      for (const oid of oids) {
+        if (skipKnown && already.has(String(oid))) continue;
+        if (cap.games[oid]) continue;
+        wanted.push(String(oid));
+      }
+    }
+    return wanted;
+  }
+
+  function crawlProgressText(run) {
+    const { done, toFetch, fromShared } = run;
+    return fromShared
+      ? t('import.fetchingLinesShared', { done, total: toFetch, shared: fromShared })
+      : t('import.fetchingLines', { done, total: toFetch });
+  }
+
+  // Ein Kapitel: Linien holen (getGame) oder aus Mitschnitt/geteiltem Cache nehmen; Buch schickt Teile, Repertoire hängt
+  // zwischendurch an. Liefert 'cancelled' (gestoppt, Rest gesichert), 'empty' (keine Linie) oder 'sent'.
+  async function crawlChapter(run, { lid, listText, oids }) {
+    const { bid, target, sessionId, courseName, partial, skipKnown, incremental, already, shared, lauf, ap } = run;
+    const fortschritt = () => crawlProgressText(run);
+    // lineOids parallel zu lines: der Server ordnet die Linien über die oid zu und füllt eine Linie ohne
+    // Inhalt (null) aus dem geteilten Cache.
+    const lines = [], lineOids = [];
+    let sentUpTo = 0;   // Buch: so viele Linien dieses Kapitels liegen schon bei RookHub
+    let pushedUpTo = 0; // Repertoire: so viele Linien dieses Kapitels liegen schon in newChapters (bzw. sind angehängt)
+    // Repertoire: das noch nicht Gesammelte dieses Kapitels in den Anhänge-Puffer legen (gleiches chapterJson —
+    // der Live-Append ordnet über die oid zu, ein Kapitel in mehreren Stücken ist dort kein Problem).
+    const pushRest = () => {
+      if (!incremental || pushedUpTo >= lines.length) return;
+      ap.newChapters.push({ chapterJson: listText, lines: lines.slice(pushedUpTo), lineOids: lineOids.slice(pushedUpTo) });
+      pushedUpTo = lines.length;
+    };
+    // Buch: was von diesem Kapitel noch nicht gesendet ist, als Teil(e) schicken. Ein Kapitel kann für EINEN
+    // Request zu groß sein (Kapitel 30 eines Lifetime-Repertoires riss am 2026-09-20 die 48 MB des Endpoints) —
+    // darum dieselbe Byte-Schranke wie beim Mitschnitt; alle Teile tragen denselben chapterKey.
+    const sendBookPart = async () => {
+      if (incremental || sentUpTo >= lines.length) return;
+      const rest = { chapterJson: listText, lines: lines.slice(sentUpTo), lineOids: lineOids.slice(sentUpTo) };
+      const teile = Crawl.splitIngestChapters([rest]).flat();
+      lauf.phase = 'sending';
+      for (let pi = 0; pi < teile.length; pi++) {
+        if (teile.length > 1) setStatus(t('import.chapterPart', { part: pi + 1, parts: teile.length }));
+        await ingestChunk(sessionId, bid, target, courseName, teile[pi], false, { chapterKey: String(lid), partial });
+        run.bookOpen = true;
+      }
+      lauf.sent += lines.length - sentUpTo;
+      lauf.phase = 'lines';
+      sentUpTo = lines.length;
+      run.lastBookPartAt = Date.now();
+    };
+    // Beim Abbruch (Stopp, Chessable-Fehler) das schon Geholte noch abliefern — best effort: ist RookHub oder die
+    // Erweiterung selbst weg, scheitert das eben auch.
+    const rescueBookPart = async () => { try { await sendBookPart(); } catch (e) { /* der eigentliche Fehler zählt */ } };
+    for (const oid of oids) {
+      if (cancelRequested) {
+        // Die schon geholten Linien dieses Kapitels sichern: Repertoire hängt sie an, das Buch schickt den Rest.
+        pushRest();
+        await rescueBookPart();
+        const saved = await ap.saveRest();
+        setStatus(saved ? t('import.aborted') + ' ' + t('import.unexpected.saved', { count: saved }) : t('import.aborted'));
+        return 'cancelled';
+      }
+      if (skipKnown && already.has(String(oid))) { run.skipped++; continue; }   // schon auf RookHub → nicht holen
+      let g = cap.games[oid];
+      if (!g && shared.has(String(oid))) {
+        lines.push(null); lineOids.push(String(oid)); run.fromShared++;
+        run.done++; setStatus(fortschritt());
+        continue;
+      }
+      if (!g) {
+        try {
+          lauf.phase = 'lines';
+          g = await chessableGetChecked(`getGame?lng=en&oid=${oid}`, 'game', { oid: String(oid) });
+          lauf.fetched++;
+        } catch (e) {
+          // Die bis hierher geholten Linien dieses Kapitels sind geprüft — nicht verwerfen, egal woran der Abruf
+          // scheiterte (unerwartete Antwort, Chessable-401, Netzfehler; Abbruch-Zweig unten).
+          pushRest();
+          await rescueBookPart();
+          throw e;
+        }
+        await sleep(crawlPauseMs());
+      }
+      if (g && g.trim() && g.trim() !== '{}') { lines.push(g); lineOids.push(String(oid)); cap.games[oid] = g; harvestFromGame(bid, oid, g); }
+      run.done++; setStatus(fortschritt());
+      if (!incremental && Date.now() - run.lastBookPartAt >= BOOK_PART_EVERY_MS) { await sendBookPart(); setStatus(fortschritt()); }
+      // Repertoire: auch MITTEN im Kapitel anhängen, wenn die Frist um ist — vorher nur an Kapitelgrenzen, und bei
+      // einem großen Kapitel kam bei RookHub eine Viertelstunde lang nichts an (gemeldet 07.10.2026).
+      if (incremental && Date.now() - ap.lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS && lines.length > pushedUpTo) {
+        pushRest();
+        await ap.appendBetween();
+        setStatus(fortschritt());
+      }
+    }
+    if (!lines.length) return 'empty';
+    if (incremental) {
+      pushRest();
+      if (Date.now() - ap.lastAppendAt >= REPERTOIRE_APPEND_EVERY_MS) await ap.appendBetween();
+    } else {
+      await sendBookPart();   // der Rest des Kapitels (oder das ganze, wenn es in unter einer Minute geholt war)
+    }
+    return 'sent';
+  }
+
+  // Abschluss: Repertoire hängt den Rest an (eine Wiederholung), Buch schickt den finalen Chunk mit der Kursstruktur.
+  async function finishCrawl(run, courseText) {
+    const { bid, target, sessionId, courseName, partial, incremental, ap } = run;
+    if (incremental) {
+      setStatus(t('import.appending'));
+      const onPart = (part, parts) => { if (parts > 1) setStatus(t('import.appendingPart', { part, parts })); };
+      // Schluss-Anhang: einmal wiederholen, bevor der Lauf als gescheitert gilt. Sonst meldete der Status „Fehler",
+      // obwohl die Wiederholung in saveRest alles gespeichert hatte.
+      try {
+        await ap.appendNew(onPart);
+      } catch (e) {
+        if (hoffnungslos(e)) throw e;
+        await sleep(REPERTOIRE_APPEND_RETRY_MS);
+        setStatus(t('import.appending'));
+        await ap.appendNew(onPart);
+      }
+      const res = ap.appended;
+      const skipped = run.skipped;
+      const fertig = skipped
+        ? t('import.doneAppendedSkipped', { count: res.imported, skipped })
+        : t('import.doneAppended', { count: res.imported });
+      // Verknüpfte Alt-Linien nennen — sonst las sich ein Abruf mit hunderten nachgetragenen IDs als „0 angehängt".
+      setStatus(res.linked ? fertig + ' ' + t('import.linkedNote', { count: res.linked }) : fertig);
+    } else {
+      setStatus(t('import.importing'));
+      // Vollständig geholt → mit der echten getCourse-Antwort als komplett markieren; der Server legt den Kurs
+      // dann als Ganzes im geteilten Cache ab (und prüft selbst Kapitelzahl und Lücken).
+      // `complete` heißt: piratechess darf den Kurs als Ganzes cachen. Nach einem Teil-Import
+      // stimmt das nicht — dieser Lauf hat die übersprungenen Linien gar nicht geholt.
+      const res = await ingestChunk(sessionId, bid, target, courseName, null, true,
+        { courseJson: courseText, complete: !partial, partial });
+      run.bookOpen = false;
+      markCourseFetched();
+      setStatus(t(target === 'book' ? 'import.doneImportedPuzzles' : 'import.doneImportedLines', { count: res.imported }));
     }
   }
 
