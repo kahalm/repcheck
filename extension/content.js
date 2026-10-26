@@ -18,7 +18,6 @@
   // ─── State ───────────────────────────────────────────────────────────
   let repertoirePositions = null; // Set<string> of normalized FENs (transposition-aware)
   let dirHandle = null;
-  let currentDeviationIndex = -1;
   let lastGameMovesKey = '';   // Cache: skip analyzeGame wenn Zuege unveraendert
   let lastDeviationFen = null; // FEN vor dem Out-of-Rep-Zug fuer Chessable-Suche
 
@@ -219,7 +218,6 @@
     const deviationIdx = analysis.deviation;
     const gaps = analysis.gaps || [];
     const inRepertoire = analysis.inRepertoire || [];
-    currentDeviationIndex = deviationIdx;
     lastDeviationFen = analysis.fenBeforeDeviation
       || (deviationIdx >= 0 ? fenBeforeMove(gameMoves, deviationIdx) : null);
 
