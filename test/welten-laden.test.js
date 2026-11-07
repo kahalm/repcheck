@@ -332,6 +332,22 @@ test('chessable.com, MAIN-Welt (chessable-fen.js): Laden im Practice-Modus, Eins
   vergleiche('chessable-main', u.log);
 });
 
+test('chessable.com, MAIN-Welt: Leiste auf Practice, Learn und Einzelvariante, nicht auf der Kursseite', async () => {
+  const faelle = [
+    ['https://www.chessable.com/practice/228856', true],
+    ['https://www.chessable.com/learn/228856/37167715/61/w', true],
+    ['https://www.chessable.com/variation/37167657/#/1/w', true],
+    ['https://www.chessable.com/course/228856/', false],
+    ['https://www.chessable.com/learning-path/', false],
+  ];
+  for (const [href, erwartet] of faelle) {
+    const u = ladeWelt('chessable-fen.js', { href });
+    await tick();
+    const el = u.nachId.get('repcheck-chessable-fen-tools');
+    assert.strictEqual(!!(el && el.isConnected !== false), erwartet, href);
+  }
+});
+
 test('chess.com, isolierte Welt (content.js): Laden auf einer Partieseite, Panel oeffnen, Zugliste lesen', async () => {
   const u = ladeWelt('content.js', {
     href: 'https://www.chess.com/game/live/123456789',

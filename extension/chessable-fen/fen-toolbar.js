@@ -350,10 +350,12 @@
     }, 1200);
   }
 
-  // Seit v1.14.0: die FEN-Tools erscheinen NUR im Practice-Mode
-  // (chessable.com/practice/…) — auf Kurs-Übersichten/Buch-Seiten o. Ä. nicht.
+  // Seit v1.14.0: die FEN-Tools erscheinen NUR auf Seiten mit Trainingsbrett — Practice
+  // (chessable.com/practice/…), seit v1.74.0 auch Learn (/learn/<kurs>/<linie>/…) und die
+  // Einzelvariante (/variation/<id>/…). Auf Kurs-Übersichten/Buch-Seiten o. Ä. nicht.
+  const TRAINING_PATH_RE = /^\/(?:practice|learn|variation)(?:\/|$)/;
   function isPracticeMode() {
-    return /^\/practice(\/|$)/.test(location.pathname);
+    return TRAINING_PATH_RE.test(location.pathname);
   }
 
   function removeUi() {

@@ -29,7 +29,7 @@ Beide bieten identische Funktionalität und teilen sich denselben IndexedDB-Layo
 
 ## Chessable-FEN-Tools
 
-Auf einer Chessable-Practice-Seite mit Brett können unten rechts diese Knöpfe und Anzeigen erscheinen. In der **Extension** ist seit v1.59.0 standardmäßig keiner davon eingeschaltet — einzeln aktivieren im Popup unter „Einstellungen" → „Chessable-Buttons". Das Userscript hat keine Einstellungen und zeigt sie weiterhin.
+Auf einer Chessable-Seite mit Trainingsbrett (Practice, Learn, Einzelvariante) können unten rechts diese Knöpfe und Anzeigen erscheinen. In der **Extension** ist seit v1.59.0 standardmäßig keiner davon eingeschaltet — einzeln aktivieren im Popup unter „Einstellungen" → „Chessable-Buttons". Das Userscript hat keine Einstellungen und zeigt sie weiterhin.
 
 - **Copy FEN** (grün) — kopiert die aktuelle Stellung als FEN in die Zwischenablage (z.B. zum Einfügen in lichess.org/analysis oder chess.com/analysis).
 - **Search FEN** (blau) — öffnet die Chessable-FEN-Suche für die Stellung in einem neuen Tab (innerhalb des aktuellen Kurses, sonst global).
