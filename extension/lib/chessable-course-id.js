@@ -16,6 +16,11 @@
   const URL_ID_RE = /\/courses?\/(\d+)(?:\/|$)/;
   const LINK_ID_RE = /\/course\/(\d+)(?:\/|$)/;
   const isId = (v) => v != null && /^\d+$/.test(String(v));
+  // Seiten mit Trainingsbrett (S1-004: EINE Regel für die Leiste in der MAIN-Welt und den Umstellungs-Hinweis in der
+  // isolierten Welt): Practice, seit v1.74.0 auch Learn (/learn/<kurs>/<linie>/…) und die Einzelvariante
+  // (/variation/<id>/…). Nicht COURSE_PAGE_RE: auf /variation/<id> ist die Zahl eine Varianten-, keine Kurs-Id.
+  const TRAINING_PATH_RE = /^\/(?:practice|learn|variation)(?:\/|$)/;
+  const isTrainingPage = (pathname) => TRAINING_PATH_RE.test(String(pathname || ''));
 
   // Reihenfolge URL > Fiber > Link. `fiberId` und `links` dürfen Funktionen sein — sie laufen nur,
   // wenn die stärkere Quelle nichts liefert (der Fiber-Lauf und die Link-Suche kosten DOM-Arbeit).
@@ -39,7 +44,7 @@
     return COURSE_PAGE_RE.test(String(pathname || '')) || source === 'url' || source === 'fiber';
   }
 
-  const api = { COURSE_PAGE_RE, resolveCourseId, isOnCourse };
+  const api = { COURSE_PAGE_RE, TRAINING_PATH_RE, resolveCourseId, isOnCourse, isTrainingPage };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.RepCheckCourseId = api;
 })(typeof self !== 'undefined' ? self : this);

@@ -231,3 +231,14 @@ test('Bannrisiko-Box nennt den Kurs, der geholt wird (Name, sonst ID)', () => {
   const ohneName = ladeWarnBox({ onCourse: true, bid: '207313', courseName: null });
   assert.ok(ohneName.includes('Geholt wird der Kurs mit der ID 207313'), ohneName.join(' | '));
 });
+
+// S1-004: EINE Regel für „Trainingsseite" (Leiste in der MAIN-Welt, Umstellungs-Hinweis in der isolierten Welt).
+test('isTrainingPage: Practice, Learn und Einzelvariante — nicht Kurs, Lernpfad oder Startseite', () => {
+  const { isTrainingPage } = require('../extension/lib/chessable-course-id.js');
+  for (const p of ['/practice', '/practice/228856', '/learn/228856/37167715/61/w', '/variation/37167657/']) {
+    assert.strictEqual(isTrainingPage(p), true, p);
+  }
+  for (const p of ['/course/228856/', '/learning-path/', '/practicex', '/', '', null, '/de/practice/1']) {
+    assert.strictEqual(isTrainingPage(p), false, String(p));
+  }
+});

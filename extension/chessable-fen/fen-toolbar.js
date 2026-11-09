@@ -352,10 +352,10 @@
 
   // Seit v1.14.0: die FEN-Tools erscheinen NUR auf Seiten mit Trainingsbrett — Practice
   // (chessable.com/practice/…), seit v1.74.0 auch Learn (/learn/<kurs>/<linie>/…) und die
-  // Einzelvariante (/variation/<id>/…). Auf Kurs-Übersichten/Buch-Seiten o. Ä. nicht.
-  const TRAINING_PATH_RE = /^\/(?:practice|learn|variation)(?:\/|$)/;
-  function isPracticeMode() {
-    return TRAINING_PATH_RE.test(location.pathname);
+  // Einzelvariante (/variation/<id>/…). Auf Kurs-Übersichten/Buch-Seiten o. Ä. nicht. Die Regel steht
+  // seit 1.74.1 nur noch in lib/chessable-course-id.js (S1-004, auch der Umstellungs-Hinweis nutzt sie).
+  function isTrainingPage() {
+    return self.RepCheckCourseId.isTrainingPage(location.pathname);
   }
 
   function removeUi() {
@@ -371,7 +371,7 @@
   }
 
   function ensureUi() {
-    if (!isPracticeMode()) { removeUi(); return; }
+    if (!isTrainingPage()) { removeUi(); return; }
     createUi();
     initFeedbackTracker();   // Zug-Rueckmeldung mitschneiden (Overstudied / +XP)
     attachLineResetListener();
@@ -419,6 +419,6 @@
     },
     copyToClipboard, fallbackCopy, CONTAINER_ID, COPY_BTN_ID, SEARCH_BTN_ID, styleButton, MOBILE_STYLE_ID,
     injectMobileStyle, createUi, buttonEnabled, applyButtonSettings, requestButtonSettings, requestRookhubUrl,
-    REMEMBER_LABEL, rememberLine, flash, isPracticeMode, removeUi, ensureUi, installBruecken,
+    REMEMBER_LABEL, rememberLine, flash, isTrainingPage, removeUi, ensureUi, installBruecken,
   };
 })();

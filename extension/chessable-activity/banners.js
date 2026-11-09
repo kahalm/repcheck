@@ -108,7 +108,8 @@
   }
 
   // ---- Hinweis nach dem Update auf v1.59.0: die Buttons unten rechts sind jetzt aus ----
-  // Wer RepCheck vorher benutzt hat, sieht im Practice-Modus die Leiste plötzlich nicht mehr. Genau dort einmal
+  // Wer RepCheck vorher benutzt hat, sieht auf der Trainingsseite (Practice, Learn, Einzelvariante — dieselbe Regel wie
+  // die Leiste, lib/chessable-course-id.js, S1-004) die Leiste plötzlich nicht mehr. Genau dort einmal
   // erklären und zum Einschalten führen. background.js setzt `rcButtonsNotice: 'pending'` beim Update; „OK",
   // „Buttons auswählen" oder eine gespeicherte Auswahl (Popup/Willkommensseite) setzen 'done'.
   const BUTTONS_NOTICE_ID = 'repcheck-buttons-notice';
@@ -119,7 +120,7 @@
     buttonsNoticeState = 'settled';
   }
   function maybeShowButtonsNotice() {
-    if (buttonsNoticeState !== 'unknown' || !/^\/practice(\/|$)/.test(location.pathname)) return;
+    if (buttonsNoticeState !== 'unknown' || !self.RepCheckCourseId.isTrainingPage(location.pathname)) return;
     try {
       chrome.storage.local.get(['rcButtonsNotice', 'rookhubConfig'], (r) => {
         if (buttonsNoticeState !== 'unknown') return;

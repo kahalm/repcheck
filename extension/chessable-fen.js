@@ -31,7 +31,7 @@
   const F = self.RepCheckFen;
   const FB = F.feedback, PO = F.pool, ZX = F.zenExtras, ZE = F.zen, TB = F.toolbar;
   delete self.RepCheckFen;
-  const { CONTAINER_ID, ensureUi, removeUi, isPracticeMode } = TB;
+  const { CONTAINER_ID, ensureUi, removeUi, isTrainingPage } = TB;
   const { initFeedbackTracker } = FB;
   FB.init({ S, buttonEnabled: TB.buttonEnabled, renderPool: PO.renderPool });
   PO.init({ buttonEnabled: TB.buttonEnabled });
@@ -133,7 +133,7 @@
   // UI ueber SPA-Navigationen am Leben halten. Verlaesst der User den
   // Practice-Mode (SPA-Nav), wird die UI wieder entfernt.
   const mo = new MutationObserver(() => {
-    if (!isPracticeMode()) { removeUi(); return; }
+    if (!isTrainingPage()) { removeUi(); return; }
     if (!document.getElementById(CONTAINER_ID)) ensureUi();
     else initFeedbackTracker();   // Notification-Knoten wird bei SPA-Wechseln ersetzt   // UI steht schon, Brett kommt bei Chessable oft später nach
   });
