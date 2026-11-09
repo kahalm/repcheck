@@ -86,3 +86,98 @@ test('die voreingestellte Instanz ist in Erklärung und Store-Text offengelegt',
     assert.ok(store.includes(h), `Standard-Instanz ${h} fehlt im Datenschutz-Satz von STORE-LISTING.md`);
   }
 });
+
+// S1-001 (Delta-Review 2026-11-09): die Erklärung prüfte bisher nur Endpunkte und Rechte. Seit 1.72.0 legte „Kurs holen"
+// Chessable-Antworten in der IndexedDB `RepCheckCrawlCache` ab, 1.71.0 brachte `rcBanRiskAck` — beides fehlte, und die
+// Erklärung behauptete „nur im Arbeitsspeicher". Jetzt muss jeder Speicherort aus dem Code in PRIVACY.md stehen.
+
+// Konstanten `const NAME = '…'` bzw. `const NAME = ['…', …]` aus dem Code, um Bezeichner in Aufrufen aufzulösen.
+function codeKonstanten(src) {
+  const out = {};
+  for (const m of src.matchAll(/const\s+([A-Z_][A-Z0-9_]*)\s*=\s*(?:'([^']+)'|\[([^\]]*)\])/g)) {
+    out[m[1]] = m[2] ? [m[2]] : [...m[3].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  }
+  return out;
+}
+
+// Schlüssel der obersten Ebene eines Objektliterals ab `{` (verschachtelte Objekte zählen nicht).
+function objektSchluessel(text) {
+  const out = [];
+  let tiefe = 0, erwarteSchluessel = true;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{' || c === '[' || c === '(') { tiefe++; if (tiefe === 1) erwarteSchluessel = true; continue; }
+    if (c === '}' || c === ']' || c === ')') { tiefe--; if (tiefe === 0) break; continue; }
+    if (tiefe === 1 && c === ',') { erwarteSchluessel = true; continue; }
+    if (tiefe === 1 && erwarteSchluessel && /[A-Za-z_$]/.test(c)) {
+      const m = /^([A-Za-z_$][\w$]*)\s*[:,}]/.exec(text.slice(i));
+      if (m) out.push(m[1]);
+      erwarteSchluessel = false;
+    }
+  }
+  return out;
+}
+
+function storageSchluessel() {
+  const src = extensionSources();
+  const k = codeKonstanten(src);
+  const keys = new Set();
+  const aufruf = /(?:storage\.local\.(?:get|set|remove)|\bstore(?:Get|Set|Remove))\(\s*/g;
+  let m;
+  while ((m = aufruf.exec(src))) {
+    const rest = src.slice(m.index + m[0].length, m.index + m[0].length + 600);
+    let a;
+    if ((a = /^'([^']+)'/.exec(rest))) keys.add(a[1]);
+    else if ((a = /^\[([^\]]*)\]/.exec(rest))) {
+      for (const x of a[1].matchAll(/'([^']+)'|([A-Z_][A-Z0-9_]*)/g)) (x[1] ? [x[1]] : (k[x[2]] || [])).forEach((s) => keys.add(s));
+    } else if ((a = /^\{\s*\[([A-Z_][A-Z0-9_]*)\]/.exec(rest))) (k[a[1]] || []).forEach((s) => keys.add(s));
+    else if (rest.startsWith('{')) objektSchluessel(rest).forEach((s) => keys.add(s));
+    else if ((a = /^([A-Z_][A-Z0-9_]*)\b/.exec(rest))) (k[a[1]] || []).forEach((s) => keys.add(s));
+    // Kleingeschriebene Variablen (key, obj, patch) sind Durchreicher — ihre Schlüssel stehen an den Aufrufern.
+  }
+  // background.js setzt die Einführungs-Schlüssel über ein `patch`-Objekt.
+  for (const x of src.matchAll(/\bpatch\.([A-Za-z_$][\w$]*)\s*=/g)) keys.add(x[1]);
+  return keys;
+}
+
+function indexedDbNamen() {
+  const src = extensionSources();
+  const k = codeKonstanten(src);
+  const namen = new Set();
+  for (const m of src.matchAll(/indexedDB\.open\(\s*(?:'([^']+)'|([A-Z_][A-Z0-9_]*))/g)) {
+    (m[1] ? [m[1]] : (k[m[2]] || [m[2]])).forEach((n) => namen.add(n));
+  }
+  return namen;
+}
+
+test('jeder chrome.storage.local-Schlüssel aus dem Code steht in der Erklärung', () => {
+  const keys = storageSchluessel();
+  for (const bekannt of ['rookhubConfig', 'chessableToken', 'rcBanRiskAck', 'rcOnboarding', 'rcDailyStats']) {
+    assert.ok(keys.has(bekannt), `Schlüssel-Suche findet ${bekannt} nicht — Muster kaputt?`);
+  }
+  for (const key of keys) assert.ok(PRIVACY.includes('`' + key + '`'), `chrome.storage.local-Schlüssel ${key} fehlt in PRIVACY.md`);
+});
+
+test('jede IndexedDB aus dem Code steht in der Erklärung, samt Website, auf der sie liegt', () => {
+  const namen = indexedDbNamen();
+  assert.deepStrictEqual([...namen].sort(), ['RepCheckCrawlCache', 'RepertoireCheckerDB'],
+    'neue IndexedDB — in PRIVACY.md aufnehmen (sie liegt im Websitespeicher, nicht bei der Erweiterung)');
+  for (const n of namen) assert.ok(PRIVACY.includes('`' + n + '`'), `IndexedDB ${n} fehlt in PRIVACY.md`);
+  const zeile = (n) => PRIVACY.split('\n').find((z) => z.startsWith('|') && z.includes('`' + n + '`')) || '';
+  assert.match(zeile('RepCheckCrawlCache'), /chessable\.com/);
+  assert.match(zeile('RepertoireCheckerDB'), /chess\.com/);
+  assert.doesNotMatch(PRIVACY, /IndexedDB `RepertoireCheckerDB` im Browserprofil/);
+});
+
+test('die Erklärung verspricht nicht, dass Deinstallieren die Website-IndexedDBs löscht', () => {
+  const loeschen = PRIVACY.slice(PRIVACY.indexOf('## Wie werden Daten gelöscht?'));
+  assert.doesNotMatch(loeschen, /oder die Erweiterung deinstallieren\.\n/);
+  assert.match(loeschen, /RepCheckCrawlCache/);
+});
+
+test('die Kopfzeile nennt die ausgelieferte Haupt-/Nebenversion', () => {
+  const m = /Geprüft gegen Version der Erweiterung\*\*: (\d+\.\d+)\./.exec(PRIVACY);
+  assert.ok(m, 'Kopfzeile ohne Version');
+  assert.strictEqual(m[1], manifest.version.split('.').slice(0, 2).join('.'),
+    'PRIVACY.md ist gegen eine andere Nebenversion geprüft — durchsehen und Kopfzeile anheben');
+});

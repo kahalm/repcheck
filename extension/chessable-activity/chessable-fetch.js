@@ -140,7 +140,7 @@
     return listCacheDbPromise;
   }
   // Abgelaufene Einträge löschen (S1-003): listCacheGet liefert für sie nur null, ohne diesen Lauf blieb jede je geholte
-  // Kapitelliste dauerhaft im Speicher von chessable.com liegen. Läuft einmal je Seitenaufruf beim Öffnen der DB; die
+  // Kapitelliste dauerhaft im Speicher von chessable.com liegen. Läuft einmal je Seitenaufruf beim ersten Öffnen der DB (also beim nächsten „Kurs holen“); die
   // readwrite-Transaktion steht vor allen späteren Lese-/Schreibzugriffen in der Warteschlange. Fehler: egal.
   function listCachePurgeExpired(db) {
     try {

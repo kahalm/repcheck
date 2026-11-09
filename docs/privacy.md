@@ -5,7 +5,7 @@ title: Privacy Policy
 
 # Privacy Policy — RepCheck — Opening Repertoire Deviation Checker
 
-**Stand**: 2026-10-01 · **Geprüft gegen Version der Erweiterung**: 1.68.15
+**Stand**: 2026-11-09 · **Geprüft gegen Version der Erweiterung**: 1.74.1
 
 ## Kurz gesagt
 - Die Erweiterung läuft auf chess.com, lichess.org und chessable.com. **Ohne RookHub-Verbindung** vergleicht sie auf chess.com/lichess rein lokal (Repertoire aus einem PGN-Ordner oder eingefügtem Text) und sendet nichts an RookHub. Die einzige Ausnahme sind trainierte Chessable-Linien, und die nur nach deiner ausdrücklichen Zustimmung (Abschnitt „Ohne Verbindung").
@@ -63,17 +63,20 @@ Weitere Server kontaktiert die Erweiterung nicht. Der Discord-Link im Hinweis na
 
 ## Was wird lokal gespeichert?
 
+Die Werte in `chrome.storage.local` gehören der Erweiterung; Webseiten können sie nicht lesen. Die beiden IndexedDB-Datenbanken legen Skripte der Erweiterung **im Speicher der jeweiligen Website** an (chess.com bzw. lichess.org, chessable.com) — sie liegen damit bei den Websitedaten dieser Seiten, nicht bei der Erweiterung (siehe „Wie werden Daten gelöscht?").
+
 | Datum | Speicherort | Wofür |
 |-------|-------------|-------|
-| **Repertoire-Stellungen** (aus deinen PGNs) | IndexedDB `RepertoireCheckerDB` im Browserprofil | Lokaler Repertoire-Vergleich auf chess.com/lichess |
-| **Ordner-Handle** (File System Access API) | IndexedDB `RepertoireCheckerDB` | Den zuletzt gewählten PGN-Ordner ohne erneutes Auswählen lesen |
-| **RookHub-URL** | IndexedDB `RepertoireCheckerDB` und `chrome.storage.local` (`rookhubConfig`) | Welche RookHub-Instanz angesprochen wird |
+| **Repertoire-Stellungen** (aus deinen PGNs) | IndexedDB `RepertoireCheckerDB` im Websitespeicher von chess.com bzw. lichess.org | Lokaler Repertoire-Vergleich auf chess.com/lichess |
+| **Ordner-Handle** (File System Access API) | IndexedDB `RepertoireCheckerDB` (wie oben) | Den zuletzt gewählten PGN-Ordner ohne erneutes Auswählen lesen |
+| **RookHub-URL** | IndexedDB `RepertoireCheckerDB` (wie oben) und `chrome.storage.local` (`rookhubConfig`) | Welche RookHub-Instanz angesprochen wird |
 | **RookHub-Token (`rkh_…`)** | nur `chrome.storage.local` (`rookhubConfig`) — von Webseiten nicht lesbar | Anmeldung bei der verbundenen Instanz |
 | **Chessable-Token (JWT)** | `chrome.storage.local` (`chessableToken`) | Abrufe bei Chessable (s. o.) und der Kopier-Knopf |
 | **Kursnamen, Kursstrukturen** | `chrome.storage.local` (`chessableCourseNames`, `courseStructures`, 7 Tage, höchstens 80 Kurse) | Kursnamen anzeigen, Fortschrittszähler ohne erneuten Abruf |
+| **Zwischenspeicher von „⚡ Kurs holen"** | IndexedDB `RepCheckCrawlCache` im Websitespeicher von chessable.com | Chessables Antworten auf `getCourse` und `getList` der zuletzt geholten Kurse (Kursstruktur, Kapitel mit ihren Linien, darin auch dein Trainingsstand wie der Schwierigkeitszähler `nHard`), damit ein zweiter Versuch nach einem Abbruch sie nicht erneut abrufen muss. Jeder Eintrag gilt 24 Stunden; ältere werden beim nächsten „Kurs holen" gelöscht. Geht nirgendwohin |
 | **Tägliche Trainingsstatistik** | `chrome.storage.local` (`rcDailyStats`) | Anzeige im Popup; bleibt lokal |
-| **Einstellungen und Zustände** | `chrome.storage.local` (`chessableButtons`, `crawlDelay`, `rcLang`, `rcReviewConsent`, `rcOnboarding`, `rcButtonsNotice`, `rcCourseFetched`, `rcCrawlAlert`, `rookhubPairing`) | Button-Auswahl, Pause beim Kurs holen, Sprache, deine Zustimmung, Einführung, Hinweise, Stand der Ein-Klick-Verbindung (ohne JWT) |
-| **Partiezüge, mitgeschnittene Chessable-Antworten** | nur im Arbeitsspeicher des Tabs | Vergleich, Speichern, Anhängen wie oben beschrieben |
+| **Einstellungen und Zustände** | `chrome.storage.local` (`chessableButtons`, `crawlDelay`, `rcLang`, `rcReviewConsent`, `rcOnboarding`, `rcButtonsNotice`, `rcCourseFetched`, `rcCrawlAlert`, `rcBanRiskAck`, `rookhubPairing`) | Button-Auswahl, Pause beim Kurs holen, Sprache, deine Zustimmung, Einführung, Hinweise, ob der Hinweis zum Sperrrisiko vor „Kurs holen" noch erscheinen soll, Stand der Ein-Klick-Verbindung (ohne JWT) |
+| **Partiezüge, beim Training mitgelesene Chessable-Antworten** | nur im Arbeitsspeicher des Tabs (bis auf den Zwischenspeicher von „⚡ Kurs holen" oben) | Vergleich, Speichern, Anhängen wie oben beschrieben |
 
 ## Wer hat Zugriff?
 - **Du** (über deinen Browser).
@@ -83,8 +86,9 @@ Weitere Server kontaktiert die Erweiterung nicht. Der Discord-Link im Hinweis na
 ## Wie werden Daten gelöscht?
 - **Token widerrufen**: Im RookHub-Profil unter „Extension-Tokens" den Token widerrufen. Danach kann er nicht mehr verwendet werden, auch wenn er noch lokal liegt.
 - **Daten auf dem RookHub-Server**: in RookHub selbst löschen (Partien, Kurse, Konto) oder beim Betreiber der Instanz anfragen.
-- **Lokale Daten löschen**: Browser-Einstellungen → Website-/Erweiterungsdaten löschen, oder die Erweiterung deinstallieren.
-- **Repertoire-Cache zurücksetzen**: In den DevTools → Application → IndexedDB → `RepertoireCheckerDB` löschen.
+- **Lokale Daten löschen**: Die Erweiterung zu deinstallieren löscht ihren `chrome.storage.local`. Die IndexedDB-Datenbanken im Websitespeicher (`RepertoireCheckerDB` auf chess.com/lichess.org, `RepCheckCrawlCache` auf chessable.com) bleiben dabei liegen. Du löschst sie in den Browser-Einstellungen über die Websitedaten von chess.com, lichess.org bzw. chessable.com (das meldet dich dort auch ab) oder gezielt wie unten beschrieben.
+- **Repertoire-Cache zurücksetzen**: Auf chess.com bzw. lichess.org in den DevTools → Application → IndexedDB → `RepertoireCheckerDB` löschen.
+- **Zwischenspeicher von „Kurs holen" löschen**: Auf chessable.com in den DevTools → Application → IndexedDB → `RepCheckCrawlCache` löschen. Abgelaufene Einträge (älter als 24 Stunden) löscht die Erweiterung selbst beim nächsten „Kurs holen".
 - **Chessable-Token entfernen**: In den DevTools → Application → Extension storage / `chrome.storage.local` den Key `chessableToken` löschen, oder die Erweiterung deinstallieren. Den Token selbst macht ein Abmelden bei Chessable ungültig.
 
 ## Berechtigungen im Manifest
