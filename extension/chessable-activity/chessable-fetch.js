@@ -131,13 +131,30 @@
         try {
           const req = indexedDB.open(LIST_CACHE_DB, 1);
           req.onupgradeneeded = () => { try { req.result.createObjectStore(LIST_CACHE_STORE); } catch (e) { /* schon da */ } };
-          req.onsuccess = () => resolve(req.result);
+          req.onsuccess = () => { listCachePurgeExpired(req.result); resolve(req.result); };
           req.onerror = () => resolve(null);
           req.onblocked = () => resolve(null);
         } catch (e) { resolve(null); }
       });
     }
     return listCacheDbPromise;
+  }
+  // Abgelaufene Einträge löschen (S1-003): listCacheGet liefert für sie nur null, ohne diesen Lauf blieb jede je geholte
+  // Kapitelliste dauerhaft im Speicher von chessable.com liegen. Läuft einmal je Seitenaufruf beim Öffnen der DB; die
+  // readwrite-Transaktion steht vor allen späteren Lese-/Schreibzugriffen in der Warteschlange. Fehler: egal.
+  function listCachePurgeExpired(db) {
+    try {
+      const now = Date.now();
+      const req = db.transaction(LIST_CACHE_STORE, 'readwrite').objectStore(LIST_CACHE_STORE).openCursor();
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur) return;
+        const v = cur.value;
+        if (!v || typeof v.text !== 'string' || !(now - (v.at || 0) < LIST_CACHE_TTL_MS)) cur.delete();
+        cur.continue();
+      };
+      req.onerror = () => {};
+    } catch (e) { /* gesperrt — beim nächsten Mal */ }
   }
   async function listCacheGet(key) {
     const db = await listCacheDb();
