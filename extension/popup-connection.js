@@ -54,6 +54,14 @@ function writeRookhubConfig(cfg) {
   });
 }
 
+// Den vor „Speichern" gelesenen Stand zurückschreiben (S1-009); war keiner da, den Eintrag ganz entfernen.
+function restoreRookhubConfig(prev) {
+  if (prev) return writeRookhubConfig(prev);
+  return new Promise((resolve) => {
+    try { chrome.storage.local.remove('rookhubConfig', resolve); } catch (e) { resolve(); }
+  });
+}
+
 function updateTokensLink() {
   const url = normalizeRookhubUrl(CONN_URL.value) || ROOKHUB_DEFAULT_URL;
   CONN_TOKENS_LINK.href = url + '/profile';
@@ -75,7 +83,10 @@ document.getElementById('conn-save').addEventListener('click', async () => {
   if (!token) { setConnState('popup.conn.needToken'); return; }
   setConnState('popup.conn.checking');
   // Erst speichern, dann prüfen: der Background-Worker lässt den Fetch nur zur
-  // konfigurierten Origin durch (Egress-Allowlist in background.js).
+  // konfigurierten Origin durch (Egress-Allowlist in background.js). Scheitert die Prüfung, kommt der alte Stand
+  // zurück (S1-009) — sonst zeigte das Popup beim nächsten Öffnen „Verbunden", alle Seiten schickten an die
+  // falsche Adresse bzw. mit dem falschen Token, und der bisher gültige Token wäre aus der Config verschwunden.
+  const previous = await readRawRookhubConfig();
   await writeRookhubConfig({ url, token });
   try {
     await fetchRookhubRepertoires({ url, token });
@@ -83,6 +94,7 @@ document.getElementById('conn-save').addEventListener('click', async () => {
     setConnState('popup.conn.connected');
     refreshStatus();
   } catch (e) {
+    await restoreRookhubConfig(previous);
     const msg = (e && e.message) ? e.message : String(e);
     // Häufigster Fall bei vertippter Adresse: es antwortet zwar etwas, aber kein RookHub
     // (der Proxy meldet dann „invalid json", weil eine HTML-Fehlerseite zurückkommt).

@@ -183,7 +183,10 @@ Popup → **„Einstellungen"** (geht auf JEDEM Tab, auch auf chessable.com oder
 (offenen wiederverwendend, sonst unsichtbar im Hintergrund), wartet ggf. auf die Anmeldung und legt
 sich den `rkh_`-Token über `POST /api/profile/tokens` selbst an — kein Copy&Paste. Details unter
 „Ein-Klick-Verbindung". Rückfall für Selbsthoster/Sonderfälle: „Token von Hand eintragen" im selben
-Aufklapper (URL + `rkh_…` aus **Profil → Extension-Tokens**).
+Aufklapper (URL + `rkh_…` aus **Profil → Extension-Tokens**). „Speichern" schreibt URL + Token vor der Prüfung (die
+Egress-Allowlist des Workers hängt an der eingetragenen Origin) und stellt bei einem Fehlschlag den vorherigen
+`rookhubConfig` wieder her bzw. entfernt ihn (v1.74.1, S1-009; vorher zeigte das Popup danach „Verbunden"). Test:
+`test/popup-connection-save.test.js`.
 
 **Warum das so wichtig ist**: bis v1.54.x gab es die Eingabe NUR im seiten-injizierten Panel, und
 das lebt nur auf chess.com/lichess. Wer die Extension für Chessable installiert hatte, musste erst
