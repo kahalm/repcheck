@@ -168,6 +168,19 @@ function lichessGameId(pathname) {
   return m[1];
 }
 
+// chess.com-Partie-Id aus dem Pfad der Seite — nur aus echten Partie-Adressen (S1-007, wie lichessGameId seit N8-001):
+// `/game/live/<n>`, `/game/daily/<n>`, `/analysis/game/live/<n>`, `/analysis/game/daily/<n>` und `/game/<n>` (eine
+// Sprach-Vorsilbe wie `/de` davor und Anhänge wie `/review` dahinter sind erlaubt). Die Art (live/daily) kommt aus dem
+// Pfad; `/game/<n>` ohne Art gilt als live. Bis v1.74.0 fiel getGameMeta sonst auf JEDE 6+-stellige Zahl im Pfad zurück
+// und holte dazu die Live-Partie mit derselben Nummer — auf `/game/computer/<n>` also eine fremde Partie.
+// Keine Partie-Adresse → null (dann kein Callback-Abruf, externalId bleibt null).
+function chessComGameId(pathname) {
+  const m = String(pathname || '').match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?\/(analysis\/)?game\/(?:(live|daily)\/)?(\d+)(?:\/|$)/i);
+  if (!m) return null;
+  if (m[1] && !m[2]) return null;   // /analysis/game/<n> ohne Art: nicht belegt → keine Id
+  return { id: m[3], daily: (m[2] || '').toLowerCase() === 'daily' };
+}
+
 // Kopfdaten einer Partie (chess.com-Callback, lichess-Export) mit Wiederholung holen. Direkt nach Partieende liefern die
 // Plattformen sie manchmal noch nicht — RookHub bekam dann „?" gegen „?" (Prod-Partie 63, 08.10.2026). `fetchOnce` gibt
 // ein Objekt mit white/black oder null; wiederholt wird, solange Namen fehlen, höchstens `tries`-mal mit `delayMs` Pause.
@@ -189,7 +202,7 @@ async function fetchMetaWithRetry(fetchOnce, { tries = 3, delayMs = 1500, sleep 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, fetchMetaWithRetry,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, chessComGameId, fetchMetaWithRetry,
   };
 }
 
@@ -198,6 +211,6 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof self !== 'undefined') {
   self.RepCheckLib = Object.assign(self.RepCheckLib || {}, {
     tokenizePgn, isMoveToken, parseMoveTokens, parsePgnText,
-    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, fetchMetaWithRetry,
+    normalizedFen, chessComPlayedAt, chessableSearchUrl, lichessGameId, chessComGameId, fetchMetaWithRetry,
   });
 }

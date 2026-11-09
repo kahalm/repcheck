@@ -41,7 +41,7 @@ Scopes haben, und weil dieselben Funktionen in den Unit-Tests laufen sollen.
 
 | Datei | Global | Inhalt |
 |---|---|---|
-| `lib/repertoire-text.js` | `self.RepCheckLib` | `tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl`, `lichessGameId` |
+| `lib/repertoire-text.js` | `self.RepCheckLib` | `tokenizePgn`, `isMoveToken`, `parseMoveTokens`, `parsePgnText`, `normalizedFen`, `chessComPlayedAt`, `chessableSearchUrl`, `lichessGameId`, `chessComGameId` |
 | `lib/i18n.js` | `self.RepCheckI18n` | Sprachtabelle (siehe „Oberflächensprache") |
 | `lib/chessable-course-names.js` | `self.RepCheckCourseNames` | Kursnamen/Nav-Label/uid-Decode — `rc`-Präfixe, weil Top-Level-Deklarationen in der MAIN-World im `window` der Seite landen |
 | `lib/chessable-course-id.js` | `self.RepCheckCourseId` | Kurs-ID der Seite (v1.68.14, S1-012): `resolveCourseId({ pathname, fiberId, links })` in der Reihenfolge URL > React-Fiber > erster Kurs-Link, liefert `{ id, source }`; `isOnCourse(pathname, source)` (Kursseite laut `COURSE_PAGE_RE` oder ID aus URL/Fiber); in BEIDEN chessable-Welten geladen (IIFE, nur dieser eine Name im `window` der Seite) |
@@ -287,7 +287,11 @@ aus `og:title`/`document.title`). Der **Server** baut daraus das PGN und dedupli
 Analysebrett, `/broadcast/…`, `/study/…` und achtstelligen Seiten wie `/training` bleibt sie `null`, jede
 Speicherung dort ist eine eigene Partie. Bis v1.68.6 las eine Regex ohne Ende-Anker die ersten acht Zeichen
 jedes Pfads („analysis", „broadcas"), und alle dort gespeicherten Partien fielen serverseitig auf EINEN
-Datensatz (spätere überschrieben frühere hinter deren Teilen-Link). Test: `test/lichess-game-id.test.js`. (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
+Datensatz (spätere überschrieben frühere hinter deren Teilen-Link). Test: `test/lichess-game-id.test.js`. **chess.com-Id ebenso** (v1.74.1, S1-007,
+`chessComGameId`): nur `/game/(live|daily)/<n>`, `/analysis/game/(live|daily)/<n>` und `/game/<n>` (live), optional mit
+Sprach-Vorsilbe davor und Anhang wie `/review` dahinter; die Art für den Callback (`/callback/live|daily/game/<n>`) kommt
+aus dem Pfad. Sonst `null` und KEIN Callback-Abruf — bis v1.74.0 fiel die Erkennung auf jede 6+-stellige Zahl im Pfad
+zurück und holte Züge/Namen einer fremden Live-Partie derselben Nummer. Test: `test/chesscom-game-id.test.js`. (Bis v1.12.0 schickte der Button stattdessen ein client-seitig gebautes
 `{ pgn, sourceUrl }` — auf das reichere Format umgestellt, ohne den 📋-Copy-Pfad zu ändern.)
 
 - **Egress**: `rookhubProxy()`

@@ -11,7 +11,7 @@
   if (window.__rdc_loaded) return;
 
   // Shared-Core (lib/repertoire-text.js, per Manifest davor geladen) — wie in content.js.
-  const { parsePgnText, chessComPlayedAt, lichessGameId, fetchMetaWithRetry } = (self.RepCheckLib || {});
+  const { parsePgnText, chessComPlayedAt, lichessGameId, chessComGameId, fetchMetaWithRetry } = (self.RepCheckLib || {});
   let getAdapter, detectSiteKey;   // aus content.js (init)
 
   // ─── Metadaten fürs Speichern ───────────────────────────────────────
@@ -146,6 +146,7 @@
       timeControl: null,
       moves: null,
     };
+    let chessComGame = null;
     try {
       if (site === 'lichess') {
         // Nur echte Partie-Adressen: auf dem Analysebrett (/analysis) oder /broadcast/… gibt es keine
@@ -153,9 +154,9 @@
         // auf einen Datensatz zusammen.
         meta.externalId = lichessGameId(location.pathname);
       } else {
-        const m = location.pathname.match(/\/(?:live|daily|game|analysis\/game\/live)\/(\d+)/)
-          || location.pathname.match(/(\d{6,})/);
-        if (m) meta.externalId = m[1];
+        // Nur echte Partie-Adressen, Art aus dem Pfad (S1-007) — kein Rückfall auf irgendeine Zahl im Pfad.
+        chessComGame = chessComGameId(location.pathname);
+        if (chessComGame) meta.externalId = chessComGame.id;
       }
     } catch (e) {}
     const players = parsePlayersFromMeta();
@@ -178,8 +179,8 @@
       }
     }
     // chess.com: kanonische Header (Spieler/Ergebnis/Datum/Elo) nachziehen.
-    if (site === 'chesscom' && meta.externalId) {
-      const h = await fetchChessComHeaders(meta.externalId, /\/daily\//.test(location.pathname));
+    if (site === 'chesscom' && chessComGame) {
+      const h = await fetchChessComHeaders(meta.externalId, chessComGame.daily);
       if (h) {
         if (h.white) meta.white = h.white;
         if (h.black) meta.black = h.black;

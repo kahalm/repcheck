@@ -40,7 +40,7 @@
   // dreifach). tokenizePgn/isMoveToken/parseMoveTokens/parsePgnText: PGN→Zugbaum;
   // normalizedFen: 4-Feld-FEN fürs Repertoire-Matching; chessComPlayedAt: Header→ISO;
   // chessableSearchUrl: globale Chessable-FEN-Such-URL; lichessGameId: Partie-Id nur aus
-  // echten lichess-Partie-Adressen (nie aus /analysis, /training …).
+  // echten lichess-Partie-Adressen (nie aus /analysis, /training …); chessComGameId: dasselbe für chess.com.
   // Seit der Zerlegung Z37 braucht content.js selbst keinen davon mehr; die Teil-Dateien holen sich ihre Helfer
   // dort ab (game-meta.js, local-repertoire.js, floating.js).
 
