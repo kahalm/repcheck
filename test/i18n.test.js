@@ -115,3 +115,26 @@ test('rcResolveLang: Nutzerwahl schlägt Browsersprache', () => {
   assert.strictEqual(rcResolveLang('klingonisch', ['de']), 'de'); // ungültige Wahl wird ignoriert
 });
 
+
+// S1-010 (Delta-Review 2026-11-09): tote Schlüssel kosten jede Übersetzungsrunde Arbeit. Jeder Schlüssel der
+// Rückfallsprache muss wörtlich in einer Laufzeitdatei (JS/HTML außerhalb von i18n.js) stehen. Ausnahmen: Schlüssel,
+// die nur zusammengesetzt angesprochen werden (Präfix), und die beim Review gemeldeten, noch offenen Kandidaten.
+test('jeder Übersetzungsschlüssel wird im Code benutzt', () => {
+  const EXT = path.join(__dirname, '..', 'extension');
+  const quellen = [];
+  (function sammle(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'web-ext-artifacts') sammle(p); }
+      else if (/\.(js|html)$/.test(e.name) && e.name !== 'chess.min.js' && p !== path.join(EXT, 'lib', 'i18n.js')) {
+        quellen.push(fs.readFileSync(p, 'utf8'));
+      }
+    }
+  })(EXT);
+  const code = quellen.join('\n');
+  const DYNAMISCH = ['import.courseType.'];               // popup-import.js: 'import.courseType.' + st.courseType
+  const OFFEN = ['import.capturedInfo', 'import.capturedNone'];   // ungenutzt, gemeldet (nicht Teil von S1-010)
+  const tot = Object.keys(RC_MESSAGES[RC_FALLBACK])
+    .filter((k) => !code.includes(k) && !DYNAMISCH.some((p) => k.startsWith(p)) && !OFFEN.includes(k));
+  assert.deepStrictEqual(tot, []);
+});

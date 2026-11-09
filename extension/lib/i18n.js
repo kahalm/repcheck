@@ -278,19 +278,8 @@ const RC_MESSAGES = {
     },
 
     // — Prüf-Ergebnis —
-    'check.outOfRep': 'Out of repertoire at move {move} ({color}: {san})',
-    'check.outOfRepWithGaps': 'Out of repertoire at move {move} ({color}: {san}) ({gaps})',
-    'check.transpositions': {
-      one: '{count} transposition',
-      other: '{count} transpositions',
-    },
-    'check.inRep': 'In repertoire ✓',
-    'check.inRepWithGaps': 'In repertoire ✓ ({gaps})',
-    'check.fullyInRep': 'Game fully within repertoire ✓',
     'check.noMoves': 'No moves found',
     'check.noRepertoire': 'No repertoire loaded — set one up in the RepCheck popup under “Settings” (RookHub or folder/PGN)',
-    'check.white': 'White',
-    'check.black': 'Black',
 
     // — Schwebende Knöpfe auf chess.com/lichess —
     'tools.check': 'Check the current game against the repertoire',
@@ -338,13 +327,6 @@ const RC_MESSAGES = {
     'err.libMissing': 'internal lib missing',
     'err.noChapters': 'No chapters found',
     'err.noLines': 'No lines fetched',
-
-    // — Menü-Einträge (Altbestand, seit dem Wegfall des Userscripts ungenutzt) —
-    'menu.check': '♟ Check',
-    'menu.settings': '⚙ Settings',
-    'menu.copyChessableToken': '🔑 Copy Chessable token',
-    'menu.noChessableToken': 'RepCheck: no Chessable token found in localStorage — logged in?',
-    'menu.chessableTokenCopied': 'RepCheck: Chessable token copied to clipboard.',
   },
 
   de: {
@@ -594,19 +576,8 @@ const RC_MESSAGES = {
       other: 'RookHub: verbunden ({count} Dateien).',
     },
 
-    'check.outOfRep': 'Aus dem Repertoire bei Zug {move} ({color}: {san})',
-    'check.outOfRepWithGaps': 'Aus dem Repertoire bei Zug {move} ({color}: {san}) ({gaps})',
-    'check.transpositions': {
-      one: '{count} Zugumstellung',
-      other: '{count} Zugumstellungen',
-    },
-    'check.inRep': 'Im Repertoire ✓',
-    'check.inRepWithGaps': 'Im Repertoire ✓ ({gaps})',
-    'check.fullyInRep': 'Partie vollständig im Repertoire ✓',
     'check.noMoves': 'Keine Züge gefunden',
     'check.noRepertoire': 'Kein Repertoire geladen — im RepCheck-Popup unter „Einstellungen“ einrichten (RookHub oder Ordner/PGN)',
-    'check.white': 'Weiß',
-    'check.black': 'Schwarz',
 
     'tools.check': 'Aktuelle Partie gegen Repertoire prüfen',
     'tools.searchFen': 'FEN vor Abweichung in Chessable suchen',
@@ -650,12 +621,6 @@ const RC_MESSAGES = {
     'err.libMissing': 'Interne lib fehlt',
     'err.noChapters': 'Keine Kapitel gefunden',
     'err.noLines': 'Keine Linien geholt',
-
-    'menu.check': '♟ Prüfen',
-    'menu.settings': '⚙ Einstellungen',
-    'menu.copyChessableToken': '🔑 Chessable-Token kopieren',
-    'menu.noChessableToken': 'RepCheck: Kein Chessable-Token im localStorage gefunden — eingeloggt?',
-    'menu.chessableTokenCopied': 'RepCheck: Chessable-Token in die Zwischenablage kopiert.',
   },
 
   hr: {
@@ -909,20 +874,8 @@ const RC_MESSAGES = {
       few: 'RookHub: povezan ({count} datoteke).',
       other: 'RookHub: povezan ({count} datoteka).',
     },
-    'check.outOfRep': 'Izvan repertoara na potezu {move} ({color}: {san})',
-    'check.outOfRepWithGaps': 'Izvan repertoara na potezu {move} ({color}: {san}) ({gaps})',
-    'check.transpositions': {
-      one: '{count} transpozicija',
-      few: '{count} transpozicije',
-      other: '{count} transpozicija',
-    },
-    'check.inRep': 'U repertoaru ✓',
-    'check.inRepWithGaps': 'U repertoaru ✓ ({gaps})',
-    'check.fullyInRep': 'Partija je u cijelosti u repertoaru ✓',
     'check.noMoves': 'Nema pronađenih poteza',
     'check.noRepertoire': 'Nijedan repertoar nije učitan — postavi ga u RepCheck skočnom prozoru pod „Postavke“ (RookHub ili mapa/PGN)',
-    'check.white': 'Bijeli',
-    'check.black': 'Crni',
     'tools.check': 'Provjeri trenutnu partiju u odnosu na repertoar',
     'tools.searchFen': 'Potraži FEN prije odstupanja na Chessableu',
     'tools.copyPgn': 'Kopiraj PGN partije',
@@ -961,11 +914,6 @@ const RC_MESSAGES = {
     'err.libMissing': 'nedostaje interna lib',
     'err.noChapters': 'Nema pronađenih poglavlja',
     'err.noLines': 'Nije dohvaćena nijedna linija',
-    'menu.check': '♟ Provjeri',
-    'menu.settings': '⚙ Postavke',
-    'menu.copyChessableToken': '🔑 Kopiraj Chessable token',
-    'menu.noChessableToken': 'RepCheck: u localStorageu nije pronađen Chessable token — jesi li prijavljen?',
-    'menu.chessableTokenCopied': 'RepCheck: Chessable token kopiran u međuspremnik.',
     'progress.onRookhub': 'Na RookHubu',
     'progress.notOnRookhub': 'Još nije na RookHubu',
     'progress.countTitle': 'Na RookHubu: {done} od {total}',
