@@ -263,7 +263,10 @@
         listText = await chessableGetChecked(`getList?bid=${bid}&lid=${lid}`, 'list', { lid: String(lid) });
         listCachePut(`${bid}:${lid}`, listText);
       }
-      harvestFromList(bid, listText);   // nHard je Linie auch beim aktiven Kurs-Holen ernten
+      // nHard je Linie auch beim aktiven Kurs-Holen ernten — aber nur aus frisch geholten oder mitgeschnittenen Listen:
+      // eine bis zu 24 h alte Liste aus dem Cache würde einen inzwischen über den Mitschnitt gemeldeten, neueren nHard bei
+      // RookHub wieder zurücksetzen (S1-002; RookHub übernimmt den gemeldeten Wert ohne Zeitvergleich).
+      if (!fromCache) harvestFromList(bid, listText);
       const oids = Crawl.parseLineOids(listText);
       lists.push({ lid, listText, oids });
       total += oids.length;

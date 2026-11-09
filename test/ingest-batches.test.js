@@ -139,7 +139,7 @@ const KURS = { 1: ['11', '12', '13'], 2: ['21', '22'] };
 // beimAnhaengen(nr, oids) läuft vor jedem ingestLiveInParts-Aufruf (nr ab 1); wirft es, scheitert dieser Anhang.
 function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000, beiGame, kurs = KURS, beimAnhaengen, beimChunk, cache = new Map() } = {}) {
   const crawlBlock = finde('  async function crawlAndImport(', '  // ─── Export');
-  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [], berichte: [] };
+  const log = { ablauf: [], status: [], angehaengt: [], unerwartet: [], chunks: 0, anhaengen: 0, teile: [], abrufe: [], berichte: [], geerntet: [] };
   let api;
   const deps = {
     Crawl: require('../extension/lib/chessable-crawl.js'),
@@ -161,7 +161,7 @@ function ladeCrawl({ target = 'repertoire', everyMs = 60000, bookEveryMs = 60000
       if (beiGame) beiGame(oid, api);
       return JSON.stringify({ game: { id: Number(oid) } });
     },
-    harvestFromList: () => {},
+    harvestFromList: (bid, listText) => { log.geerntet.push(JSON.parse(listText).list.id); },
     harvestFromGame: () => {},
     sleep: async () => {},
     crawlPauseMs: () => 0,
@@ -366,6 +366,19 @@ test('Kursstruktur-Cache: der zweite Lauf holt getCourse und getList nicht noch 
   await zweiter.crawl();
   assert.deepStrictEqual(zweiter.log.abrufe.filter((a) => a !== 'getGame'), [], 'Struktur kam erneut von Chessable');
   assert.ok(zweiter.log.abrufe.includes('getGame'), 'die Linien selbst werden weiter geholt');
+});
+
+// S1-002: eine Liste aus dem Cache ist bis zu 24 h alt — ihr nHard darf einen inzwischen über den Mitschnitt gemeldeten
+// neueren Wert bei RookHub nicht zurücksetzen. Frisch geholte und mitgeschnittene Listen werden weiter geerntet.
+test('Kursstruktur-Cache: nHard wird nur aus frisch geholten Listen geerntet, nicht aus dem Cache', async () => {
+  const cache = new Map();
+  const erster = ladeCrawl({ cache });
+  await erster.crawl();
+  assert.deepStrictEqual(erster.log.geerntet, [1, 2], 'frisch geholte Listen müssen geerntet werden');
+
+  const zweiter = ladeCrawl({ cache });
+  await zweiter.crawl();
+  assert.deepStrictEqual(zweiter.log.geerntet, [], 'alter nHard aus dem Cache ging an RookHub');
 });
 
 // Gewünscht 07.10.2026: jeder sonstige Abbruch geht an RookHub (Log + Admin-Nachricht) — Stopp und unerwartete Antwort
